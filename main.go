@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -10,19 +9,20 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/zgub/pexync/cmd"
 	"github.com/zgub/pexync/core"
 )
 
 func main() {
 
 	viper.AutomaticEnv()
-	viper.SetEnvPrefix("CGL")
+	viper.SetEnvPrefix("PXS")
 	replacer := strings.NewReplacer(".", "_")
 	viper.SetEnvKeyReplacer(replacer)
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	if viper.GetBool("debug") {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
@@ -30,8 +30,12 @@ func main() {
 	// TODO #1
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	fmt.Println("Hello world")
-	f, err := os.Open("main.go")
+	log.Info().
+		Str("version", cmd.Version).
+		Msg(cmd.AppName)
+
+	f, err := os.Open("test/testfile")
+	defer f.Close()
 	if err != nil {
 		log.Fatal().
 			Err(err).
