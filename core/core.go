@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/rs/zerolog/log"
+	"github.com/zgub/pexync/fs"
 )
 
 type Block struct {
@@ -14,8 +15,12 @@ type Block struct {
 	Data   []byte
 }
 
-func GetChecksums(f *os.File, blockSize int) ([]uint32, error) {
+func GetChecksums(filePath string, blockSize int) (*fs.FileDesc, error) {
 
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
 	r := bufio.NewReader(f)
 	buffer := make([]byte, blockSize)
 	fileInfo, err := f.Stat()
@@ -59,5 +64,12 @@ func GetChecksums(f *os.File, blockSize int) ([]uint32, error) {
 		*/
 		hashList[i] = sum
 	}
-	return hashList, nil
+	fd := &fs.FileDesc{
+		FilePath: filePath,
+		FileSize: uint64(size),
+		Modified: fileInfo.ModTime(),
+		Mode:     fileInfo.Mode(),
+		Weak:     hashList,
+	}
+	return fd, nil
 }

@@ -33,19 +33,11 @@ func main() {
 	log.Info().
 		Str("version", cmd.Version).
 		Msg(cmd.AppName)
-
-	f, err := os.Open("test/testfile")
-	defer f.Close()
+	fd, err := core.GetChecksums("test/testfile", 700)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error")
 	}
-	sums, err := core.GetChecksums(f, 700)
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("error")
-	}
-	spew.Dump(sums)
+	spew.Dump(fd)
 }
