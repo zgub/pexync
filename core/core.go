@@ -2,37 +2,47 @@ package core
 
 import (
 	"bufio"
+	"crypto/sha1"
+	"errors"
 	"hash/adler32"
 	"io"
 	"os"
+	"syscall"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
+	"github.com/zgub/pexync/fs"
 )
 
-type Block struct {
-	Offset uint64
-	Data   []byte
-}
+func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 
-func GetChecksums(f *os.File, blockSize int) ([]uint32, error) {
+	blockSize := viper.GetInt("block_size")
+	log.Info().
+		Int("using block size", blockSize).
+		Msg("initializing")
 
-	r := bufio.NewReader(f)
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
 	buffer := make([]byte, blockSize)
 	fileInfo, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
 	size := fileInfo.Size()
+	stat := fileInfo.Sys().(*syscall.Stat_t)
+
+	sha1sh := sha1.New()
+	// func TeeReader(r Reader, w Writer) Reader
+	r := io.TeeReader(bufio.NewReader(f), sha1sh)
 
 	l := size / int64(blockSize)
 	if (size % int64(blockSize)) != 0 {
 		l++
 	}
-	log.Debug().
-		Int("block size", blockSize).
-		Int64("file size", size).
-		Int64("number of chunks", l).
-		Msg("GetChecksums counting chunks")
 
 	hashList := make([]uint32, l)
 
@@ -50,14 +60,82 @@ func GetChecksums(f *os.File, blockSize int) ([]uint32, error) {
 			return nil, err
 		}
 		sum := adler32.Checksum(buffer)
-		/*
-			log.Debug().
-				Int("i", i).
-				Int("bytes", n).
-				Uint32("sum", sum).
-				Msg("checksum")
-		*/
+
 		hashList[i] = sum
 	}
-	return hashList, nil
+	fd := &fs.FileDesc{
+		FilePath: filePath,
+		FileName: fileInfo.Name(),
+		FileSize: uint64(size),
+		Modified: fileInfo.ModTime(),
+		Perm:     fileInfo.Mode().Perm(),
+		Uid:      stat.Uid,
+		Gid:      stat.Gid,
+		Sha1:     sha1sh.Sum(nil)[:20],
+		Weak:     hashList,
+	}
+	return fd, nil
+}
+
+func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
+	log.Debug().
+		Msg("Rolling")
+	f, err := os.Open(src)
+	if err != nil {
+		return nil, err
+	}
+	blockSize := viper.GetInt("block_size")
+	defer f.Close()
+	rollBuff := make([]byte, blockSize)
+	r := bufio.NewReader(f)
+
+	var match, nomatch uint64
+
+	// let's do it, read thw whole file in ~ block size sized chunks first
+	rh := Pour()
+	n, err := r.Read(rollBuff)
+	if n == 0 && err == io.EOF {
+		return nil, errors.New("empty file")
+	}
+	rh.Write(rollBuff)
+	// window initialized
+	var i uint64
+	for i = 0; ; i++ {
+		n, err := r.Read(rollBuff)
+		if n == 0 {
+			if err == nil {
+				continue
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+
+		// roll through this buffer
+		for _, b := range rollBuff {
+			rh.Roll(b)
+			rSum := rh.Sum32()
+			for _, sum := range fd.Weak {
+				if rSum == sum {
+					match++
+					break
+				} else {
+					nomatch++
+				}
+			}
+		}
+		if i%10024 == 0 {
+			log.Info().
+				Uint64("read [MiB]", i/1024)
+		}
+
+	}
+
+	log.Info().
+		Uint64("mached", match).
+		Uint64("didn't match", nomatch).
+		Int("fd len", len(fd.Weak)).
+		Uint64("i", i).
+		Msg("result")
+	return nil, nil
 }
