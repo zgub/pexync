@@ -26,6 +26,9 @@ var (
 	debugLevel int
 	port       int
 
+	// core
+	blockSize int
+
 	// root command
 	rootCmd = &cobra.Command{
 		Use:   AppName,
@@ -38,6 +41,9 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// common flags
+	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default 700")
+	viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
+
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 
 	rootCmd.PersistentFlags().IntVarP(&debugLevel, "log-level", "D", 0, "log level: 0 - Error, 1 - Warn, 2 - Info, 3 - debug, 4 - trace")

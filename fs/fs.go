@@ -7,9 +7,11 @@ import (
 
 type FileDesc struct {
 	FilePath string
+	FileName string
 	FileSize uint64
 	Modified time.Time
-	Mode     os.FileMode
+	Perm     os.FileMode
+	Uid, Gid uint32
 	Sha1     []byte
 	Weak     []uint32
 }

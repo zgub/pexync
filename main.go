@@ -22,7 +22,7 @@ func main() {
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if viper.GetBool("debug") {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
@@ -33,7 +33,7 @@ func main() {
 	log.Info().
 		Str("version", cmd.Version).
 		Msg(cmd.AppName)
-	fd, err := core.GetChecksums("test/testfile", 700)
+	fd, err := core.GetChecksums("test/testfile")
 	if err != nil {
 		log.Fatal().
 			Err(err).
