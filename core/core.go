@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"crypto/sha1"
+	"errors"
 	"hash/adler32"
 	"io"
 	"os"
@@ -13,7 +14,7 @@ import (
 	"github.com/zgub/pexync/fs"
 )
 
-func GetChecksums(filePath string) (*fs.FileDesc, error) {
+func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 
 	blockSize := viper.GetInt("block_size")
 	log.Info().
@@ -60,12 +61,6 @@ func GetChecksums(filePath string) (*fs.FileDesc, error) {
 		}
 		sum := adler32.Checksum(buffer)
 
-		log.Debug().
-			Int("i", i).
-			Int("bytes", n).
-			Uint32("sum", sum).
-			Msg("checksum")
-
 		hashList[i] = sum
 	}
 	fd := &fs.FileDesc{
@@ -82,6 +77,65 @@ func GetChecksums(filePath string) (*fs.FileDesc, error) {
 	return fd, nil
 }
 
-func Roll(dst *fs.FileDesc, src string) (bool, error) {
-	return false, nil
+func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
+	log.Debug().
+		Msg("Rolling")
+	f, err := os.Open(src)
+	if err != nil {
+		return nil, err
+	}
+	blockSize := viper.GetInt("block_size")
+	defer f.Close()
+	rollBuff := make([]byte, blockSize)
+	r := bufio.NewReader(f)
+
+	var match, nomatch uint64
+
+	// let's do it, read thw whole file in ~ block size sized chunks first
+	rh := Pour()
+	n, err := r.Read(rollBuff)
+	if n == 0 && err == io.EOF {
+		return nil, errors.New("empty file")
+	}
+	rh.Write(rollBuff)
+	// window initialized
+	var i uint64
+	for i = 0; ; i++ {
+		n, err := r.Read(rollBuff)
+		if n == 0 {
+			if err == nil {
+				continue
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+
+		// roll through this buffer
+		for _, b := range rollBuff {
+			rh.Roll(b)
+			rSum := rh.Sum32()
+			for _, sum := range fd.Weak {
+				if rSum == sum {
+					match++
+					break
+				} else {
+					nomatch++
+				}
+			}
+		}
+		if i%10024 == 0 {
+			log.Info().
+				Uint64("read [MiB]", i/1024)
+		}
+
+	}
+
+	log.Info().
+		Uint64("mached", match).
+		Uint64("didn't match", nomatch).
+		Int("fd len", len(fd.Weak)).
+		Uint64("i", i).
+		Msg("result")
+	return nil, nil
 }
