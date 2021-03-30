@@ -48,7 +48,8 @@ func main() {
 			spew.Dump(fd)
 		*/
 	start := time.Now()
-	core.TestSectionReader("test/testfile")
+	//core.TestSectionReader("test/testfile")
+	core.TestSectionSum("test/testfile")
 	log.Info().
 		TimeDiff("duration", time.Now(), start).
 		Msg("END")

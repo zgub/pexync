@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 )
 
 func TestSectionReader(fileName string) error {
@@ -144,5 +145,33 @@ func TestSectionReader(fileName string) error {
 		pos += sectionSize
 	}
 	wg.Wait()
+	return nil
+}
+
+func TestSectionSum(fileName string) error {
+	f, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	blockSize := viper.GetInt("block_size")
+
+	//r := io.ReaderAt(f)
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	size := fileInfo.Size()
+	blockCount := size / int64(blockSize)
+	if (size % int64(blockCount)) != 0 {
+		blockCount++
+	}
+
+	//	buffer := make([]byte, blockSize)
+	//	hashList := make([]uint32, blockCount)
+	log.Info().
+		Int64("size", size).
+		Int64("block count", blockCount).
+		Msg("stat")
 	return nil
 }
