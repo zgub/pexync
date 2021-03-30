@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"runtime"
-
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -55,12 +53,13 @@ func init() {
 
 // Execute executes the root command.
 func Execute() error {
-	if useCores != 0 {
-		numCores := runtime.GOMAXPROCS(useCores)
-		log.Info().
-			Msgf("Cores used: %v -> %v", numCores, useCores)
-	}
-
+	/*
+		if useCores != 0 {
+			numCores := runtime.GOMAXPROCS(useCores)
+			log.Info().
+				Msgf("Cores used: %v -> %v", numCores, useCores)
+		}
+	*/
 	return rootCmd.Execute()
 }
 
