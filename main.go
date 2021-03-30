@@ -49,7 +49,12 @@ func main() {
 		*/
 	start := time.Now()
 	//core.TestSectionReader("test/testfile")
-	core.TestSectionSum("test/testfile")
+	err := core.TestSectionSum("test/testfile")
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("ERROR")
+	}
 	log.Info().
 		TimeDiff("duration", time.Now(), start).
 		Msg("END")

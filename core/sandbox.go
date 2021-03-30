@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -149,6 +150,8 @@ func TestSectionReader(fileName string) error {
 }
 
 func TestSectionSum(fileName string) error {
+	log.Info().
+		Msg("start")
 	f, err := os.Open(fileName)
 	if err != nil {
 		return err
@@ -156,7 +159,7 @@ func TestSectionSum(fileName string) error {
 	defer f.Close()
 	blockSize := viper.GetInt("block_size")
 
-	//r := io.ReaderAt(f)
+	r := io.ReaderAt(f)
 	fileInfo, err := f.Stat()
 	if err != nil {
 		return err
@@ -167,11 +170,136 @@ func TestSectionSum(fileName string) error {
 		blockCount++
 	}
 
-	//	buffer := make([]byte, blockSize)
-	//	hashList := make([]uint32, blockCount)
+	buffer := make([]byte, blockSize)
+	var hashList []uint32
+	sectionSize := size / 2
+	var pos int64
+	sr := io.NewSectionReader(r, pos, sectionSize)
+	br := bufio.NewReader(sr)
+	rh := Pour()
+	n, err := io.ReadFull(br, buffer)
+	if n == 0 || err != nil {
+		return err
+	}
+	rh.Write(buffer)
+	hashList = append(hashList, rh.Sum32())
+	var x, y int
+	log.Info().
+		Msg("first section")
+	for ; ; x++ {
+		n, err := io.ReadFull(br, buffer)
+		if n == 0 {
+			if err == nil {
+				// read 0 bytes but no err, funny stuff
+				log.Info().
+					Msg("read zero bytes")
+				continue
+			} else if err != io.EOF {
+				// read zero bytes with an error different that EOF
+				log.Error().
+					Err(err).
+					Msg("error")
+			}
+			if err == io.EOF {
+				// well EOF
+				break
+			}
+		}
+		for _, b := range buffer {
+			rh.Roll(b)
+			hashList = append(hashList, rh.Sum32())
+		}
+	}
+	log.Info().
+		Msg("first section end")
+	rh.Reset()
+	sr = io.NewSectionReader(r, sectionSize-int64(blockSize), size)
+	br = bufio.NewReader(sr)
+	n, err = io.ReadFull(br, buffer)
+	if n == 0 || err != nil {
+		return err
+	}
+	rh.Write(buffer)
+	hashList = append(hashList, rh.Sum32())
+	log.Info().
+		Msg("second section")
+	for ; ; y++ {
+		n, err := io.ReadFull(br, buffer)
+		if n == 0 {
+			if err == nil {
+				// read 0 bytes but no err, funny stuff
+				log.Info().
+					Msg("read zero bytes")
+				continue
+			} else if err != io.EOF {
+				// read zero bytes with an error different that EOF
+				log.Error().
+					Err(err).
+					Msg("error")
+			}
+			if err == io.EOF {
+				// well EOF
+				break
+			}
+		}
+		for _, b := range buffer {
+			rh.Roll(b)
+			hashList = append(hashList, rh.Sum32())
+		}
+	}
 	log.Info().
 		Int64("size", size).
 		Int64("block count", blockCount).
+		Float64("sqrt(size)", math.Sqrt(float64(size))).
+		Int("sr1 block number", x).
+		Int("sr2 block number", y).
+		Int("sr1 + sr2", x+y).
+		Int("hash list len", len(hashList)).
 		Msg("stat")
+
+	nr := io.Reader(f)
+	rh.Reset()
+	buffer = make([]byte, blockSize)
+	br = bufio.NewReader(nr)
+	n, err = io.ReadFull(br, buffer)
+	if n == 0 || err != nil {
+		return err
+	}
+	rh.Write(buffer)
+	if rh.Sum32() != hashList[0] {
+		log.Fatal().
+			Msg("missmatch")
+	}
+	log.Info().
+		Msg("check")
+	for z := 1; ; z++ {
+		n, err := io.ReadFull(br, buffer)
+		if n == 0 {
+			if err == nil {
+				// read 0 bytes but no err, funny stuff
+				log.Info().
+					Msg("read zero bytes")
+				continue
+			} else if err != io.EOF {
+				// read zero bytes with an error different that EOF
+				log.Error().
+					Err(err).
+					Msg("error")
+			}
+			if err == io.EOF {
+				// well EOF
+				break
+			}
+			for _, b := range buffer {
+				rh.Roll(b)
+				if rh.Sum32() != hashList[z] {
+					log.Error().
+						Err(err).
+						Msg("error")
+				}
+
+			}
+		}
+	}
 	return nil
 }
