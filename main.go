@@ -11,7 +11,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/cmd"
-	"github.com/zgub/pexync/core"
 )
 
 func main() {
@@ -49,14 +48,30 @@ func main() {
 		*/
 	start := time.Now()
 	//core.TestSectionReader("test/testfile")
-	err := core.TestSectionSum("test/testfile")
-	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("ERROR")
-	}
+	/*
+		err := core.TestSectionSum("test/testfile")
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("ERROR")
+		}
+		fl, err := fs.GetList("..")
+		if err != nil {
+			log.Error().
+				Err(err).
+				Caller().
+				Send()
+		}
+		for _, fd := range fl {
+			spew.Dump(fd)
+		}
+		log.Info().
+			TimeDiff("duration", time.Now(), start).
+			Msg("END")
+	*/
+	cmd.Execute()
 	log.Info().
 		TimeDiff("duration", time.Now(), start).
-		Msg("END")
+		Send()
 
 }

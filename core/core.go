@@ -69,7 +69,7 @@ func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 		FileName: fileInfo.Name(),
 		FileSize: uint64(size),
 		Modified: fileInfo.ModTime(),
-		Perm:     fileInfo.Mode().Perm(),
+		Mode:     fileInfo.Mode(),
 		Uid:      stat.Uid,
 		Gid:      stat.Gid,
 		Sha1:     sha1sh.Sum(nil)[:20],
