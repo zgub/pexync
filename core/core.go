@@ -51,6 +51,7 @@ func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 		//buf = buf[:n]
 		n, err := io.ReadFull(r, buffer)
 		if n == 0 {
+			// is this really necessary?
 			if err == nil {
 				continue
 			}
@@ -68,7 +69,7 @@ func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 		FileName: fileInfo.Name(),
 		FileSize: uint64(size),
 		Modified: fileInfo.ModTime(),
-		Perm:     fileInfo.Mode().Perm(),
+		Mode:     fileInfo.Mode(),
 		Uid:      stat.Uid,
 		Gid:      stat.Gid,
 		Sha1:     sha1sh.Sum(nil)[:20],
@@ -87,7 +88,8 @@ func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
 	blockSize := viper.GetInt("block_size")
 	defer f.Close()
 	rollBuff := make([]byte, blockSize)
-	r := bufio.NewReader(f)
+	r := io.Reader(f)
+	//br := bufio.NewReader(r)
 
 	var match, nomatch uint64
 
@@ -99,8 +101,8 @@ func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
 	}
 	rh.Write(rollBuff)
 	// window initialized
-	var i uint64
-	for i = 0; ; i++ {
+	var pos uint64
+	for {
 		n, err := r.Read(rollBuff)
 		if n == 0 {
 			if err == nil {
@@ -124,9 +126,9 @@ func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
 				}
 			}
 		}
-		if i%10024 == 0 {
+		if pos%10024 == 0 {
 			log.Info().
-				Uint64("read [MiB]", i/1024)
+				Uint64("read [MiB]", pos/1024)
 		}
 
 	}
@@ -135,7 +137,7 @@ func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
 		Uint64("mached", match).
 		Uint64("didn't match", nomatch).
 		Int("fd len", len(fd.Weak)).
-		Uint64("i", i).
+		Uint64("last position", pos).
 		Msg("result")
 	return nil, nil
 }

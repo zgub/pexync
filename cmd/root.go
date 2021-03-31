@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"runtime"
-
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,7 +14,7 @@ var (
 	// AppShortDesc is the application short description
 	AppShortDesc = "] pexip [ homework"
 	// AppDesc is the application long description
-	AppDesc = `naah to lazy to type`
+	AppDesc = `Lazy golang rsync implementation`
 )
 
 var (
@@ -41,7 +39,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// common flags
-	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default 700")
+	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default <700b; 131kB>")
 	viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
@@ -55,12 +53,13 @@ func init() {
 
 // Execute executes the root command.
 func Execute() error {
-	if useCores != 0 {
-		numCores := runtime.GOMAXPROCS(useCores)
-		log.Info().
-			Msgf("Cores used: %v -> %v", numCores, useCores)
-	}
-
+	/*
+		if useCores != 0 {
+			numCores := runtime.GOMAXPROCS(useCores)
+			log.Info().
+				Msgf("Cores used: %v -> %v", numCores, useCores)
+		}
+	*/
 	return rootCmd.Execute()
 }
 

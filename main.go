@@ -3,18 +3,19 @@ package main
 import (
 	"os"
 	"strings"
+	"time"
 
-	"github.com/davecgh/go-spew/spew"
+	//"github.com/davecgh/go-spew/spew"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/cmd"
-	"github.com/zgub/pexync/core"
 )
 
 func main() {
 
+	//runtime.GOMAXPROCS(12)
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("PXS")
 	replacer := strings.NewReplacer(".", "_")
@@ -33,12 +34,44 @@ func main() {
 	log.Info().
 		Str("version", cmd.Version).
 		Msg(cmd.AppName)
-	fd, err := core.GetFileDesc("test/testfile")
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("error")
-	}
-	_, err = core.Roll(fd, "test/testfile")
-	spew.Dump(fd)
+		/*
+			fd, err := core.GetFileDesc("test/testfile")
+			if err != nil {
+				log.Fatal().
+					Err(err).
+					Msg("error")
+			}
+
+			_, err = core.Roll(fd, "test/testfile")
+
+			spew.Dump(fd)
+		*/
+	start := time.Now()
+	//core.TestSectionReader("test/testfile")
+	/*
+		err := core.TestSectionSum("test/testfile")
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("ERROR")
+		}
+		fl, err := fs.GetList("..")
+		if err != nil {
+			log.Error().
+				Err(err).
+				Caller().
+				Send()
+		}
+		for _, fd := range fl {
+			spew.Dump(fd)
+		}
+		log.Info().
+			TimeDiff("duration", time.Now(), start).
+			Msg("END")
+	*/
+	cmd.Execute()
+	log.Info().
+		TimeDiff("duration", time.Now(), start).
+		Send()
+
 }
