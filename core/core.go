@@ -11,10 +11,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/zgub/pexync/fs"
+	"github.com/zgub/pexync/lfs"
 )
 
-func GetFileDesc(filePath string) (*fs.FileDesc, error) {
+func GetFileDesc(filePath string) (*lfs.FileDesc, error) {
 
 	blockSize := viper.GetInt("block_size")
 	log.Info().
@@ -64,7 +64,7 @@ func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 
 		hashList[i] = sum
 	}
-	fd := &fs.FileDesc{
+	fd := &lfs.FileDesc{
 		FilePath: filePath,
 		FileName: fileInfo.Name(),
 		FileSize: uint64(size),
@@ -78,7 +78,7 @@ func GetFileDesc(filePath string) (*fs.FileDesc, error) {
 	return fd, nil
 }
 
-func Roll(fd *fs.FileDesc, src string) ([]uint32, error) {
+func Roll(fd *lfs.FileDesc, src string) ([]uint32, error) {
 	log.Debug().
 		Msg("Rolling")
 	f, err := os.Open(src)

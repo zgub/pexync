@@ -3,6 +3,8 @@ package cmd
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/zgub/pexync/lfs"
 )
 
 func init() {
@@ -25,4 +27,27 @@ var (
 
 func startClient() {
 	log.Info().Msg("initilaizing PeXync client")
+	list, err := lfs.GetList(viper.GetString("directory"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Stack().
+			Caller().
+			Send()
+	}
+	for _, entry := range list {
+		if entry.IsDir {
+			log.Info().
+				Str("Type", "D").
+				//Int64("Size", int64(entry.FileSize)).
+				Str("Name", entry.FileName).
+				Send()
+		} else {
+			log.Info().
+				Str("Type", "F").
+				Int64("Size", int64(entry.FileSize)).
+				Str("Name", entry.FileName).
+				Send()
+		}
+	}
 }

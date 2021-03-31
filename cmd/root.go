@@ -23,6 +23,7 @@ var (
 	cfgFile    string
 	debugLevel int
 	port       int
+	syncDir    string
 
 	// core
 	blockSize int
@@ -46,6 +47,9 @@ func init() {
 
 	rootCmd.PersistentFlags().IntVarP(&debugLevel, "log-level", "D", 0, "log level: 0 - Error, 1 - Warn, 2 - Info, 3 - debug, 4 - trace")
 	viper.BindPFlag("log_level", rootCmd.PersistentFlags().Lookup("log-level"))
+
+	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", ".", "directory to synchronize")
+	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
 
