@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"context"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 	"github.com/zgub/pexync/workers"
 )
@@ -40,23 +42,7 @@ func startClient() {
 			Send()
 	}
 	ctx := context.Background()
-	/*
-		for _, entry := range list {
-			if entry.IsDir {
-				log.Info().
-					Str("Type", "D").
-					//Int64("Size", int64(entry.FileSize)).
-					Str("Name", entry.FileName).
-					Send()
-			} else {
-				log.Info().
-					Str("Type", "F").
-					Int64("Size", int64(entry.FileSize)).
-					Str("Name", entry.FileName).
-					Send()
-			}
-		}
-	*/
+	//wg := sync.WaitGroup
 
 	// call localSync
 	startLocalSync(ctx, list)
@@ -65,6 +51,14 @@ func startClient() {
 
 func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 
+	var wg *sync.WaitGroup
 	// spawn local Sender
-	sender := workers.NewLocalSender()
+	in := make(<-chan []*core.Message)
+	remote := make(chan<- []*core.Message)
+	sender := workers.NewLocalSender(ctx, wg, list, in, remote)
+
+	sender.Start()
+	wg.Add(1)
+
+	wg.Wait()
 }
