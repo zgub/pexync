@@ -13,7 +13,7 @@ var (
 	// AppName can be replaced with an application name during build
 	AppName = "PeXync"
 	// Version is defined during the compilation as well
-	Version = "v0.0.1"
+	Version = "v0.1.0"
 	// AppShortDesc is the application short description
 	AppShortDesc = "] pexip [ homework"
 	// AppDesc is the application long description

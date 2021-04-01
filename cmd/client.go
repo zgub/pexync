@@ -15,7 +15,7 @@ import (
 func init() {
 	rootCmd.AddCommand(clientCmd)
 	clientCmd.Flags().StringVarP(&localSource, "local-source", "L", ".", "local sync source")
-	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "/tmp/PeXync/", "local sync destination")
+	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "PeXync/", "local sync destination")
 }
 
 var (
