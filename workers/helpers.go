@@ -13,7 +13,7 @@ func sendWithTimeout(pkt []*core.Message, dst chan<- []*core.Message) core.Error
 
 	select {
 	case dst <- pkt:
-		return ""
+		return core.NoError
 	case <-timeout:
 		return core.Timeout
 	}
@@ -23,6 +23,7 @@ func recvWithTimeout(src <-chan []*core.Message) ([]*core.Message, core.Error) {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
 	var pkt []*core.Message
+
 	select {
 	case pkt = <-src:
 		return pkt, core.NoError

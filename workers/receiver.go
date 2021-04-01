@@ -3,11 +3,9 @@ package workers
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
@@ -45,9 +43,6 @@ func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan []*core
 func (w *LocalReceiver) Start() {
 	defer w.wg.Done()
 
-	// sending initial packet
-	timeoutValue := viper.GetDuration("timeout")
-
 	var pkt []*core.Message
 
 	for {
@@ -65,13 +60,7 @@ func (w *LocalReceiver) Start() {
 					Str("sender uuid", w.senderUUID.String()).
 					Msgf("local receiver received file list, length: %d", len(w.list))
 				// stop all writers if any, this is a reset!
-				timeout := time.After(timeoutValue)
-				select {
-				case w.sender <- pkt:
-				case <-timeout:
-					log.Fatal().
-						Msgf("timout reached while trying to send delta to sender")
-				}
+				// sendWithTimeour
 			default:
 				log.Fatal().
 					Err(core.NotImplemented).

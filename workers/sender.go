@@ -3,7 +3,6 @@ package workers
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -50,23 +49,11 @@ func (w *LocalSender) Start() {
 		Msgf("list length: %d", len(w.list))
 
 	err := sendWithTimeout(pkt, w.receiver)
-	if err != nil {
-	}
+	err.Handle()
 
 	// receive the filelist with checksums
-	timeout = time.After(timeoutValue)
-	select {
-	case pkt = <-w.inbox:
-	case <-timeout:
-		log.Fatal().
-			Msgf("timeout %s reached while waiting for response from remote", timeoutValue)
-	}
-	err := pkt[0].Error
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("local sender received an error from remote")
-	}
+	pkt, err = recvWithTimeout(w.inbox)
+	err.Handle()
 	w.list = pkt[0].List
 	//spew.Dump(w.list)
 	// spaw filereaders

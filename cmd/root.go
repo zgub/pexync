@@ -3,6 +3,7 @@ package cmd
 import (
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -21,11 +22,11 @@ var (
 
 var (
 	// general
-	useCores   int
-	cfgFile    string
-	debugLevel int
-	port       int
-	syncDir    string
+	useCores int
+	cfgFile  string
+	debug    bool
+	port     int
+	syncDir  string
 
 	// core
 	blockSize int
@@ -47,8 +48,9 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 
-	rootCmd.PersistentFlags().IntVarP(&debugLevel, "log-level", "D", 0, "log level: 0 - Error, 1 - Warn, 2 - Info, 3 - debug, 4 - trace")
-	viper.BindPFlag("log_level", rootCmd.PersistentFlags().Lookup("log-level"))
+	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "enable debug")
+
+	viper.SetDefault("log_level", zerolog.InfoLevel)
 
 	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", ".", "directory to synchronize")
 	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
@@ -95,5 +97,10 @@ func initConfig() {
 				Str("Error", err.Error()).
 				Msg("unable to write config")
 		}
+	}
+
+	if debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		log.Debug().Msg("debug mode on")
 	}
 }
