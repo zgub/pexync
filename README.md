@@ -9,6 +9,7 @@
 - [x] test various readers with paralelism
 - [ ] decide when use single file send, single goroutine send, multiple goroutine send
 - [ ] receiver should stop all go routines at RST
+- [ ] do not create cfg file automaticaly, add a command **confgen**
 
 ## Ideas
 

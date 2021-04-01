@@ -30,6 +30,9 @@ func (e Error) Handle() {
 }
 
 func Fatality(e error) {
+	if e == nil {
+		return
+	}
 	if zerolog.GlobalLevel() == zerolog.DebugLevel {
 		log.Fatal().
 			Stack().

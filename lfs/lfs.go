@@ -9,7 +9,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type State int
+
+const (
+	Missing State = iota // no file on the receiver side
+	Diff                 // file exists but do not match
+	Skip                 // file exists and matches
+)
+
 type FileDesc struct {
+	State    State
 	IsDir    bool
 	FilePath string
 	FileName string

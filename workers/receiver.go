@@ -2,10 +2,12 @@ package workers
 
 import (
 	"context"
+	"os"
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
@@ -64,6 +66,32 @@ func (w *LocalReceiver) Start() {
 					Str("sender uuid", w.senderUUID.String()).
 					Msgf("local receiver received file list, length: %d", len(w.list))
 				// stop all writers if any, this is a reset!
+
+				// get local (destination file list)
+				dst := viper.GetString("local_destination")
+				log.Trace().
+					Str("local destination", dst).
+					Send()
+
+				// check if the destination dir exists
+				if _, err := os.Stat(dst); os.IsNotExist(err) {
+					// create one
+					os.Mkdir(dst, os.ModeDir)
+				}
+
+				lfl, err := lfs.GetList(dst)
+				core.Fatality(err)
+
+				for _, senderFile := range w.list {
+					for _, receiverFile := range lfl {
+						senderFile.State = lfs.Missing
+						if senderFile.FilePath == receiverFile.FilePath {
+							senderFile.State = lfs.Skip
+							break
+						}
+					}
+				}
+
 				sendWithTimeout(pkt, w.sender)
 			case core.FIN:
 				log.Trace().
