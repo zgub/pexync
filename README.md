@@ -7,6 +7,7 @@
 - [ ] study the rolling adler32
 - [x] test the checksums
 - [x] test various readers with paralelism
+- [ ] decide when use single file send, single goroutine send, multiple goroutine send
 
 ## Ideas
 
@@ -14,6 +15,9 @@
 - source reader **zda sa** nemoze pouzivat section reader, lebo robime rolling checksum a ~~neviem ako vyriesit hranice sekcii~~, jedine ze by sme recyklovali sekcie, **sectionSize musi byt tiez nasobok blockSize**
 - pouzivanie sekcii nema zmysel pri malych suboroch, tie nema asi zmysel ani robit diff, menej ako stovky bajtov
 - mime/multipart?
+- send blocks as they come
+- ctx, cancel = context.WithTimeout(context.Background(), timeout)
+- worker management? (in case one fails?)
 
 ## Design concepts
 
@@ -39,7 +43,8 @@
 ## Stretch goals
 
 1. TLS
-2. --delete
+1. --delete
+1. AAA
 
 ## Progress
 

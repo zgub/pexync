@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"time"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -53,6 +55,7 @@ func init() {
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
 
+	viper.SetDefault("timeout", 5*time.Second)
 }
 
 // Execute executes the root command.

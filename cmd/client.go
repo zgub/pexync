@@ -1,19 +1,23 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/lfs"
+	"github.com/zgub/pexync/workers"
 )
 
 func init() {
 	rootCmd.AddCommand(clientCmd)
-	//sendCmd.Flags().StringVarP(&sendMsgType, "message-type", "t", "", "API meessage type (C|R|U|D|G|I|V)")
+	clientCmd.Flags().StringVarP(&localSource, "local-source", "L", ".", "local sync source")
+	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "/tmp/PeXync/", "local sync destination")
 }
 
 var (
-	//sendMsgType string
+	localSource, localDestination string
 
 	clientCmd = &cobra.Command{
 		Use:   "client",
@@ -35,19 +39,32 @@ func startClient() {
 			Caller().
 			Send()
 	}
-	for _, entry := range list {
-		if entry.IsDir {
-			log.Info().
-				Str("Type", "D").
-				//Int64("Size", int64(entry.FileSize)).
-				Str("Name", entry.FileName).
-				Send()
-		} else {
-			log.Info().
-				Str("Type", "F").
-				Int64("Size", int64(entry.FileSize)).
-				Str("Name", entry.FileName).
-				Send()
+	ctx := context.Background()
+	/*
+		for _, entry := range list {
+			if entry.IsDir {
+				log.Info().
+					Str("Type", "D").
+					//Int64("Size", int64(entry.FileSize)).
+					Str("Name", entry.FileName).
+					Send()
+			} else {
+				log.Info().
+					Str("Type", "F").
+					Int64("Size", int64(entry.FileSize)).
+					Str("Name", entry.FileName).
+					Send()
+			}
 		}
-	}
+	*/
+
+	// call localSync
+	startLocalSync(ctx, list)
+
+}
+
+func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
+
+	// spawn local Sender
+	sender := workers.NewLocalSender()
 }
