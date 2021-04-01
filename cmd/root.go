@@ -57,7 +57,7 @@ func init() {
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
 
-	viper.SetDefault("timeout", 2*time.Second)
+	viper.SetDefault("timeout", 5*time.Second)
 }
 
 // Execute executes the root command.
@@ -103,7 +103,10 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 		log.Debug().Msg("debug mode on")
 	} else {
-		level := viper.GetInt("log_level")
-		zerolog.SetGlobalLevel(zerolog.Level(level))
+		level := zerolog.Level(viper.GetInt("log_level"))
+		zerolog.SetGlobalLevel(level)
+		log.Info().
+			Str("log level", level.String()).
+			Send()
 	}
 }

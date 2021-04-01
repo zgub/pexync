@@ -43,12 +43,16 @@ func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan []*core
 func (w *LocalReceiver) Start() {
 	defer w.wg.Done()
 
-	var pkt []*core.Message
+	var (
+		pkt   []*core.Message
+		check bool = true
+	)
 
-	for {
+	for check {
 		select {
 		case <-w.ctx.Done():
-			log.Info().Msg("local receiver closing, context done")
+			log.Trace().Msg("local receiver closing, context done")
+			check = false
 			break
 		case pkt = <-w.inbox:
 			msg := pkt[0]
@@ -56,15 +60,18 @@ func (w *LocalReceiver) Start() {
 			case core.RST:
 				w.list = msg.List
 				w.senderUUID = msg.UUID
-				log.Info().
+				log.Trace().
 					Str("sender uuid", w.senderUUID.String()).
 					Msgf("local receiver received file list, length: %d", len(w.list))
 				// stop all writers if any, this is a reset!
-				// sendWithTimeour
+				sendWithTimeout(pkt, w.sender)
+			case core.FIN:
+				log.Trace().
+					Msg("receiver received FIN")
+				check = false
+				break
 			default:
-				log.Fatal().
-					Err(core.NotImplemented).
-					Send()
+				core.Fatality(core.NotImplemented)
 			}
 		}
 	}
@@ -76,6 +83,6 @@ func (w *LocalReceiver) Start() {
 	// validate ???
 
 	// end
-	//log.Info().
-	//	Msg("local receiver finished")
+	log.Trace().
+		Msg("local receiver finished")
 }

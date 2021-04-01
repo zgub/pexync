@@ -32,7 +32,7 @@ var (
 )
 
 func startClient() {
-	log.Info().Msg("initilaizing PeXync client")
+	log.Info().Msg("initializing PeXync client")
 	list, err := lfs.GetList(viper.GetString("directory"))
 	if err != nil {
 		log.Fatal().
@@ -43,9 +43,6 @@ func startClient() {
 	}
 	ctx := context.Background()
 
-	log.Info().
-		Msgf("list length: %d", len(list))
-	// call localSync
 	startLocalSync(ctx, list)
 
 }

@@ -17,18 +17,19 @@ func (e Error) Handle() {
 	switch e {
 	case UnknownMessage:
 		e := errors.WithStack(e)
-		fatality(e)
+		Fatality(e)
 	case NotImplemented:
 		e := errors.WithStack(e)
-		fatality(e)
+		Fatality(e)
 	case Timeout:
-		fatality(e)
+		e := errors.WithStack(e)
+		Fatality(e)
 	default:
 		errors.WithStack(errors.Wrap(e, "unknown error"))
 	}
 }
 
-func fatality(e error) {
+func Fatality(e error) {
 	if zerolog.GlobalLevel() == zerolog.DebugLevel {
 		log.Fatal().
 			Stack().

@@ -44,9 +44,8 @@ func (w *LocalSender) Start() {
 		},
 	}
 
-	log.Info().
-		Caller().
-		Msgf("list length: %d", len(w.list))
+	log.Trace().
+		Msgf("sender list length: %d", len(w.list))
 
 	err := sendWithTimeout(pkt, w.receiver)
 	err.Handle()
@@ -56,14 +55,14 @@ func (w *LocalSender) Start() {
 	err.Handle()
 	w.list = pkt[0].List
 	//spew.Dump(w.list)
-	// spaw filereaders
+	// spawn filereaders
 
 	// wait for the transfer to finish
 
 	// validate ???
 
 	// end
-	log.Info().
+	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
 	pkt = []*core.Message{
 		{
@@ -71,4 +70,5 @@ func (w *LocalSender) Start() {
 			UUID: w.uuid,
 		},
 	}
+	sendWithTimeout(pkt, w.receiver)
 }
