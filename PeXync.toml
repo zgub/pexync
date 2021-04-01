@@ -1,2 +1,4 @@
 block_size = 700
+directory = "."
 log_level = 0
+timeout = "2s"

@@ -55,7 +55,7 @@ func init() {
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
 
-	viper.SetDefault("timeout", 5*time.Second)
+	viper.SetDefault("timeout", 2*time.Second)
 }
 
 // Execute executes the root command.
