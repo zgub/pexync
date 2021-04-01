@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"time"
+
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -10,7 +13,7 @@ var (
 	// AppName can be replaced with an application name during build
 	AppName = "PeXync"
 	// Version is defined during the compilation as well
-	Version = "v0.0.1"
+	Version = "v0.1.0"
 	// AppShortDesc is the application short description
 	AppShortDesc = "] pexip [ homework"
 	// AppDesc is the application long description
@@ -19,10 +22,11 @@ var (
 
 var (
 	// general
-	useCores   int
-	cfgFile    string
-	debugLevel int
-	port       int
+	useCores int
+	cfgFile  string
+	debug    bool
+	port     int
+	syncDir  string
 
 	// core
 	blockSize int
@@ -44,11 +48,16 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 
-	rootCmd.PersistentFlags().IntVarP(&debugLevel, "log-level", "D", 0, "log level: 0 - Error, 1 - Warn, 2 - Info, 3 - debug, 4 - trace")
-	viper.BindPFlag("log_level", rootCmd.PersistentFlags().Lookup("log-level"))
+	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "enable debug")
+
+	viper.SetDefault("log_level", int(zerolog.InfoLevel))
+
+	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", ".", "directory to synchronize")
+	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
 
+	viper.SetDefault("timeout", 5*time.Second)
 }
 
 // Execute executes the root command.
@@ -88,5 +97,16 @@ func initConfig() {
 				Str("Error", err.Error()).
 				Msg("unable to write config")
 		}
+	}
+
+	if debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		log.Debug().Msg("debug mode on")
+	} else {
+		level := zerolog.Level(viper.GetInt("log_level"))
+		zerolog.SetGlobalLevel(level)
+		log.Info().
+			Str("log level", level.String()).
+			Send()
 	}
 }

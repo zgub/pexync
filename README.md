@@ -2,13 +2,23 @@
 
 ## TODO
 
-1. fetch blockSize from viper
+- [ ] ~~fetch blockSize from viper~~
+- [ ] blocksize to be calculated
+- [ ] study the rolling adler32
+- [x] test the checksums
+- [x] test various readers with paralelism
+- [ ] decide when use single file send, single goroutine send, multiple goroutine send
+- [ ] receiver should stop all go routines at RST
 
 ## Ideas
 
-* destination reader moze pouzit **SectionReader** na rychlejsie paralelne vyratanie adler32 suctov ak bude __sectionSize nasobok blockSize__
-* source reader **zda sa** nemoze pouzivat section reader, lebo robime rolling checksum a neviem ako vyriesit hranice sekcii, jedine ze by sme recyklovali sekcie, **sectionSize musi byt tiez nasobok blockSize**
-* pouzivanie sekcii nema zmysel pri malych suboroch, tie nema asi zmysel ani robit diff, menej ako stovky bajtov
+- destination reader moze pouzit **SectionReader** na rychlejsie paralelne vyratanie adler32 suctov ak bude __sectionSize nasobok blockSize__
+- source reader **zda sa** nemoze pouzivat section reader, lebo robime rolling checksum a ~~neviem ako vyriesit hranice sekcii~~, jedine ze by sme recyklovali sekcie, **sectionSize musi byt tiez nasobok blockSize**
+- pouzivanie sekcii nema zmysel pri malych suboroch, tie nema asi zmysel ani robit diff, menej ako stovky bajtov
+- mime/multipart?
+- send blocks as they come
+- ctx, cancel = context.WithTimeout(context.Background(), timeout)
+- worker management? (in case one fails?)
 
 ## Design concepts
 
@@ -25,13 +35,19 @@
 
 ### sender reader
 
-* fajl mensi ako 700 bytov je preneseny cely vzdy
-  * ak cokolvek nesedi, posle sa cely
-* fajl mensi ako 700 x 700 b ma blocksize 700
-* fajl vacsi ako 490 000b ma blocksize = sqrt(size)
-  * ak je fajl mensi ako 1GB **treba upresnit**, pouzije sa nebufferovany  
+- fajl mensi ako 700 bytov je preneseny cely vzdy
+  - ak cokolvek nesedi, posle sa cely
+- fajl mensi ako 700 x 700 b ma blocksize 700
+- fajl vacsi ako 490 000b ma blocksize = sqrt(size)
+  - ak je fajl mensi ako 1GB **treba upresnit**, pouzije sa nebufferovany  
 
 ## Stretch goals
 
 1. TLS
-2. --delete
+1. --delete
+1. AAA
+
+## Progress
+
+1. checksum core concepts done, still have to understand the rolling adler32
+1. let's first do the local sync and add remote later on

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog/pkgerrors"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/cmd"
 )
@@ -22,11 +23,8 @@ func main() {
 	viper.SetEnvKeyReplacer(replacer)
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	if viper.GetBool("debug") {
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	}
+	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	// TODO #1
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
@@ -34,41 +32,9 @@ func main() {
 	log.Info().
 		Str("version", cmd.Version).
 		Msg(cmd.AppName)
-		/*
-			fd, err := core.GetFileDesc("test/testfile")
-			if err != nil {
-				log.Fatal().
-					Err(err).
-					Msg("error")
-			}
 
-			_, err = core.Roll(fd, "test/testfile")
-
-			spew.Dump(fd)
-		*/
 	start := time.Now()
-	//core.TestSectionReader("test/testfile")
-	/*
-		err := core.TestSectionSum("test/testfile")
-		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("ERROR")
-		}
-		fl, err := fs.GetList("..")
-		if err != nil {
-			log.Error().
-				Err(err).
-				Caller().
-				Send()
-		}
-		for _, fd := range fl {
-			spew.Dump(fd)
-		}
-		log.Info().
-			TimeDiff("duration", time.Now(), start).
-			Msg("END")
-	*/
+
 	cmd.Execute()
 	log.Info().
 		TimeDiff("duration", time.Now(), start).
