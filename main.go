@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog/pkgerrors"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/cmd"
 )
@@ -22,6 +23,8 @@ func main() {
 	viper.SetEnvKeyReplacer(replacer)
 
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	// TODO #1
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})

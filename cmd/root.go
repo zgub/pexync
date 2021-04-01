@@ -50,7 +50,7 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "enable debug")
 
-	viper.SetDefault("log_level", zerolog.InfoLevel)
+	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
 	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", ".", "directory to synchronize")
 	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
@@ -102,5 +102,8 @@ func initConfig() {
 	if debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 		log.Debug().Msg("debug mode on")
+	} else {
+		level := viper.GetInt("log_level")
+		zerolog.SetGlobalLevel(zerolog.Level(level))
 	}
 }
