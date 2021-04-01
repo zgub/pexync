@@ -86,7 +86,13 @@ func (w *LocalReceiver) Start() {
 					for _, receiverFile := range lfl {
 						senderFile.State = lfs.Missing
 						if senderFile.FilePath == receiverFile.FilePath {
-							senderFile.State = lfs.Skip
+							if senderFile.FileSize == receiverFile.FileSize && senderFile.Modified == receiverFile.Modified {
+								// check permissions and ownership
+								senderFile.State = lfs.Skip
+							} else {
+								senderFile.State = lfs.Diff
+								// add checksum
+							}
 							break
 						}
 					}
