@@ -18,7 +18,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	blockSize := viper.GetInt("block_size")
 	log.Info().
 		Int("using block size", blockSize).
-		Msg("initializing")
+		Send()
 
 	f, err := os.Open(fd.FilePath)
 	if err != nil {

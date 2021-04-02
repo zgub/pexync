@@ -3,7 +3,6 @@ package workers
 import (
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 )
@@ -11,7 +10,6 @@ import (
 func sendWithTimeout(pkt []*core.Message, dst chan<- []*core.Message) core.Error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	log.Trace().Caller().Msg("sendWithTimeout")
 	select {
 	case dst <- pkt:
 		return core.NoError

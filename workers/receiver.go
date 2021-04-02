@@ -69,9 +69,6 @@ func (w *LocalReceiver) Start() {
 
 				// get local (destination file list)
 				dst := viper.GetString("local_destination")
-				log.Trace().
-					Str("local destination", dst).
-					Send()
 
 				// check if the destination dir exists
 				if _, err := os.Stat(dst); os.IsNotExist(err) {
@@ -79,36 +76,34 @@ func (w *LocalReceiver) Start() {
 					os.Mkdir(dst, os.ModeDir)
 				}
 
-				lfl, err := lfs.GetList(dst, dst)
+				lfl, err := lfs.GetList(dst)
 				core.Fatality(err)
 
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
 						senderFile.State = lfs.Missing
 						if senderFile.FilePath == receiverFile.FilePath {
-							if senderFile.FileName == "README.md" {
-								log.Trace().Msg("FOUND")
-							}
 							if senderFile.FileSize == receiverFile.FileSize && senderFile.Modified == receiverFile.Modified {
 								// check permissions and ownership
 								senderFile.State = lfs.Skip
-								if senderFile.FileName == "README.md" {
-									log.Trace().
-										Uint64("sender size", senderFile.FileSize).
-										Uint64("receiver size", receiverFile.FileSize).
-										Msg("FOUND")
-								}
 							} else {
-								if senderFile.FileName == "README.md" {
-									log.Trace().Msg("Still FOUND")
-								}
-								senderFile.State = lfs.Diff
-								err := core.AddChecksums(senderFile)
 								log.Trace().
-									Int("checksum block count", len(senderFile.Weak)).
-									Str("filename", senderFile.FileName).
-									Send()
-								core.Fatality(err)
+									Str("sender path", senderFile.FilePath).
+									Str("receiver path", receiverFile.FilePath).
+									Uint64("sender file size", senderFile.FileSize).
+									Uint64("receiver file size", receiverFile.FileSize).
+									Time("sender file mod", senderFile.Modified).
+									Time("receiver file mod", receiverFile.Modified).
+									Msg("DIFF")
+								senderFile.State = lfs.Diff
+
+								// determine what has changed, if permission and/or modtime only, do not set it to diff
+
+								if !senderFile.IsDir {
+									err := core.AddChecksums(receiverFile)
+									core.Fatality(err)
+									senderFile.Weak = receiverFile.Weak
+								}
 								// add checksum
 							}
 							break

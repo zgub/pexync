@@ -56,15 +56,17 @@ func (w *LocalSender) Start() {
 	err.Handle()
 	w.list = pkt[0].List
 	//spew.Dump(w.list)
+
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing {
-			fmt.Printf("[-] %s\n", fd.FilePath)
+			//fmt.Printf("[-] %s\n", fd.FilePath)
 		} else if fd.State == lfs.Diff {
-			fmt.Printf("[+] %s'n", fd.FilePath)
+			fmt.Printf("[+] %s\t %d checksums\n", fd.FilePath, len(fd.Weak))
 		} else {
 			fmt.Printf("[x] %s\n", fd.FilePath)
 		}
 	}
+
 	// spawn filereaders
 
 	// wait for the transfer to finish

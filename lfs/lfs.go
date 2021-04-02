@@ -6,7 +6,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 )
 
 type State int
@@ -30,13 +32,21 @@ type FileDesc struct {
 	Weak     []uint32
 }
 
-func GetList(walkPath, prefix string) ([]*FileDesc, error) {
+func GetList(walkDir string) ([]*FileDesc, error) {
 	//walkPath = prefix + walkPath
 	var list []*FileDesc
-	log.Trace().
-		Str("walk path", walkPath).
-		Send()
-	err := filepath.WalkDir(walkPath, func(path string, entry os.DirEntry, err error) error {
+
+	// don't do walk over abs path, makes comparinf more difficult
+	walkDirAbs, err := filepath.Abs(walkDir)
+	if err != nil {
+		return nil, err
+	}
+	// avoid endless recursive deadend
+	dest, err := filepath.Abs(viper.GetString("local_destination"))
+	if err != nil {
+		return nil, err
+	}
+	err = filepath.WalkDir(walkDir, func(path string, entry os.DirEntry, err error) error {
 
 		if err != nil {
 			log.Error().
@@ -45,16 +55,19 @@ func GetList(walkPath, prefix string) ([]*FileDesc, error) {
 			return err
 		}
 
-		/*
-			if path == walkPath {
-				return filepath.SkipDir
-			}
-		*/
-
-		log.Trace().
-			Str("path", path).
-			Str("walk path", walkPath).
-			Send()
+		// skip destination folder if it's located within the source
+		pathAbs, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		// not cheap, but it's not done that often
+		if pathAbs == dest && walkDirAbs != dest {
+			log.Trace().
+				Str("path", path).
+				Str("destination", dest).
+				Msg("skipping destination")
+			return filepath.SkipDir
+		}
 
 		info, err := entry.Info()
 		if err != nil {
@@ -63,22 +76,33 @@ func GetList(walkPath, prefix string) ([]*FileDesc, error) {
 
 		stat := info.Sys().(*syscall.Stat_t)
 
-		fileDesc := &FileDesc{
-			IsDir:    entry.IsDir(),
-			FilePath: path,
-			FileName: entry.Name(),
-			FileSize: uint64(info.Size()),
-			Modified: info.ModTime(),
-			Mode:     info.Mode(),
-			Uid:      stat.Uid,
-			Gid:      stat.Gid,
+		relPath, err := filepath.Rel(walkDir, path)
+		if err != nil {
+			return errors.WithMessage(err, "determinign relative path")
 		}
 
-		list = append(list, fileDesc)
+		if path != "." {
+			fileDesc := &FileDesc{
+				IsDir:    entry.IsDir(),
+				FilePath: relPath,
+				FileName: entry.Name(),
+				FileSize: uint64(info.Size()),
+				Modified: info.ModTime(),
+				Mode:     info.Mode(),
+				Uid:      stat.Uid,
+				Gid:      stat.Gid,
+			}
+
+			list = append(list, fileDesc)
+		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "GetList")
 	}
+	log.Trace().
+		Int("returning filelist size", len(list)).
+		Str("walk dir", walkDir).
+		Send()
 	return list, nil
 }

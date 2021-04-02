@@ -1,6 +1,6 @@
 block_size = 700
 directory = "."
-local_destination = "/tmp/Xync/"
+local_destination = "./Xync/"
 local_source = "."
-log_level = 1
+log_level = -1
 timeout = "5s"
