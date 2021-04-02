@@ -79,18 +79,36 @@ func (w *LocalReceiver) Start() {
 					os.Mkdir(dst, os.ModeDir)
 				}
 
-				lfl, err := lfs.GetList(dst)
+				lfl, err := lfs.GetList(dst, dst)
 				core.Fatality(err)
 
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
 						senderFile.State = lfs.Missing
 						if senderFile.FilePath == receiverFile.FilePath {
+							if senderFile.FileName == "README.md" {
+								log.Trace().Msg("FOUND")
+							}
 							if senderFile.FileSize == receiverFile.FileSize && senderFile.Modified == receiverFile.Modified {
 								// check permissions and ownership
 								senderFile.State = lfs.Skip
+								if senderFile.FileName == "README.md" {
+									log.Trace().
+										Uint64("sender size", senderFile.FileSize).
+										Uint64("receiver size", receiverFile.FileSize).
+										Msg("FOUND")
+								}
 							} else {
+								if senderFile.FileName == "README.md" {
+									log.Trace().Msg("Still FOUND")
+								}
 								senderFile.State = lfs.Diff
+								err := core.AddChecksums(senderFile)
+								log.Trace().
+									Int("checksum block count", len(senderFile.Weak)).
+									Str("filename", senderFile.FileName).
+									Send()
+								core.Fatality(err)
 								// add checksum
 							}
 							break

@@ -30,9 +30,13 @@ type FileDesc struct {
 	Weak     []uint32
 }
 
-func GetList(path string) ([]*FileDesc, error) {
+func GetList(walkPath, prefix string) ([]*FileDesc, error) {
+	//walkPath = prefix + walkPath
 	var list []*FileDesc
-	err := filepath.WalkDir(path, func(path string, entry os.DirEntry, err error) error {
+	log.Trace().
+		Str("walk path", walkPath).
+		Send()
+	err := filepath.WalkDir(walkPath, func(path string, entry os.DirEntry, err error) error {
 
 		if err != nil {
 			log.Error().
@@ -40,6 +44,17 @@ func GetList(path string) ([]*FileDesc, error) {
 				Msg("error parsing directory")
 			return err
 		}
+
+		/*
+			if path == walkPath {
+				return filepath.SkipDir
+			}
+		*/
+
+		log.Trace().
+			Str("path", path).
+			Str("walk path", walkPath).
+			Send()
 
 		info, err := entry.Info()
 		if err != nil {
@@ -54,6 +69,7 @@ func GetList(path string) ([]*FileDesc, error) {
 			FileName: entry.Name(),
 			FileSize: uint64(info.Size()),
 			Modified: info.ModTime(),
+			Mode:     info.Mode(),
 			Uid:      stat.Uid,
 			Gid:      stat.Gid,
 		}

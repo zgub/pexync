@@ -21,6 +21,7 @@
 - send blocks as they come
 - ctx, cancel = context.WithTimeout(context.Background(), timeout)
 - worker management? (in case one fails?)
+- Sha1 comparisson auto || on demand? (will require Sha1 hash calculation at first GetList call)
 
 ## Design concepts
 
