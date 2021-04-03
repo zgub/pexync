@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/zgub/pexync/core"
+	"github.com/zgub/pexync/lfs"
 )
 
 type RollReader struct {
@@ -14,14 +15,16 @@ type RollReader struct {
 	receiver   <-chan []*core.Message
 	blockSize  int
 	sendBuffer []byte
+	fd         *lfs.FileDesc
 }
 
-func NewRollReader(ctx context.Context, wg *sync.WaitGroup, blockSize int, sr *io.SectionReader, receiver <-chan []*core.Message) *RollReader {
+func NewRollReader(ctx context.Context, wg *sync.WaitGroup, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver <-chan []*core.Message) *RollReader {
 	return &RollReader{
 		reader:     sr,
 		receiver:   receiver,
 		blockSize:  blockSize,
 		sendBuffer: make([]byte, blockSize),
+		fd:         fd,
 	}
 }
 
@@ -34,5 +37,10 @@ func (rr *RollReader) Start() {
 	}
 	rh := core.Pour()
 	rh.Write(buff)
+
+	if rh.Sum32() == rr.fd.Weak[0] {
+		_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
+		core.Fatality(err)
+	}
 
 }
