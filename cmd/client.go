@@ -14,14 +14,12 @@ import (
 
 func init() {
 	rootCmd.AddCommand(clientCmd)
-	clientCmd.Flags().StringVarP(&localSource, "local-source", "L", ".", "local sync source")
-	viper.BindPFlag("local_source", clientCmd.Flags().Lookup("local-source"))
 	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "./Xync/", "local sync destination")
 	viper.BindPFlag("local_destination", clientCmd.Flags().Lookup("local-destination"))
 }
 
 var (
-	localSource, localDestination string
+	localDestination string
 
 	clientCmd = &cobra.Command{
 		Use:   "client",
@@ -36,6 +34,7 @@ var (
 func startClient() {
 	log.Info().Msg("initializing PeXync client")
 	list, err := lfs.GetList(viper.GetString("directory"))
+	log.Trace().Str("syncing", viper.GetString("directory")).Send()
 	if err != nil {
 		log.Fatal().
 			Err(err).

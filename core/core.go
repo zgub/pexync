@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"hash/adler32"
 	"io"
 	"os"
@@ -14,13 +15,13 @@ import (
 )
 
 func AddChecksums(fd *lfs.FileDesc) error {
-
+	fmt.Printf("Add sumfile: %s\n", fd.RelPath)
 	blockSize := viper.GetInt("block_size")
 	log.Info().
 		Int("using block size", blockSize).
 		Send()
 
-	f, err := os.Open(fd.FilePath)
+	f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 	if err != nil {
 		return err
 	}

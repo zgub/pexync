@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"math"
 	"os"
 	"sync"
 
@@ -82,14 +83,14 @@ func (w *LocalReceiver) Start() {
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
 						senderFile.State = lfs.Missing
-						if senderFile.FilePath == receiverFile.FilePath {
+						if senderFile.RelPath == receiverFile.RelPath {
 							if senderFile.FileSize == receiverFile.FileSize && senderFile.Modified == receiverFile.Modified {
 								// check permissions and ownership
 								senderFile.State = lfs.Skip
 							} else {
 								log.Trace().
-									Str("sender path", senderFile.FilePath).
-									Str("receiver path", receiverFile.FilePath).
+									Str("sender path", senderFile.RelPath).
+									Str("receiver path", receiverFile.RelPath).
 									Uint64("sender file size", senderFile.FileSize).
 									Uint64("receiver file size", receiverFile.FileSize).
 									Time("sender file mod", senderFile.Modified).
@@ -100,9 +101,23 @@ func (w *LocalReceiver) Start() {
 								// determine what has changed, if permission and/or modtime only, do not set it to diff
 
 								if !senderFile.IsDir {
-									err := core.AddChecksums(receiverFile)
+									blockSize := viper.GetInt("block_size")
+									if senderFile.FileSize > 490000 && blockSize == 700 {
+										// stolen from rsync doc :)
+										sqrt := math.Sqrt(float64(senderFile.FileSize))
+										blockSize = int(math.Round(sqrt))
+										if blockSize > 131072 {
+											blockSize = 131072
+										}
+									}
+									log.Info().
+										Int("checksum block size", blockSize).
+										Send()
+									viper.Set("block_size", blockSize)
+									// ???
+									err := core.AddChecksums(senderFile)
 									core.Fatality(err)
-									senderFile.Weak = receiverFile.Weak
+									//senderFile.Weak = receiverFile.Weak
 								}
 								// add checksum
 							}

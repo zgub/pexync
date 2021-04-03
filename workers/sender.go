@@ -59,11 +59,11 @@ func (w *LocalSender) Start() {
 
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing {
-			//fmt.Printf("[-] %s\n", fd.FilePath)
+			fmt.Printf("[-] %s\n", fd.RelPath)
 		} else if fd.State == lfs.Diff {
-			fmt.Printf("[+] %s\t %d checksums\n", fd.FilePath, len(fd.Weak))
+			fmt.Printf("[+] %s\t %d checksums\n", fd.RelPath, len(fd.Weak))
 		} else {
-			fmt.Printf("[x] %s\n", fd.FilePath)
+			fmt.Printf("[x] %s\n", fd.RelPath)
 		}
 	}
 

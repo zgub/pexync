@@ -22,7 +22,8 @@ const (
 type FileDesc struct {
 	State    State
 	IsDir    bool
-	FilePath string
+	RelPath  string
+	Prefix   string
 	FileName string
 	FileSize uint64
 	Modified time.Time
@@ -35,8 +36,8 @@ type FileDesc struct {
 func GetList(walkDir string) ([]*FileDesc, error) {
 	//walkPath = prefix + walkPath
 	var list []*FileDesc
-
-	// don't do walk over abs path, makes comparinf more difficult
+	log.Trace().Str("walk dir", walkDir).Send()
+	// don't do walk over abs path, makes comparing more difficult
 	walkDirAbs, err := filepath.Abs(walkDir)
 	if err != nil {
 		return nil, err
@@ -56,12 +57,16 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 		}
 
 		// skip destination folder if it's located within the source
-		pathAbs, err := filepath.Abs(path)
+		absPath, err := filepath.Abs(path)
 		if err != nil {
 			return err
 		}
+		log.Trace().
+			Str("path", path).
+			Str("walk dir", walkDir).
+			Send()
 		// not cheap, but it's not done that often
-		if pathAbs == dest && walkDirAbs != dest {
+		if absPath == dest && walkDirAbs != dest {
 			log.Trace().
 				Str("path", path).
 				Str("destination", dest).
@@ -77,14 +82,22 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 		stat := info.Sys().(*syscall.Stat_t)
 
 		relPath, err := filepath.Rel(walkDir, path)
+		prefix := filepath.Dir(absPath)
+		log.Trace().
+			Str("path", path).
+			Str("walk dir", walkDir).
+			Str("rel path", relPath).
+			Str("prefix path", prefix).
+			Send()
 		if err != nil {
 			return errors.WithMessage(err, "determinign relative path")
 		}
 
-		if path != "." {
+		if relPath != "." {
 			fileDesc := &FileDesc{
 				IsDir:    entry.IsDir(),
-				FilePath: relPath,
+				RelPath:  relPath,
+				Prefix:   prefix,
 				FileName: entry.Name(),
 				FileSize: uint64(info.Size()),
 				Modified: info.ModTime(),
