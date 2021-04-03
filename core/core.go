@@ -69,6 +69,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	return nil
 }
 
+// Deprecated
 func Roll(fd *lfs.FileDesc, src string) ([]uint32, error) {
 	log.Debug().
 		Msg("Rolling")
