@@ -4,36 +4,35 @@ import (
 	"bufio"
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"hash/adler32"
 	"io"
 	"os"
-	"syscall"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/lfs"
 )
 
-func GetFileDesc(filePath string) (*lfs.FileDesc, error) {
-
+func AddChecksums(fd *lfs.FileDesc) error {
+	fmt.Printf("Add sumfile: %s\n", fd.RelPath)
 	blockSize := viper.GetInt("block_size")
 	log.Info().
 		Int("using block size", blockSize).
-		Msg("initializing")
+		Send()
 
-	f, err := os.Open(filePath)
+	f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
 
 	buffer := make([]byte, blockSize)
 	fileInfo, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	size := fileInfo.Size()
-	stat := fileInfo.Sys().(*syscall.Stat_t)
 
 	sha1sh := sha1.New()
 	// func TeeReader(r Reader, w Writer) Reader
@@ -58,24 +57,16 @@ func GetFileDesc(filePath string) (*lfs.FileDesc, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return err
 		}
 		sum := adler32.Checksum(buffer)
 
 		hashList[i] = sum
 	}
-	fd := &lfs.FileDesc{
-		FilePath: filePath,
-		FileName: fileInfo.Name(),
-		FileSize: uint64(size),
-		Modified: fileInfo.ModTime(),
-		Mode:     fileInfo.Mode(),
-		Uid:      stat.Uid,
-		Gid:      stat.Gid,
-		Sha1:     sha1sh.Sum(nil)[:20],
-		Weak:     hashList,
-	}
-	return fd, nil
+
+	fd.Sha1 = sha1sh.Sum(nil)[:20]
+	fd.Weak = hashList
+	return nil
 }
 
 func Roll(fd *lfs.FileDesc, src string) ([]uint32, error) {

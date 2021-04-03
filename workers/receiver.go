@@ -2,10 +2,13 @@ package workers
 
 import (
 	"context"
+	"math"
+	"os"
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
@@ -64,6 +67,65 @@ func (w *LocalReceiver) Start() {
 					Str("sender uuid", w.senderUUID.String()).
 					Msgf("local receiver received file list, length: %d", len(w.list))
 				// stop all writers if any, this is a reset!
+
+				// get local (destination file list)
+				dst := viper.GetString("local_destination")
+
+				// check if the destination dir exists
+				if _, err := os.Stat(dst); os.IsNotExist(err) {
+					// create one
+					os.Mkdir(dst, os.ModeDir)
+				}
+
+				lfl, err := lfs.GetList(dst)
+				core.Fatality(err)
+
+				for _, senderFile := range w.list {
+					for _, receiverFile := range lfl {
+						senderFile.State = lfs.Missing
+						if senderFile.RelPath == receiverFile.RelPath {
+							if senderFile.FileSize == receiverFile.FileSize && senderFile.Modified == receiverFile.Modified {
+								// check permissions and ownership
+								senderFile.State = lfs.Skip
+							} else {
+								log.Trace().
+									Str("sender path", senderFile.RelPath).
+									Str("receiver path", receiverFile.RelPath).
+									Uint64("sender file size", senderFile.FileSize).
+									Uint64("receiver file size", receiverFile.FileSize).
+									Time("sender file mod", senderFile.Modified).
+									Time("receiver file mod", receiverFile.Modified).
+									Msg("DIFF")
+								senderFile.State = lfs.Diff
+
+								// determine what has changed, if permission and/or modtime only, do not set it to diff
+
+								if !senderFile.IsDir {
+									blockSize := viper.GetInt("block_size")
+									if senderFile.FileSize > 490000 && blockSize == 700 {
+										// stolen from rsync doc :)
+										sqrt := math.Sqrt(float64(senderFile.FileSize))
+										blockSize = int(math.Round(sqrt))
+										if blockSize > 131072 {
+											blockSize = 131072
+										}
+									}
+									log.Info().
+										Int("checksum block size", blockSize).
+										Send()
+									viper.Set("block_size", blockSize)
+									// ???
+									err := core.AddChecksums(senderFile)
+									core.Fatality(err)
+									//senderFile.Weak = receiverFile.Weak
+								}
+								// add checksum
+							}
+							break
+						}
+					}
+				}
+
 				sendWithTimeout(pkt, w.sender)
 			case core.FIN:
 				log.Trace().

@@ -52,7 +52,7 @@ func init() {
 
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
-	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", ".", "directory to synchronize")
+	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", "test", "directory to synchronize")
 	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")

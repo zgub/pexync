@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/google/uuid"
@@ -55,6 +56,17 @@ func (w *LocalSender) Start() {
 	err.Handle()
 	w.list = pkt[0].List
 	//spew.Dump(w.list)
+
+	for _, fd := range w.list {
+		if fd.State == lfs.Missing {
+			fmt.Printf("[-] %s\n", fd.RelPath)
+		} else if fd.State == lfs.Diff {
+			fmt.Printf("[+] %s\t %d checksums\n", fd.RelPath, len(fd.Weak))
+		} else {
+			fmt.Printf("[x] %s\n", fd.RelPath)
+		}
+	}
+
 	// spawn filereaders
 
 	// wait for the transfer to finish
