@@ -13,6 +13,7 @@ import (
 )
 
 type RollReader struct {
+	ctx       context.Context
 	reader    *io.SectionReader
 	receiver  chan<- *core.Message
 	blockSize int
@@ -24,6 +25,7 @@ type RollReader struct {
 
 func NewRollReader(ctx context.Context, senderID uuid.UUID, wg *sync.WaitGroup, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
+		ctx:       ctx,
 		senderID:  senderID,
 		reader:    sr,
 		receiver:  receiver,
@@ -57,7 +59,7 @@ func (rr *RollReader) Start() {
 		rr.fd.Matches = append(rr.fd.Matches, 0)
 	}
 	// initialize out byte with the first byte of the section
-	oldBuf := buf
+	rr.keep = buf
 
 	var (
 		rollSum uint32
@@ -82,41 +84,45 @@ func (rr *RollReader) Start() {
 				// yay, nd of file, ehm section, well this should be addresses
 				break
 			}
+		}
+		// one never knows, but should not be an issue except for the end of file
+		buf = buf[:n]
+		// now let's feed the hash byte by byte
+		for _, b := range buf {
+			select {
+			case <-rr.ctx.Done():
+				return
+			default:
 
-			// one never knows, but should not be an issue except for the end of file
-			buf = buf[:n]
-			// now let's feed the hash byte by byte
-			for pos, b := range buf {
-
-				rh.Roll(b)
-				rollSum = rh.Sum32()
-				// lookup in the remote file hash list
-				for remoteHashPos, hash := range rr.fd.Weak {
-					if rollSum == hash {
-						rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
-						// skip matching bytes
-						rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
-						// maybe this could be optimized for subsequent matchin hashes
-						break
-					}
-					// not found, append the out byte to the packet
-					missingByte := oldBuf[pos]
-					rr.fd.Data = append(rr.fd.Data, missingByte)
-					// check length
-					if len(rr.fd.Data) == rr.blockSize {
-						pkt = &core.Message{
-							Flag: core.DTA,
-							File: rr.fd,
-							UUID: rr.senderID,
-						}
-						// send thepackage when full
-						err := sendWithTimeout(pkt, rr.receiver)
-						core.Fatality(err)
-					}
-
-				}
 			}
-
+			rh.Roll(b)
+			rollSum = rh.Sum32()
+			// lookup in the remote file hash list
+			for remoteHashPos, hash := range rr.fd.Weak {
+				if rollSum == hash {
+					rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
+					// skip matching bytes
+					rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
+					// maybe this could be optimized for subsequent matchin hashes
+					break
+				}
+				// not found, append the oldest ring buffer byte to the packet
+				missingByte := rr.pop()
+				rr.fd.Data = append(rr.fd.Data, missingByte)
+				// check length
+				if len(rr.fd.Data) == rr.blockSize {
+					pkt = &core.Message{
+						Flag: core.DTA,
+						File: rr.fd,
+						UUID: rr.senderID,
+					}
+					// send thepackage when full
+					err := sendWithTimeout(pkt, rr.receiver)
+					core.Fatality(err)
+				}
+				// store the byte in the circular buffer
+				rr.push(b)
+			}
 		}
 
 	}

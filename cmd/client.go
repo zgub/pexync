@@ -42,8 +42,8 @@ func startClient() {
 			Caller().
 			Send()
 	}
-	ctx := context.Background()
-
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	startLocalSync(ctx, list)
 
 }
