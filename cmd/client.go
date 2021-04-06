@@ -42,8 +42,7 @@ func startClient() {
 			Caller().
 			Send()
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 	startLocalSync(ctx, list)
 
 }
@@ -54,6 +53,9 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 	// spawn local Sender
 	local := make(chan *core.Message)
 	remote := make(chan *core.Message)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	sender := workers.NewLocalSender(ctx, &wg, list, local, remote)
 
 	go sender.Start()
