@@ -7,7 +7,7 @@ import (
 	"github.com/zgub/pexync/core"
 )
 
-func sendWithTimeout(pkt []*core.Message, dst chan<- []*core.Message) core.Error {
+func sendWithTimeout(pkt *core.Message, dst chan<- *core.Message) core.Error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
 	select {
@@ -18,10 +18,10 @@ func sendWithTimeout(pkt []*core.Message, dst chan<- []*core.Message) core.Error
 	}
 }
 
-func recvWithTimeout(src <-chan []*core.Message) ([]*core.Message, core.Error) {
+func recvWithTimeout(src <-chan *core.Message) (*core.Message, core.Error) {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	var pkt []*core.Message
+	var pkt *core.Message
 
 	select {
 	case pkt = <-src:

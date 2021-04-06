@@ -52,8 +52,8 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 
 	var wg sync.WaitGroup
 	// spawn local Sender
-	local := make(chan []*core.Message)
-	remote := make(chan []*core.Message)
+	local := make(chan *core.Message)
+	remote := make(chan *core.Message)
 	sender := workers.NewLocalSender(ctx, &wg, list, local, remote)
 
 	go sender.Start()

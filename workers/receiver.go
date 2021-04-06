@@ -27,13 +27,13 @@ type LocalReceiver struct {
 	ctx        context.Context
 	wg         *sync.WaitGroup
 	list       []*lfs.FileDesc
-	inbox      <-chan []*core.Message
-	sender     chan<- []*core.Message
+	inbox      <-chan *core.Message
+	sender     chan<- *core.Message
 	state      senderState
 	senderUUID uuid.UUID
 }
 
-func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan []*core.Message, sender chan<- []*core.Message) *LocalReceiver {
+func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		ctx:    ctx,
 		wg:     wg,
@@ -47,7 +47,7 @@ func (w *LocalReceiver) Start() {
 	defer w.wg.Done()
 
 	var (
-		pkt   []*core.Message
+		pkt   *core.Message
 		check bool = true
 	)
 
@@ -58,7 +58,7 @@ func (w *LocalReceiver) Start() {
 			check = false
 			break
 		case pkt = <-w.inbox:
-			msg := pkt[0]
+			msg := pkt
 			switch msg.Flag {
 			case core.RST:
 				w.list = msg.List

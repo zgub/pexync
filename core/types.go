@@ -23,7 +23,7 @@ const (
 	RST Flag = iota // reset, (re)initialize), hello
 	ACK             // acknowledge, everything is ok
 	FLS             // initial filelist from sender
-	DTA             // delta from receiver
+	DTA             // data from receiver
 	ERR             // error
 	FIN             // done, disconnect
 )

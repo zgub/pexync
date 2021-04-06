@@ -126,10 +126,6 @@ func TestSectionReader(fileName string) error {
 						if err == io.EOF {
 							break
 						}
-						if err == io.EOF {
-							break
-						}
-
 					}
 				}
 				log.Info().

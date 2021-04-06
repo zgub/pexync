@@ -16,12 +16,12 @@ type LocalSender struct {
 	ctx      context.Context
 	wg       *sync.WaitGroup
 	list     []*lfs.FileDesc
-	inbox    <-chan []*core.Message
-	receiver chan<- []*core.Message
+	inbox    <-chan *core.Message
+	receiver chan<- *core.Message
 	uuid     uuid.UUID
 }
 
-func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc, in <-chan []*core.Message, receiver chan<- []*core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
 		wg:       wg,
@@ -37,12 +37,10 @@ func (w *LocalSender) Start() {
 
 	// send the filelist to the receiver
 	// q := []int{2, 3, 5, 7, 11, 13}
-	pkt := []*core.Message{
-		{
-			Flag: core.RST,
-			UUID: w.uuid,
-			List: w.list,
-		},
+	pkt := &core.Message{
+		Flag: core.RST,
+		UUID: w.uuid,
+		List: w.list,
 	}
 
 	log.Trace().
@@ -54,7 +52,7 @@ func (w *LocalSender) Start() {
 	// receive the filelist with checksums
 	pkt, err = recvWithTimeout(w.inbox)
 	err.Handle()
-	w.list = pkt[0].List
+	w.list = pkt.List
 	//spew.Dump(w.list)
 
 	for _, fd := range w.list {
@@ -76,11 +74,9 @@ func (w *LocalSender) Start() {
 	// end
 	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
-	pkt = []*core.Message{
-		{
-			Flag: core.FIN,
-			UUID: w.uuid,
-		},
+	pkt = &core.Message{
+		Flag: core.FIN,
+		UUID: w.uuid,
 	}
 	sendWithTimeout(pkt, w.receiver)
 }
