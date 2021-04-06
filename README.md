@@ -54,3 +54,11 @@
 
 1. checksum core concepts done, still have to understand the rolling adler32
 1. let's first do the local sync and add remote later on
+
+## Scenarios
+
+- blockSize = 4
+ N N M M M M
+[       ] does not match, do nothing, adds to the oldBuff
+  [       ] does not match, add N to buffer
+    [       ] does match, add match to the buffer and seeks + blocksize

@@ -6,33 +6,34 @@ import (
 	"io"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
 
 type RollReader struct {
-	reader     *io.SectionReader
-	receiver   <-chan *core.Message
-	blockSize  int
-	sendBuffer []byte
-	fd         *lfs.FileDesc
+	reader    *io.SectionReader
+	receiver  chan<- *core.Message
+	blockSize int
+	fd        *lfs.FileDesc
+	senderID  uuid.UUID
+	keep      []byte // circular buffer to 'remember' previous data
+	p         int
 }
 
-func NewRollReader(ctx context.Context, wg *sync.WaitGroup, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver <-chan *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, senderID uuid.UUID, wg *sync.WaitGroup, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
-		reader:     sr,
-		receiver:   receiver,
-		blockSize:  blockSize,
-		sendBuffer: make([]byte, blockSize),
-		fd:         fd,
+		senderID:  senderID,
+		reader:    sr,
+		receiver:  receiver,
+		blockSize: blockSize,
+		fd:        fd,
+		keep:      make([]byte, blockSize),
 	}
 }
 
 func (rr *RollReader) Start() {
-
-	// position within section
-	var pos int64
 
 	// buffered "should" be better
 	br := bufio.NewReader(rr.reader)
@@ -53,10 +54,18 @@ func (rr *RollReader) Start() {
 		// it matches so jump to next block
 		_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
 		core.Fatality(err)
+		rr.fd.Matches = append(rr.fd.Matches, 0)
 	}
+	// initialize out byte with the first byte of the section
+	oldBuf := buf
 
-	var rSum uint32
-	for ; ; pos++ {
+	var (
+		rollSum uint32
+		pkt     *core.Message
+	)
+	// read through the file
+	for {
+		// fetch blockDize of data
 		n, err := io.ReadFull(br, buf)
 		if n == 0 {
 
@@ -70,18 +79,40 @@ func (rr *RollReader) Start() {
 				core.Fatality(err)
 			}
 			if err == io.EOF {
-				// yay, nd of file, ehm section
+				// yay, nd of file, ehm section, well this should be addresses
 				break
 			}
 
-			// one never knows
+			// one never knows, but should not be an issue except for the end of file
 			buf = buf[:n]
 			// now let's feed the hash byte by byte
-			for bpos, b := range buf {
+			for pos, b := range buf {
+
 				rh.Roll(b)
-				rSum = rh.Sum32()
-				// lookup
-				for rPos, hash := range rr.fd.Weak {
+				rollSum = rh.Sum32()
+				// lookup in the remote file hash list
+				for remoteHashPos, hash := range rr.fd.Weak {
+					if rollSum == hash {
+						rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
+						// skip matching bytes
+						rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
+						// maybe this could be optimized for subsequent matchin hashes
+						break
+					}
+					// not found, append the out byte to the packet
+					missingByte := oldBuf[pos]
+					rr.fd.Data = append(rr.fd.Data, missingByte)
+					// check length
+					if len(rr.fd.Data) == rr.blockSize {
+						pkt = &core.Message{
+							Flag: core.DTA,
+							File: rr.fd,
+							UUID: rr.senderID,
+						}
+						// send thepackage when full
+						err := sendWithTimeout(pkt, rr.receiver)
+						core.Fatality(err)
+					}
 
 				}
 			}
@@ -90,4 +121,19 @@ func (rr *RollReader) Start() {
 
 	}
 
+}
+
+// write value to the circular buffer
+func (rr *RollReader) push(b byte) {
+	rr.keep[rr.p] = b
+	rr.p++
+	if rr.p == len(rr.keep) {
+		// reset
+		rr.p = 0
+	}
+}
+
+// read the oldest value
+func (rr *RollReader) pop() byte {
+	return rr.keep[rr.p]
 }

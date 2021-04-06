@@ -32,6 +32,8 @@ type FileDesc struct {
 	Uid, Gid uint32
 	Sha1     []byte
 	Weak     []uint32
+	Matches  []int
+	Data     []byte
 }
 
 func GetList(walkDir string) ([]*FileDesc, error) {
