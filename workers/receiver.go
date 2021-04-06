@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"math"
 	"os"
 	"sync"
 
@@ -101,15 +100,7 @@ func (w *LocalReceiver) Start() {
 								// determine what has changed, if permission and/or modtime only, do not set it to diff
 
 								if !senderFile.IsDir {
-									blockSize := viper.GetInt("block_size")
-									if senderFile.FileSize > 490000 && blockSize == 700 {
-										// stolen from rsync doc :)
-										sqrt := math.Sqrt(float64(senderFile.FileSize))
-										blockSize = int(math.Round(sqrt))
-										if blockSize > 131072 {
-											blockSize = 131072
-										}
-									}
+									blockSize := lfs.GetBlockSize(senderFile)
 									log.Info().
 										Int("checksum block size", blockSize).
 										Send()

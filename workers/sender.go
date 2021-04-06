@@ -3,6 +3,8 @@ package workers
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"sync"
 
 	"github.com/google/uuid"
@@ -55,23 +57,38 @@ func (w *LocalSender) Start() {
 	w.list = pkt.List
 	//spew.Dump(w.list)
 
+	// spawn filereaders
+
+	// this has to be reworked
+	var wg sync.WaitGroup
+
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing {
 			fmt.Printf("[-] %s\n", fd.RelPath)
 		} else if fd.State == lfs.Diff {
 			fmt.Printf("[+] %s\t %d checksums\n", fd.RelPath, len(fd.Weak))
+			blockSize := lfs.GetBlockSize(fd)
+			f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
+			stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
+			core.Fatality(err)
+			size := stat.Size()
+			core.Fatality(err)
+			r := io.ReaderAt(f)
+			sr := io.NewSectionReader(r, 0, size)
+			fileReader := NewRollReader(w.ctx, &wg, w.uuid, fd, blockSize, sr, w.receiver)
+			go fileReader.Start()
+			wg.Add(1)
 		} else {
 			fmt.Printf("[x] %s\n", fd.RelPath)
 		}
 	}
-
-	// spawn filereaders
 
 	// wait for the transfer to finish
 
 	// validate ???
 
 	// end
+	wg.Wait()
 	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
 	pkt = &core.Message{

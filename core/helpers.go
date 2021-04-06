@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -30,6 +32,7 @@ func (e Error) Handle() {
 }
 
 func Fatality(e error) {
+	fmt.Println("FATALITY")
 	if e == nil {
 		return
 	}

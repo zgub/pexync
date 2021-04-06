@@ -1,6 +1,7 @@
 package lfs
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -126,4 +127,17 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 		// increment file index
 	idx++
 	return list, nil
+}
+
+func GetBlockSize(fd *FileDesc) int {
+	blockSize := viper.GetInt("block_size")
+	if fd.FileSize > 490000 && blockSize == 700 {
+		// stolen from rsync doc :)
+		sqrt := math.Sqrt(float64(fd.FileSize))
+		blockSize = int(math.Round(sqrt))
+		if blockSize > 131072 {
+			blockSize = 131072
+		}
+	}
+	return blockSize
 }

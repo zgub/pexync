@@ -3,6 +3,7 @@ package workers
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -14,6 +15,7 @@ import (
 
 type RollReader struct {
 	ctx       context.Context
+	wg        *sync.WaitGroup
 	reader    *io.SectionReader
 	receiver  chan<- *core.Message
 	blockSize int
@@ -23,9 +25,10 @@ type RollReader struct {
 	p         int
 }
 
-func NewRollReader(ctx context.Context, senderID uuid.UUID, wg *sync.WaitGroup, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, wg *sync.WaitGroup, senderID uuid.UUID, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
 		ctx:       ctx,
+		wg:        wg,
 		senderID:  senderID,
 		reader:    sr,
 		receiver:  receiver,
@@ -36,6 +39,8 @@ func NewRollReader(ctx context.Context, senderID uuid.UUID, wg *sync.WaitGroup, 
 }
 
 func (rr *RollReader) Start() {
+	defer rr.wg.Done()
+	log.Trace().Msg("starting file reader")
 
 	// buffered "should" be better
 	br := bufio.NewReader(rr.reader)
@@ -53,10 +58,19 @@ func (rr *RollReader) Start() {
 
 	// check the first block already
 	if rh.Sum32() == rr.fd.Weak[0] {
+		log.Trace().
+			Str("file", rr.fd.FileName).
+			Uint32("first block match", rr.fd.Weak[0]).
+			Send()
 		// it matches so jump to next block
 		_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
 		core.Fatality(err)
 		rr.fd.Matches = append(rr.fd.Matches, 0)
+	} else {
+		log.Trace().
+			Str("file", rr.fd.FileName).
+			Uint32("first block did not match", rr.fd.Weak[0]).
+			Send()
 	}
 	// initialize out byte with the first byte of the section
 	rr.keep = buf
@@ -78,6 +92,7 @@ func (rr *RollReader) Start() {
 				continue
 			} else if err != io.EOF {
 				// poor error handling :-/
+				fmt.Printf("this error: %s", err.Error())
 				core.Fatality(err)
 			}
 			if err == io.EOF {
@@ -85,6 +100,10 @@ func (rr *RollReader) Start() {
 				break
 			}
 		}
+		log.Trace().
+			Str("name", rr.fd.FileName).
+			Int("read bytes", n).
+			Msg("rolling")
 		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
 		// now let's feed the hash byte by byte
