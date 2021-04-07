@@ -93,7 +93,7 @@ func (rr *RollReader) Start() {
 			} else if err != io.EOF {
 				// poor error handling :-/
 				fmt.Printf("this error: %s", err.Error())
-				core.Fatality(err)
+				panic(err)
 			}
 			if err == io.EOF {
 				// yay, nd of file, ehm section, well this should be addresses

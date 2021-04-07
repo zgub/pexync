@@ -49,11 +49,15 @@ func (w *LocalSender) Start() {
 		Msgf("sender list length: %d", len(w.list))
 
 	err := sendWithTimeout(pkt, w.receiver)
-	err.Handle()
+	if err != nil {
+		log.Fatal().Err(err).Caller().Stack().Send()
+	}
 
 	// receive the filelist with checksums
 	pkt, err = recvWithTimeout(w.inbox)
-	err.Handle()
+	if err != nil {
+		log.Fatal().Err(err).Caller().Stack().Send()
+	}
 	w.list = pkt.List
 	//spew.Dump(w.list)
 

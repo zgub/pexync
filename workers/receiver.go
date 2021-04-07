@@ -123,6 +123,9 @@ func (w *LocalReceiver) Start() {
 					Msg("receiver received FIN")
 				check = false
 				break
+			case core.DTA:
+				log.Trace().
+					Msg("data received")
 			default:
 				core.Fatality(core.NotImplemented)
 			}
