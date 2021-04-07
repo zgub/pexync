@@ -33,10 +33,10 @@ func (e Error) Handle() {
 }
 
 func Fatality(e error) {
-	fmt.Println("FATALITY")
 	if e == nil {
 		return
 	}
+	fmt.Println("FATALITY")
 	if zerolog.GlobalLevel() == zerolog.DebugLevel || zerolog.GlobalLevel() == zerolog.TraceLevel {
 		log.Fatal().
 			Stack().
