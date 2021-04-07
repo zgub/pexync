@@ -5,16 +5,6 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
-type Error string
-
-// errors
-const (
-	UnknownMessage Error = "unknown message"
-	NotImplemented Error = "functionality not (yet) implemented"
-	Timeout        Error = "timeout reached"
-	NoError        Error = ""
-)
-
 // "API" :)
 
 type Flag int

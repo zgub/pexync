@@ -43,29 +43,26 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 	log.Trace().Str("walk dir", walkDir).Send()
 	// don't do walk over abs path, makes comparing more difficult
 	walkDirAbs, err := filepath.Abs(walkDir)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed determining the absolute path")
+	}
 	// filepath index to refer tol later
 	var idx int32
-	if err != nil {
-		return nil, err
-	}
 	// avoid endless recursive deadend
 	dest, err := filepath.Abs(viper.GetString("local_destination"))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to determine the absolute path")
 	}
 	err = filepath.WalkDir(walkDir, func(path string, entry os.DirEntry, err error) error {
 
 		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("error parsing directory")
-			return err
+			return errors.Wrap(err, "error listing directory")
 		}
 
 		// skip destination folder if it's located within the source
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed determining the absolute path")
 		}
 		log.Trace().
 			Str("path", path).
