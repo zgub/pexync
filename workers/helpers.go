@@ -11,6 +11,7 @@ import (
 func sendWithTimeout(pkt *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
+	log.Trace().Msgf("sending message: %s", pkt.Flag.String())
 	select {
 	case dst <- pkt:
 		return nil

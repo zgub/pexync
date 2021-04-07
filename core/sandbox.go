@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"hash/adler32"
 	"io"
@@ -483,7 +484,7 @@ func SeekTest() {
 }
 
 func RollTest() {
-	log.Info().Msg("seek test start")
+	log.Info().Msg("roll test start")
 	f, err := os.Open("test/seekTestFile")
 	if err != nil {
 		log.Fatal().
@@ -492,8 +493,8 @@ func RollTest() {
 			Err(err).
 			Send()
 	}
-	defer f.Close()
-
+	//defer f.Close()
+	hashList := make([]uint32, 0)
 	blockSize := 4
 	buf := make([]byte, blockSize)
 	r := io.Reader(f)
@@ -519,6 +520,84 @@ func RollTest() {
 			}
 		}
 		sum := adler32.Checksum(buf)
-		fmt.Printf("data: %s\t sum: %d", string(buf), sum)
+		hashList = append(hashList, sum)
+		fmt.Printf("data: %s\t sum: %d\n", string(buf), sum)
 	}
+	f.Close()
+	rh := Pour()
+
+	f, err = os.Open("test/seekTestFile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+
+	r = io.Reader(f)
+
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	rh.Write(buf)
+	sum := rh.Sum32()
+	skip := lookup(sum, hashList)
+	fmt.Printf("\n***\ndata: %s\t sum: %d, skip: %t\n", string(buf), sum, skip)
+	var bBuf bytes.Buffer
+	for {
+		n, err := io.ReadFull(r, buf)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		if skip {
+			rh.Reset()
+			rh.Write(buf)
+			sum = rh.Sum32()
+			rh.WriteWindow(&bBuf)
+			skip = lookup(sum, hashList)
+			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
+			bBuf.Reset()
+			continue
+		}
+		for _, b := range buf {
+			rh.Roll(b)
+			sum = rh.Sum32()
+			rh.WriteWindow(&bBuf)
+			skip = lookup(sum, hashList)
+			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
+			bBuf.Reset()
+		}
+	}
+}
+
+func lookup(hash uint32, hashList []uint32) bool {
+	for _, h := range hashList {
+		if h == hash {
+			return true
+		}
+	}
+	return false
 }

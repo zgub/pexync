@@ -49,7 +49,6 @@ func (rr *RollReader) Start() {
 	buf := make([]byte, rr.blockSize)
 
 	var (
-		pos  int64
 		skip bool // default false
 	)
 
@@ -79,7 +78,7 @@ func (rr *RollReader) Start() {
 		// it matches so jump to next block
 		//_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
 		//core.Fatality(err)
-		skip = true
+		skip, err = rr.lookup(rh)
 		rr.fd.Matches = append(rr.fd.Matches, 0)
 	} else {
 		log.Trace().
@@ -112,20 +111,24 @@ func (rr *RollReader) Start() {
 			}
 		}
 
-		pos += int64(n)
-		log.Trace().
-			Str("name", rr.fd.FileName).
-			Int("read bytes", n).
-			Int("data buf len", len(rr.dataBuf)).
-			Bool("skipped", skip).
-			Int("block size", rr.blockSize).
-			Msgf("rolling %d / %d", pos, rr.reader.Size())
+		/*
+			pos += int64(n)
+
+			log.Trace().
+				Str("name", rr.fd.FileName).
+				Int("read bytes", n).
+				Int("data buf len", len(rr.dataBuf)).
+				Bool("skipped", skip).
+				Int("block size", rr.blockSize).
+				Msgf("rolling %d / %d", pos, rr.reader.Size())
+		*/
 		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
 
 		// last time we've found a matching block, let's read another whole block
 		if skip {
 			// lets read full blocksize, because the lat one matched
+			rh.Reset()
 			_, err := rh.Write(buf)
 			if err != nil {
 				log.Fatal().
@@ -134,7 +137,7 @@ func (rr *RollReader) Start() {
 					Err(err).
 					Send()
 			}
-			log.Trace().Msg("read a wrote whole block")
+			//log.Trace().Msg("read a wrote whole block")
 			skip, err = rr.lookup(rh)
 			if err != nil {
 				log.Fatal().
@@ -145,7 +148,7 @@ func (rr *RollReader) Start() {
 			}
 			if skip {
 				// again matching block, next!
-				break
+				continue
 			}
 		}
 
@@ -193,8 +196,8 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 		if rollSum == hash {
 			rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
 			// skip matching bytes
-			log.Trace().Msg("found block, skipping")
-			rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
+			//log.Trace().Msg("found block, skipping")
+			//rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
 			// maybe this could be optimized for subsequent matchin hashes
 			return true, nil
 		}

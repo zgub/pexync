@@ -28,6 +28,19 @@ const (
 	FIN             // done, disconnect
 )
 
+var messageTypes = [...]string{
+	"RST",
+	"ACK",
+	"FLS",
+	"DTA",
+	"ERR",
+	"FIN",
+}
+
+func (f Flag) String() string {
+	return messageTypes[f]
+}
+
 type Message struct {
 	// Flags ?
 	Flag  Flag
