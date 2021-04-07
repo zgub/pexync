@@ -299,3 +299,120 @@ func TestSectionSum(fileName string) error {
 	}
 	return nil
 }
+
+type testBuffer struct {
+	cap  int
+	pos  int
+	data []byte
+}
+
+func NewTestBuffer(capacity int) *testBuffer {
+	return &testBuffer{
+		cap:  capacity,
+		pos:  0,
+		data: make([]byte, capacity),
+	}
+}
+
+func (b *testBuffer) reset() {
+	b.pos = 0
+}
+
+func (b *testBuffer) get() []byte {
+	return b.data[:b.pos]
+}
+
+func (b *testBuffer) push(bt byte) {
+	b.data[b.pos] = bt
+	b.pos++
+}
+
+func RunBufferTest() {
+	f, err := os.Open("test/testfile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	readBuff := make([]byte, 3000)
+	log.Info().Msg("starting realloc test")
+	start := time.Now()
+	num := int64(0)
+	for {
+		r := io.Reader(f)
+		buf := make([]byte, 3000)
+		n, err := io.ReadFull(r, readBuff)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		for i, b := range readBuff {
+			buf[i] = b
+		}
+		num += int64(n)
+	}
+	f.Close()
+	log.Info().TimeDiff("duration", time.Now(), start).Int64("bytes read", num).Msg("realloc test")
+
+	f, err = os.Open("test/testfile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+
+	log.Info().Msg("starting buffer test")
+	start = time.Now()
+	num = int64(0)
+	buf := NewTestBuffer(3000)
+	for {
+		r := io.Reader(f)
+		buf.reset()
+		n, err := io.ReadFull(r, buf.data)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		for _, b := range readBuff {
+			buf.push(b)
+		}
+		num += int64(n)
+	}
+	log.Info().TimeDiff("duration", time.Now(), start).Int64("bytes read", num).Msg("buf test")
+
+}

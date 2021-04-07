@@ -13,6 +13,16 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
+// would be the reallocating of a new bytearray faster?
+type dataBuf struct {
+	p    int
+	data []byte
+}
+
+func (b *dataBuf) Reset() {
+	b.p = 0
+}
+
 type RollReader struct {
 	ctx       context.Context
 	wg        *sync.WaitGroup
@@ -23,6 +33,7 @@ type RollReader struct {
 	senderID  uuid.UUID
 	keep      []byte // circular buffer to 'remember' previous data
 	p         int
+	dataBuf   []byte
 }
 
 func NewRollReader(ctx context.Context, wg *sync.WaitGroup, senderID uuid.UUID, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
@@ -35,6 +46,7 @@ func NewRollReader(ctx context.Context, wg *sync.WaitGroup, senderID uuid.UUID, 
 		blockSize: blockSize,
 		fd:        fd,
 		keep:      make([]byte, blockSize),
+		dataBuf:   make([]byte, blockSize),
 	}
 }
 
@@ -79,6 +91,7 @@ func (rr *RollReader) Start() {
 		rollSum uint32
 		pkt     *core.Message
 	)
+	var pos int64
 	// read through the file
 	for {
 		// fetch blockDize of data
@@ -100,10 +113,12 @@ func (rr *RollReader) Start() {
 				break
 			}
 		}
+		pos += int64(n)
 		log.Trace().
 			Str("name", rr.fd.FileName).
 			Int("read bytes", n).
-			Msg("rolling")
+			Int("data buf len", len(rr.fd.Data)).
+			Msgf("rolling %d / %d", pos, rr.reader.Size())
 		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
 		// now let's feed the hash byte by byte
@@ -121,15 +136,16 @@ func (rr *RollReader) Start() {
 				if rollSum == hash {
 					rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
 					// skip matching bytes
+					log.Trace().Msg("found block, skipping")
 					rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
 					// maybe this could be optimized for subsequent matchin hashes
 					break
 				}
 				// not found, append the oldest ring buffer byte to the packet
 				missingByte := rr.pop()
-				rr.fd.Data = append(rr.fd.Data, missingByte)
+				rr.fd.Data = append(rr.dataBuf, missingByte)
 				// check length
-				if len(rr.fd.Data) == rr.blockSize {
+				if len(rr.dataBuf) == rr.blockSize {
 					pkt = &core.Message{
 						Flag: core.DTA,
 						File: rr.fd,
