@@ -48,6 +48,11 @@ func (rr *RollReader) Start() {
 	br := bufio.NewReader(rr.reader)
 	buf := make([]byte, rr.blockSize)
 
+	var (
+		pos  int64
+		skip bool // default false
+	)
+
 	// initial data for boll hash buffer initialization
 	n, err := io.ReadFull(br, buf)
 	if n == 0 && err == io.EOF {
@@ -56,7 +61,14 @@ func (rr *RollReader) Start() {
 
 	// initilaize the roll hash
 	rh := core.Pour()
-	rh.Write(buf)
+	_, err = rh.Write(buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
 
 	// check the first block already
 	if rh.Sum32() == rr.fd.Weak[0] {
@@ -65,8 +77,9 @@ func (rr *RollReader) Start() {
 			Uint32("first block match", rr.fd.Weak[0]).
 			Send()
 		// it matches so jump to next block
-		_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
-		core.Fatality(err)
+		//_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
+		//core.Fatality(err)
+		skip = true
 		rr.fd.Matches = append(rr.fd.Matches, 0)
 	} else {
 		log.Trace().
@@ -77,11 +90,6 @@ func (rr *RollReader) Start() {
 	// initialize out byte with the first byte of the section
 	rr.keep = buf
 
-	var (
-		rollSum uint32
-		pkt     *core.Message
-	)
-	var pos int64
 	// read through the file
 	for {
 		// fetch blockDize of data
@@ -99,10 +107,11 @@ func (rr *RollReader) Start() {
 				panic(err)
 			}
 			if err == io.EOF {
-				// yay, nd of file, ehm section, well this should be addresses
+				// yay, end of file, ehm section, well this should be addressed later
 				break
 			}
 		}
+
 		pos += int64(n)
 		log.Trace().
 			Str("name", rr.fd.FileName).
@@ -111,43 +120,49 @@ func (rr *RollReader) Start() {
 			Msgf("rolling %d / %d", pos, rr.reader.Size())
 		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
-		// now let's feed the hash byte by byte
-		for _, b := range buf {
-			select {
-			case <-rr.ctx.Done():
-				return
-			default:
 
+		// last time we've found a matching block, let's read another whole block
+		if skip {
+			// lets read full blocksize, because the lat one matched
+			_, err := rh.Write(buf)
+			if err != nil {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
 			}
+			skip, err = rr.lookup(rh)
+			if err != nil {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if skip {
+				// again matching block, next!
+				break
+			}
+		}
+
+		// last buffer - no luck! go byte by byte
+		for _, b := range buf {
 			rh.Roll(b)
-			rollSum = rh.Sum32()
 			// lookup in the remote file hash list
-			for remoteHashPos, hash := range rr.fd.Weak {
-				if rollSum == hash {
-					rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
-					// skip matching bytes
-					log.Trace().Msg("found block, skipping")
-					rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
-					// maybe this could be optimized for subsequent matchin hashes
-					break
-				}
-				// not found, append the oldest ring buffer byte to the packet
-				rr.dataBuf = append(rr.dataBuf, rr.pop())
-				// check length
-				if len(rr.dataBuf) == rr.blockSize {
-					pkt = &core.Message{
-						Flag: core.DTA,
-						File: rr.fd,
-						UUID: rr.senderID,
-					}
-					// send thepackage when full
-					err := sendWithTimeout(pkt, rr.receiver)
-					rr.dataBuf = make([]byte, rr.blockSize)
-					core.Fatality(err)
-				}
-				// store the byte in the circular buffer
-				rr.push(b)
+			skip, err = rr.lookup(rh)
+			if err != nil {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
 			}
+			if skip {
+				break
+			}
+			// no luck again, push it into send buffer
+			rr.push(b)
 		}
 
 	}
@@ -167,4 +182,34 @@ func (rr *RollReader) push(b byte) {
 // read the oldest value
 func (rr *RollReader) pop() byte {
 	return rr.keep[rr.p]
+}
+
+func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
+	rollSum := rh.Sum32()
+	for remoteHashPos, hash := range rr.fd.Weak {
+		if rollSum == hash {
+			rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
+			// skip matching bytes
+			log.Trace().Msg("found block, skipping")
+			rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
+			// maybe this could be optimized for subsequent matchin hashes
+			return true, nil
+		}
+		// not found, append the oldest ring buffer byte to the packet
+		rr.dataBuf = append(rr.dataBuf, rr.pop())
+		// check length
+		if len(rr.dataBuf) == rr.blockSize {
+			pkt := &core.Message{
+				Flag: core.DTA,
+				File: rr.fd,
+				UUID: rr.senderID,
+			}
+			// send thepackage when full
+			err := sendWithTimeout(pkt, rr.receiver)
+			rr.dataBuf = make([]byte, rr.blockSize)
+			core.Fatality(err)
+		}
+		// store the byte in the circular buffer
+	}
+	return false, nil
 }
