@@ -2,6 +2,9 @@ package core
 
 import (
 	"bufio"
+	"bytes"
+	"fmt"
+	"hash/adler32"
 	"io"
 	"math"
 	"os"
@@ -126,10 +129,6 @@ func TestSectionReader(fileName string) error {
 						if err == io.EOF {
 							break
 						}
-						if err == io.EOF {
-							break
-						}
-
 					}
 				}
 				log.Info().
@@ -302,4 +301,303 @@ func TestSectionSum(fileName string) error {
 		}
 	}
 	return nil
+}
+
+type testBuffer struct {
+	cap  int
+	pos  int
+	data []byte
+}
+
+func NewTestBuffer(capacity int) *testBuffer {
+	return &testBuffer{
+		cap:  capacity,
+		pos:  0,
+		data: make([]byte, capacity),
+	}
+}
+
+func (b *testBuffer) reset() {
+	b.pos = 0
+}
+
+func (b *testBuffer) get() []byte {
+	return b.data[:b.pos]
+}
+
+func (b *testBuffer) push(bt byte) {
+	b.data[b.pos] = bt
+	b.pos++
+}
+
+func RunBufferTest() {
+	f, err := os.Open("test/testfile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	readBuff := make([]byte, 3000)
+	log.Info().Msg("starting realloc test")
+	start := time.Now()
+	num := int64(0)
+	for {
+		r := io.Reader(f)
+		buf := make([]byte, 3000)
+		n, err := io.ReadFull(r, readBuff)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		for i, b := range readBuff {
+			buf[i] = b
+		}
+		num += int64(n)
+	}
+	f.Close()
+	log.Info().TimeDiff("duration", time.Now(), start).Int64("bytes read", num).Msg("realloc test")
+
+	f, err = os.Open("test/testfile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+
+	log.Info().Msg("starting buffer test")
+	start = time.Now()
+	num = int64(0)
+	buf := NewTestBuffer(3000)
+	for {
+		r := io.Reader(f)
+		buf.reset()
+		n, err := io.ReadFull(r, buf.data)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		for _, b := range readBuff {
+			buf.push(b)
+		}
+		num += int64(n)
+	}
+	log.Info().TimeDiff("duration", time.Now(), start).Int64("bytes read", num).Msg("buf test")
+
+}
+
+func SeekTest() {
+	log.Info().Msg("seek test start")
+	f, err := os.Open("test/seekTestFile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	blockSize := 4
+	r := io.ReaderAt(f)
+	sr := io.NewSectionReader(r, 0, info.Size())
+	buf := make([]byte, blockSize)
+	n, err := io.ReadFull(sr, buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	log.Info().
+		Int("bytes read", n).
+		Str("bytes", string(buf)).
+		Send()
+		/*
+					pos, err := sr.Seek(int64(blockSize), io.SeekCurrent)
+					if err != nil {
+						log.Fatal().
+							Caller().
+							Stack().
+							Err(err).
+							Send()
+					}
+
+			log.Info().
+				Int64("seek position", pos).
+				Send()
+		*/
+	n, err = io.ReadFull(sr, buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	log.Info().
+		Int("bytes read", n).
+		Str("bytes", string(buf)).
+		Send()
+}
+
+func RollTest() {
+	log.Info().Msg("roll test start")
+	f, err := os.Open("test/seekTestFile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	//defer f.Close()
+	hashList := make([]uint32, 0)
+	blockSize := 4
+	buf := make([]byte, blockSize)
+	r := io.Reader(f)
+	for {
+		n, err := io.ReadFull(r, buf)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		sum := adler32.Checksum(buf)
+		hashList = append(hashList, sum)
+		fmt.Printf("data: %s\t sum: %d\n", string(buf), sum)
+	}
+	f.Close()
+	rh := Pour()
+
+	f, err = os.Open("test/seekTestFile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+
+	r = io.Reader(f)
+
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	rh.Write(buf)
+	sum := rh.Sum32()
+	skip := lookup(sum, hashList)
+	fmt.Printf("\n***\ndata: %s\t sum: %d, skip: %t\n", string(buf), sum, skip)
+	var bBuf bytes.Buffer
+	for {
+		n, err := io.ReadFull(r, buf)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		if skip {
+			rh.Reset()
+			rh.Write(buf)
+			sum = rh.Sum32()
+			rh.WriteWindow(&bBuf)
+			skip = lookup(sum, hashList)
+			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
+			bBuf.Reset()
+			continue
+		}
+		for _, b := range buf {
+			rh.Roll(b)
+			sum = rh.Sum32()
+			rh.WriteWindow(&bBuf)
+			skip = lookup(sum, hashList)
+			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
+			bBuf.Reset()
+		}
+	}
+}
+
+func lookup(hash uint32, hashList []uint32) bool {
+	for _, h := range hashList {
+		if h == hash {
+			return true
+		}
+	}
+	return false
 }

@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -11,6 +13,7 @@ func (e Error) Error() string {
 }
 
 func (e Error) Handle() {
+	fmt.Printf("meh: %s\n", e.Error())
 	if e == "" {
 		return
 	}
@@ -33,7 +36,8 @@ func Fatality(e error) {
 	if e == nil {
 		return
 	}
-	if zerolog.GlobalLevel() == zerolog.DebugLevel {
+	fmt.Println("FATALITY")
+	if zerolog.GlobalLevel() == zerolog.DebugLevel || zerolog.GlobalLevel() == zerolog.TraceLevel {
 		log.Fatal().
 			Stack().
 			Err(e).

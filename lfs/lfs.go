@@ -1,6 +1,7 @@
 package lfs
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -20,6 +21,7 @@ const (
 )
 
 type FileDesc struct {
+	Idx      int32
 	State    State
 	IsDir    bool
 	RelPath  string
@@ -31,6 +33,8 @@ type FileDesc struct {
 	Uid, Gid uint32
 	Sha1     []byte
 	Weak     []uint32
+	Matches  []int
+	Data     []byte
 }
 
 func GetList(walkDir string) ([]*FileDesc, error) {
@@ -39,6 +43,8 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 	log.Trace().Str("walk dir", walkDir).Send()
 	// don't do walk over abs path, makes comparing more difficult
 	walkDirAbs, err := filepath.Abs(walkDir)
+	// filepath index to refer tol later
+	var idx int32
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +101,7 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 
 		if relPath != "." {
 			fileDesc := &FileDesc{
+				Idx:      idx,
 				IsDir:    entry.IsDir(),
 				RelPath:  relPath,
 				Prefix:   prefix,
@@ -117,5 +124,20 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 		Int("returning filelist size", len(list)).
 		Str("walk dir", walkDir).
 		Send()
+		// increment file index
+	idx++
 	return list, nil
+}
+
+func GetBlockSize(fd *FileDesc) int {
+	blockSize := viper.GetInt("block_size")
+	if fd.FileSize > 490000 && blockSize == 700 {
+		// stolen from rsync doc :)
+		sqrt := math.Sqrt(float64(fd.FileSize))
+		blockSize = int(math.Round(sqrt))
+		if blockSize > 131072 {
+			blockSize = 131072
+		}
+	}
+	return blockSize
 }

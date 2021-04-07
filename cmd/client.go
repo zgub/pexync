@@ -43,7 +43,6 @@ func startClient() {
 			Send()
 	}
 	ctx := context.Background()
-
 	startLocalSync(ctx, list)
 
 }
@@ -52,8 +51,11 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 
 	var wg sync.WaitGroup
 	// spawn local Sender
-	local := make(chan []*core.Message)
-	remote := make(chan []*core.Message)
+	local := make(chan *core.Message)
+	remote := make(chan *core.Message)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	sender := workers.NewLocalSender(ctx, &wg, list, local, remote)
 
 	go sender.Start()
@@ -64,4 +66,7 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 	wg.Add(1)
 
 	wg.Wait()
+
+	//core.RunBufferTest()
+	//core.SeekTest()
 }

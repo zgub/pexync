@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"math"
 	"os"
 	"sync"
 
@@ -27,13 +26,13 @@ type LocalReceiver struct {
 	ctx        context.Context
 	wg         *sync.WaitGroup
 	list       []*lfs.FileDesc
-	inbox      <-chan []*core.Message
-	sender     chan<- []*core.Message
+	inbox      <-chan *core.Message
+	sender     chan<- *core.Message
 	state      senderState
 	senderUUID uuid.UUID
 }
 
-func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan []*core.Message, sender chan<- []*core.Message) *LocalReceiver {
+func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		ctx:    ctx,
 		wg:     wg,
@@ -47,7 +46,7 @@ func (w *LocalReceiver) Start() {
 	defer w.wg.Done()
 
 	var (
-		pkt   []*core.Message
+		pkt   *core.Message
 		check bool = true
 	)
 
@@ -58,7 +57,7 @@ func (w *LocalReceiver) Start() {
 			check = false
 			break
 		case pkt = <-w.inbox:
-			msg := pkt[0]
+			msg := pkt
 			switch msg.Flag {
 			case core.RST:
 				w.list = msg.List
@@ -101,15 +100,7 @@ func (w *LocalReceiver) Start() {
 								// determine what has changed, if permission and/or modtime only, do not set it to diff
 
 								if !senderFile.IsDir {
-									blockSize := viper.GetInt("block_size")
-									if senderFile.FileSize > 490000 && blockSize == 700 {
-										// stolen from rsync doc :)
-										sqrt := math.Sqrt(float64(senderFile.FileSize))
-										blockSize = int(math.Round(sqrt))
-										if blockSize > 131072 {
-											blockSize = 131072
-										}
-									}
+									blockSize := lfs.GetBlockSize(senderFile)
 									log.Info().
 										Int("checksum block size", blockSize).
 										Send()
@@ -132,6 +123,9 @@ func (w *LocalReceiver) Start() {
 					Msg("receiver received FIN")
 				check = false
 				break
+			case core.DTA:
+				log.Trace().
+					Msg("data received")
 			default:
 				core.Fatality(core.NotImplemented)
 			}
