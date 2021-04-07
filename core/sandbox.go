@@ -2,6 +2,8 @@ package core
 
 import (
 	"bufio"
+	"fmt"
+	"hash/adler32"
 	"io"
 	"math"
 	"os"
@@ -478,4 +480,45 @@ func SeekTest() {
 		Int("bytes read", n).
 		Str("bytes", string(buf)).
 		Send()
+}
+
+func RollTest() {
+	log.Info().Msg("seek test start")
+	f, err := os.Open("test/seekTestFile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+
+	blockSize := 4
+	buf := make([]byte, blockSize)
+	r := io.Reader(f)
+	for {
+		n, err := io.ReadFull(r, buf)
+		if n == 0 {
+
+			if err == nil {
+				log.Info().
+					Msg("read zero bytes")
+					// well, that's cute, let's try again
+				continue
+			} else if err != io.EOF {
+				log.Fatal().
+					Caller().
+					Stack().
+					Err(err).
+					Send()
+			}
+			if err == io.EOF {
+				// yay, nd of file, ehm section, well this should be addresses
+				break
+			}
+		}
+		sum := adler32.Checksum(buf)
+		fmt.Printf("data: %s\t sum: %d", string(buf), sum)
+	}
 }

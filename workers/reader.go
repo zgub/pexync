@@ -118,6 +118,7 @@ func (rr *RollReader) Start() {
 			Int("read bytes", n).
 			Int("data buf len", len(rr.dataBuf)).
 			Bool("skipped", skip).
+			Int("block size", rr.blockSize).
 			Msgf("rolling %d / %d", pos, rr.reader.Size())
 		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
@@ -133,6 +134,7 @@ func (rr *RollReader) Start() {
 					Err(err).
 					Send()
 			}
+			log.Trace().Msg("read a wrote whole block")
 			skip, err = rr.lookup(rh)
 			if err != nil {
 				log.Fatal().
