@@ -13,16 +13,6 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
-// would be the reallocating of a new bytearray faster?
-type dataBuf struct {
-	p    int
-	data []byte
-}
-
-func (b *dataBuf) Reset() {
-	b.p = 0
-}
-
 type RollReader struct {
 	ctx       context.Context
 	wg        *sync.WaitGroup
@@ -117,7 +107,7 @@ func (rr *RollReader) Start() {
 		log.Trace().
 			Str("name", rr.fd.FileName).
 			Int("read bytes", n).
-			Int("data buf len", len(rr.fd.Data)).
+			Int("data buf len", len(rr.dataBuf)).
 			Msgf("rolling %d / %d", pos, rr.reader.Size())
 		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
@@ -142,8 +132,7 @@ func (rr *RollReader) Start() {
 					break
 				}
 				// not found, append the oldest ring buffer byte to the packet
-				missingByte := rr.pop()
-				rr.fd.Data = append(rr.dataBuf, missingByte)
+				rr.dataBuf = append(rr.dataBuf, rr.pop())
 				// check length
 				if len(rr.dataBuf) == rr.blockSize {
 					pkt = &core.Message{
@@ -153,6 +142,7 @@ func (rr *RollReader) Start() {
 					}
 					// send thepackage when full
 					err := sendWithTimeout(pkt, rr.receiver)
+					rr.dataBuf = make([]byte, rr.blockSize)
 					core.Fatality(err)
 				}
 				// store the byte in the circular buffer

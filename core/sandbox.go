@@ -416,3 +416,66 @@ func RunBufferTest() {
 	log.Info().TimeDiff("duration", time.Now(), start).Int64("bytes read", num).Msg("buf test")
 
 }
+
+func SeekTest() {
+	log.Info().Msg("seek test start")
+	f, err := os.Open("test/seekTestFile")
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	blockSize := 4
+	r := io.ReaderAt(f)
+	sr := io.NewSectionReader(r, 0, info.Size())
+	buf := make([]byte, blockSize)
+	n, err := io.ReadFull(sr, buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	log.Info().
+		Int("bytes read", n).
+		Str("bytes", string(buf)).
+		Send()
+		/*
+					pos, err := sr.Seek(int64(blockSize), io.SeekCurrent)
+					if err != nil {
+						log.Fatal().
+							Caller().
+							Stack().
+							Err(err).
+							Send()
+					}
+
+			log.Info().
+				Int64("seek position", pos).
+				Send()
+		*/
+	n, err = io.ReadFull(sr, buf)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
+			Send()
+	}
+	log.Info().
+		Int("bytes read", n).
+		Str("bytes", string(buf)).
+		Send()
+}

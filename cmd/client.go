@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	//"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -66,5 +67,6 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 
 		wg.Wait()
 	*/
-	core.RunBufferTest()
+	//core.RunBufferTest()
+	core.SeekTest()
 }
