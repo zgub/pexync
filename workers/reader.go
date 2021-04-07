@@ -49,7 +49,8 @@ func (rr *RollReader) Start() {
 	buf := make([]byte, rr.blockSize)
 
 	var (
-		skip bool // default false
+		skip      bool // default false
+		skipCount int
 	)
 
 	// initial data for boll hash buffer initialization
@@ -69,23 +70,16 @@ func (rr *RollReader) Start() {
 			Send()
 	}
 
-	// check the first block already
-	if rh.Sum32() == rr.fd.Weak[0] {
-		log.Trace().
-			Str("file", rr.fd.FileName).
-			Uint32("first block match", rr.fd.Weak[0]).
-			Send()
-		// it matches so jump to next block
-		//_, err := rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
-		//core.Fatality(err)
-		skip, err = rr.lookup(rh)
-		rr.fd.Matches = append(rr.fd.Matches, 0)
-	} else {
-		log.Trace().
-			Str("file", rr.fd.FileName).
-			Uint32("first block did not match", rr.fd.Weak[0]).
+	skip, err = rr.lookup(rh)
+	if err != nil {
+		log.Fatal().
+			Caller().
+			Stack().
+			Err(err).
 			Send()
 	}
+	rr.fd.Matches = append(rr.fd.Matches, 0)
+
 	// initialize out byte with the first byte of the section
 	rr.keep = buf
 
@@ -127,6 +121,7 @@ func (rr *RollReader) Start() {
 
 		// last time we've found a matching block, let's read another whole block
 		if skip {
+			skipCount++
 			// lets read full blocksize, because the lat one matched
 			rh.Reset()
 			_, err := rh.Write(buf)
@@ -172,7 +167,11 @@ func (rr *RollReader) Start() {
 		}
 
 	}
-
+	log.Info().
+		Int("skipped", skipCount).
+		Str("name", rr.fd.FileName).
+		Int("block count", len(rr.fd.Weak)).
+		Msg("report")
 }
 
 // write value to the circular buffer
@@ -192,9 +191,9 @@ func (rr *RollReader) pop() byte {
 
 func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 	rollSum := rh.Sum32()
-	for remoteHashPos, hash := range rr.fd.Weak {
+	for pos, hash := range rr.fd.Weak {
 		if rollSum == hash {
-			rr.fd.Matches = append(rr.fd.Matches, remoteHashPos)
+			rr.fd.Matches = append(rr.fd.Matches, pos)
 			// skip matching bytes
 			//log.Trace().Msg("found block, skipping")
 			//rr.reader.Seek(int64(rr.blockSize), io.SeekCurrent)
