@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"errors"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -17,7 +18,7 @@ func sendWithTimeout(pkt *core.Message, dst chan<- *core.Message) error {
 		return nil
 	case <-timeout:
 		log.Trace().Msg("timeout")
-		return core.Timeout
+		return errors.New("timeout while sending data")
 	}
 }
 
@@ -30,6 +31,6 @@ func recvWithTimeout(src <-chan *core.Message) (*core.Message, error) {
 	case pkt = <-src:
 		return pkt, nil
 	case <-timeout:
-		return nil, core.Timeout
+		return nil, errors.New("timeout while waiting for data")
 	}
 }

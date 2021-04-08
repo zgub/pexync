@@ -5,28 +5,27 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
+	"golang.org/x/sync/errgroup"
 )
 
 // LocalSender represents blah balh
 type LocalSender struct {
 	ctx      context.Context
-	wg       *sync.WaitGroup
 	list     []*lfs.FileDesc
 	inbox    <-chan *core.Message
 	receiver chan<- *core.Message
 	uuid     uuid.UUID
 }
 
-func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
-		wg:       wg,
 		list:     fl,
 		inbox:    in,
 		receiver: receiver,
@@ -34,8 +33,7 @@ func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc,
 	}
 }
 
-func (w *LocalSender) Start() {
-	defer w.wg.Done()
+func (w *LocalSender) Start() error {
 
 	// send the filelist to the receiver
 	// q := []int{2, 3, 5, 7, 11, 13}
@@ -50,22 +48,19 @@ func (w *LocalSender) Start() {
 
 	err := sendWithTimeout(pkt, w.receiver)
 	if err != nil {
-		log.Fatal().Err(err).Caller().Stack().Send()
+		return err
 	}
 
 	// receive the filelist with checksums
 	pkt, err = recvWithTimeout(w.inbox)
 	if err != nil {
-		log.Fatal().Err(err).Caller().Stack().Send()
+		return err
 	}
 	w.list = pkt.List
 	//spew.Dump(w.list)
 
 	// spawn filereaders
-
-	// this has to be reworked
-	var wg sync.WaitGroup
-
+	g := new(errgroup.Group)
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing {
 			fmt.Printf("[-] %s\n", fd.RelPath)
@@ -74,14 +69,15 @@ func (w *LocalSender) Start() {
 			blockSize := lfs.GetBlockSize(fd)
 			f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 			stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
-			core.Fatality(err)
+			if err != nil {
+				return errors.Wrap(err, "error file stat")
+			}
 			size := stat.Size()
-			core.Fatality(err)
 			r := io.ReaderAt(f)
 			sr := io.NewSectionReader(r, 0, size)
-			fileReader := NewRollReader(w.ctx, &wg, w.uuid, fd, blockSize, sr, w.receiver)
-			go fileReader.Start()
-			wg.Add(1)
+			fileReader := NewRollReader(w.ctx, w.uuid, fd, blockSize, sr, w.receiver)
+
+			g.Go(func() error { return fileReader.Start() })
 		} else {
 			fmt.Printf("[x] %s\n", fd.RelPath)
 		}
@@ -92,7 +88,10 @@ func (w *LocalSender) Start() {
 	// validate ???
 
 	// end
-	wg.Wait()
+	err = g.Wait()
+	if err != nil {
+		return errors.Wrap(err, "file reader error")
+	}
 	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
 	pkt = &core.Message{
@@ -100,4 +99,5 @@ func (w *LocalSender) Start() {
 		UUID: w.uuid,
 	}
 	sendWithTimeout(pkt, w.receiver)
+	return nil
 }

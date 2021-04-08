@@ -1,5 +1,5 @@
 package workers
 
 type Worker interface {
-	Start()
+	Start() error
 }

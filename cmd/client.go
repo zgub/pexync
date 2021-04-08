@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -10,6 +9,7 @@ import (
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 	"github.com/zgub/pexync/workers"
+	"golang.org/x/sync/errgroup"
 )
 
 func init() {
@@ -34,7 +34,6 @@ var (
 func startClient() {
 	log.Info().Msg("initializing PeXync client")
 	list, err := lfs.GetList(viper.GetString("directory"))
-	log.Trace().Str("syncing", viper.GetString("directory")).Send()
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -49,24 +48,22 @@ func startClient() {
 
 func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 
-	var wg sync.WaitGroup
-	// spawn local Sender
+	g := new(errgroup.Group)
 	local := make(chan *core.Message)
 	remote := make(chan *core.Message)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sender := workers.NewLocalSender(ctx, &wg, list, local, remote)
+	sender := workers.NewLocalSender(ctx, list, local, remote)
 
-	go sender.Start()
-	wg.Add(1)
+	g.Go(func() error { return sender.Start() })
 
-	receiver := workers.NewLocalReceiver(ctx, &wg, remote, local)
-	go receiver.Start()
-	wg.Add(1)
+	receiver := workers.NewLocalReceiver(ctx, remote, local)
+	g.Go(func() error { return receiver.Start() })
 
-	wg.Wait()
+	if err := g.Wait(); err == nil {
+		log.Info().
+			Msg("local sync done")
+	}
 
-	//core.RunBufferTest()
-	//core.SeekTest()
 }

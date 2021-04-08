@@ -3,9 +3,9 @@ package workers
 import (
 	"context"
 	"os"
-	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
@@ -24,7 +24,6 @@ const (
 // LocalSender represents blah balh
 type LocalReceiver struct {
 	ctx        context.Context
-	wg         *sync.WaitGroup
 	list       []*lfs.FileDesc
 	inbox      <-chan *core.Message
 	sender     chan<- *core.Message
@@ -32,18 +31,16 @@ type LocalReceiver struct {
 	senderUUID uuid.UUID
 }
 
-func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
+func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		ctx:    ctx,
-		wg:     wg,
 		inbox:  in,
 		sender: sender,
 		state:  RST,
 	}
 }
 
-func (w *LocalReceiver) Start() {
-	defer w.wg.Done()
+func (w *LocalReceiver) Start() error {
 
 	var (
 		pkt   *core.Message
@@ -74,10 +71,14 @@ func (w *LocalReceiver) Start() {
 				if _, err := os.Stat(dst); os.IsNotExist(err) {
 					// create one
 					os.Mkdir(dst, os.ModeDir)
+				} else {
+					return errors.Wrap(err, "unable to create direcotyr")
 				}
 
 				lfl, err := lfs.GetList(dst)
-				core.Fatality(err)
+				if err != nil {
+					return errors.Wrap(err, "unable to list directory")
+				}
 
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
@@ -107,7 +108,9 @@ func (w *LocalReceiver) Start() {
 									viper.Set("block_size", blockSize)
 									// ???
 									err := core.AddChecksums(senderFile)
-									core.Fatality(err)
+									if err != nil {
+										return err
+									}
 									//senderFile.Weak = receiverFile.Weak
 								}
 								// add checksum
@@ -117,7 +120,10 @@ func (w *LocalReceiver) Start() {
 					}
 				}
 
-				sendWithTimeout(pkt, w.sender)
+				err = sendWithTimeout(pkt, w.sender)
+				if err != nil {
+					return err
+				}
 			case core.FIN:
 				log.Trace().
 					Msg("receiver received FIN")
@@ -127,7 +133,7 @@ func (w *LocalReceiver) Start() {
 				log.Trace().
 					Msg("data received")
 			default:
-				core.Fatality(core.NotImplemented)
+				return errors.New("unknown message received")
 			}
 		}
 	}
@@ -141,4 +147,5 @@ func (w *LocalReceiver) Start() {
 	// end
 	log.Trace().
 		Msg("local receiver finished")
+	return nil
 }

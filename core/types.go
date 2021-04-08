@@ -5,16 +5,6 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
-type Error string
-
-// errors
-const (
-	UnknownMessage Error = "unknown message"
-	NotImplemented Error = "functionality not (yet) implemented"
-	Timeout        Error = "timeout reached"
-	NoError        Error = ""
-)
-
 // "API" :)
 
 type Flag int
@@ -43,9 +33,8 @@ func (f Flag) String() string {
 
 type Message struct {
 	// Flags ?
-	Flag  Flag
-	List  []*lfs.FileDesc
-	File  *lfs.FileDesc
-	Error *Error
-	UUID  uuid.UUID
+	Flag Flag
+	List []*lfs.FileDesc
+	File *lfs.FileDesc
+	UUID uuid.UUID
 }

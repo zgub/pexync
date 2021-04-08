@@ -20,6 +20,12 @@ const (
 	Skip                 // file exists and matches
 )
 
+// common errors, lazy to type
+const (
+	absPathError = "error listing directory - failed while determining the absolute path"
+	walkError    = "error listing directory"
+)
+
 type FileDesc struct {
 	Idx      int32
 	State    State
@@ -40,37 +46,42 @@ type FileDesc struct {
 func GetList(walkDir string) ([]*FileDesc, error) {
 	//walkPath = prefix + walkPath
 	var list []*FileDesc
-	log.Trace().Str("walk dir", walkDir).Send()
+
+	log.Trace().
+		Str("walk dir", walkDir).
+		Send()
+
 	// don't do walk over abs path, makes comparing more difficult
 	walkDirAbs, err := filepath.Abs(walkDir)
+	if err != nil {
+		return nil, errors.Wrap(err, absPathError)
+	}
+
 	// filepath index to refer tol later
 	var idx int32
-	if err != nil {
-		return nil, err
-	}
+
 	// avoid endless recursive deadend
 	dest, err := filepath.Abs(viper.GetString("local_destination"))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, absPathError)
 	}
+
 	err = filepath.WalkDir(walkDir, func(path string, entry os.DirEntry, err error) error {
 
 		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("error parsing directory")
-			return err
+			return errors.Wrap(err, walkError)
 		}
 
 		// skip destination folder if it's located within the source
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			return err
+			return errors.Wrap(err, absPathError)
 		}
 		log.Trace().
 			Str("path", path).
 			Str("walk dir", walkDir).
 			Send()
+
 		// not cheap, but it's not done that often
 		if absPath == dest && walkDirAbs != dest {
 			log.Trace().
@@ -82,12 +93,15 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 
 		info, err := entry.Info()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "file stat info failed")
 		}
 
 		stat := info.Sys().(*syscall.Stat_t)
 
 		relPath, err := filepath.Rel(walkDir, path)
+		if err != nil {
+			return errors.Wrap(err, "failed to determine relative file path")
+		}
 		prefix := filepath.Dir(absPath)
 		log.Trace().
 			Str("path", path).
@@ -95,9 +109,6 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 			Str("rel path", relPath).
 			Str("prefix path", prefix).
 			Send()
-		if err != nil {
-			return errors.WithMessage(err, "determinign relative path")
-		}
 
 		if relPath != "." {
 			fileDesc := &FileDesc{
@@ -117,8 +128,9 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 		}
 		return nil
 	})
+
 	if err != nil {
-		return nil, errors.WithMessage(err, "GetList")
+		return nil, errors.Wrap(err, "error listing directory")
 	}
 	log.Trace().
 		Int("returning filelist size", len(list)).
