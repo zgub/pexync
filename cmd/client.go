@@ -64,6 +64,10 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 	if err := g.Wait(); err == nil {
 		log.Info().
 			Msg("local sync done")
+	} else {
+		log.Error().
+			Err(err).
+			Send()
 	}
 
 }

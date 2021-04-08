@@ -54,9 +54,12 @@ func (w *LocalSender) Start() error {
 	// receive the filelist with checksums
 	pkt, err = recvWithTimeout(w.inbox)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "local sender")
 	}
 	w.list = pkt.List
+	log.Debug().
+		Int("sender received files list, length", len(w.list)).
+		Send()
 
 	// spawn filereaders
 	g := new(errgroup.Group)

@@ -25,10 +25,12 @@ func sendWithTimeout(pkt *core.Message, dst chan<- *core.Message) error {
 func recvWithTimeout(src <-chan *core.Message) (*core.Message, error) {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
+
 	var pkt *core.Message
 
 	select {
 	case pkt = <-src:
+		log.Trace().Msgf("received message: %s", pkt.Flag.String())
 		return pkt, nil
 	case <-timeout:
 		return nil, errors.New("timeout while waiting for data")

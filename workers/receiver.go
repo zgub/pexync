@@ -71,15 +71,17 @@ func (w *LocalReceiver) Start() error {
 				if _, err := os.Stat(dst); os.IsNotExist(err) {
 					// create one
 					os.Mkdir(dst, os.ModeDir)
-				} else {
-					return errors.Wrap(err, "unable to create direcotyr")
+				} else if err != nil {
+					return err
 				}
 
+				log.Debug().Msg("listing files")
 				lfl, err := lfs.GetList(dst)
 				if err != nil {
 					return errors.Wrap(err, "unable to list directory")
 				}
 
+				log.Debug().Msg("parsing files")
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
 						senderFile.State = lfs.Missing
