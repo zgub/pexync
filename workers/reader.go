@@ -133,11 +133,11 @@ func (rr *RollReader) Start() error {
 		}
 
 	}
-	log.Info().
+	log.Debug().
 		Int("skipped", skipCount).
 		Str("name", rr.fd.FileName).
 		Int("block count", len(rr.fd.Weak)).
-		Msg("report")
+		Msg("sender compare report")
 
 	return nil
 }

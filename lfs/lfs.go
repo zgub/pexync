@@ -20,6 +20,16 @@ const (
 	Skip                 // file exists and matches
 )
 
+var fileStatus = [...]string{
+	"MISS",
+	"DIFF",
+	"SKIP",
+}
+
+func (s State) String() string {
+	return fileStatus[s]
+}
+
 // common errors, lazy to type
 const (
 	absPathError = "error listing directory - failed while determining the absolute path"
