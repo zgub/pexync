@@ -3,34 +3,34 @@ package core
 import (
 	"bufio"
 	"crypto/sha1"
-	"errors"
-	"fmt"
 	"hash/adler32"
 	"io"
 	"os"
 
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/lfs"
 )
 
 func AddChecksums(fd *lfs.FileDesc) error {
-	fmt.Printf("Add sumfile: %s\n", fd.RelPath)
+
 	blockSize := viper.GetInt("block_size")
-	log.Info().
+	log.Trace().
 		Int("using block size", blockSize).
+		Str("file", fd.FileName).
 		Send()
 
 	f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error openig file")
 	}
 	defer f.Close()
 
 	buffer := make([]byte, blockSize)
 	fileInfo, err := f.Stat()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "file stata error")
 	}
 	size := fileInfo.Size()
 
@@ -57,7 +57,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 			if err == io.EOF {
 				break
 			}
-			return err
+			return errors.Wrap(err, "error while reading file")
 		}
 		sum := adler32.Checksum(buffer)
 
@@ -67,69 +67,4 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	fd.Sha1 = sha1sh.Sum(nil)[:20]
 	fd.Weak = hashList
 	return nil
-}
-
-// Deprecated
-func Roll(fd *lfs.FileDesc, src string) ([]uint32, error) {
-	log.Debug().
-		Msg("Rolling")
-	f, err := os.Open(src)
-	if err != nil {
-		return nil, err
-	}
-	blockSize := viper.GetInt("block_size")
-	defer f.Close()
-	rollBuff := make([]byte, blockSize)
-	r := io.Reader(f)
-	//br := bufio.NewReader(r)
-
-	var match, nomatch uint64
-
-	// let's do it, read thw whole file in ~ block size sized chunks first
-	rh := Pour()
-	n, err := r.Read(rollBuff)
-	if n == 0 && err == io.EOF {
-		return nil, errors.New("empty file")
-	}
-	rh.Write(rollBuff)
-	// window initialized
-	var pos uint64
-	for {
-		n, err := r.Read(rollBuff)
-		if n == 0 {
-			if err == nil {
-				continue
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-
-		// roll through this buffer
-		for _, b := range rollBuff {
-			rh.Roll(b)
-			rSum := rh.Sum32()
-			for _, sum := range fd.Weak {
-				if rSum == sum {
-					match++
-					break
-				} else {
-					nomatch++
-				}
-			}
-		}
-		if pos%10024 == 0 {
-			log.Info().
-				Uint64("read [MiB]", pos/1024)
-		}
-
-	}
-
-	log.Info().
-		Uint64("mached", match).
-		Uint64("didn't match", nomatch).
-		Int("fd len", len(fd.Weak)).
-		Uint64("last position", pos).
-		Msg("result")
-	return nil, nil
 }
