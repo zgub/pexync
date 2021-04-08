@@ -66,6 +66,4 @@ func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
 
 	wg.Wait()
 
-	//core.RunBufferTest()
-	//core.SeekTest()
 }
