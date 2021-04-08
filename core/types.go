@@ -33,9 +33,8 @@ func (f Flag) String() string {
 
 type Message struct {
 	// Flags ?
-	Flag  Flag
-	List  []*lfs.FileDesc
-	File  *lfs.FileDesc
-	Error *Error
-	UUID  uuid.UUID
+	Flag Flag
+	List []*lfs.FileDesc
+	File *lfs.FileDesc
+	UUID uuid.UUID
 }
