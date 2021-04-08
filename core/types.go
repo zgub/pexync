@@ -11,7 +11,7 @@ type Flag int
 
 const (
 	RST Flag = iota // reset, (re)initialize), hello
-	ACK             // acknowledge, everything is ok
+	SUM             // checksum data from receiver
 	DTA             // data from receiver
 	ERR             // error
 	FIN             // done, disconnect
@@ -19,8 +19,7 @@ const (
 
 var messageTypes = [...]string{
 	"RST",
-	"ACK",
-	"FLS",
+	"SUM",
 	"DTA",
 	"ERR",
 	"FIN",
