@@ -23,7 +23,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 
 	f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 	if err != nil {
-		return errors.Wrap(err, "error openig file")
+		return errors.Wrap(err, "error opening file")
 	}
 	defer f.Close()
 

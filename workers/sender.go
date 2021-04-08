@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
@@ -34,7 +35,7 @@ func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc,
 	}
 }
 
-func (w *LocalSender) Start() {
+func (w *LocalSender) Start() error {
 	defer w.wg.Done()
 
 	// send the filelist to the receiver
@@ -50,13 +51,13 @@ func (w *LocalSender) Start() {
 
 	err := sendWithTimeout(pkt, w.receiver)
 	if err != nil {
-		log.Fatal().Err(err).Caller().Stack().Send()
+		return err
 	}
 
 	// receive the filelist with checksums
 	pkt, err = recvWithTimeout(w.inbox)
 	if err != nil {
-		log.Fatal().Err(err).Caller().Stack().Send()
+		return err
 	}
 	w.list = pkt.List
 	//spew.Dump(w.list)
@@ -74,9 +75,10 @@ func (w *LocalSender) Start() {
 			blockSize := lfs.GetBlockSize(fd)
 			f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 			stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
-			core.Fatality(err)
+			if err != nil {
+				return errors.Wrap(err, "error file stat")
+			}
 			size := stat.Size()
-			core.Fatality(err)
 			r := io.ReaderAt(f)
 			sr := io.NewSectionReader(r, 0, size)
 			fileReader := NewRollReader(w.ctx, &wg, w.uuid, fd, blockSize, sr, w.receiver)
@@ -100,4 +102,5 @@ func (w *LocalSender) Start() {
 		UUID: w.uuid,
 	}
 	sendWithTimeout(pkt, w.receiver)
+	return nil
 }

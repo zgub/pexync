@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
@@ -42,7 +43,7 @@ func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan *core.M
 	}
 }
 
-func (w *LocalReceiver) Start() {
+func (w *LocalReceiver) Start() error {
 	defer w.wg.Done()
 
 	var (
@@ -74,10 +75,14 @@ func (w *LocalReceiver) Start() {
 				if _, err := os.Stat(dst); os.IsNotExist(err) {
 					// create one
 					os.Mkdir(dst, os.ModeDir)
+				} else {
+					return errors.Wrap(err, "unable to create direcotyr")
 				}
 
 				lfl, err := lfs.GetList(dst)
-				core.Fatality(err)
+				if err != nil {
+					return errors.Wrap(err, "unable to list directory")
+				}
 
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
@@ -107,7 +112,9 @@ func (w *LocalReceiver) Start() {
 									viper.Set("block_size", blockSize)
 									// ???
 									err := core.AddChecksums(senderFile)
-									core.Fatality(err)
+									if err != nil {
+										return err
+									}
 									//senderFile.Weak = receiverFile.Weak
 								}
 								// add checksum
@@ -117,7 +124,10 @@ func (w *LocalReceiver) Start() {
 					}
 				}
 
-				sendWithTimeout(pkt, w.sender)
+				err = sendWithTimeout(pkt, w.sender)
+				if err != nil {
+					return err
+				}
 			case core.FIN:
 				log.Trace().
 					Msg("receiver received FIN")
@@ -127,7 +137,7 @@ func (w *LocalReceiver) Start() {
 				log.Trace().
 					Msg("data received")
 			default:
-				core.Fatality(core.NotImplemented)
+				return errors.New("unknown message received")
 			}
 		}
 	}
@@ -141,4 +151,5 @@ func (w *LocalReceiver) Start() {
 	// end
 	log.Trace().
 		Msg("local receiver finished")
+	return nil
 }
