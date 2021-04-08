@@ -8,4 +8,5 @@ require (
 	github.com/rs/zerolog v1.21.0
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/viper v1.7.1
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
 )

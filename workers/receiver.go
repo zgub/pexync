@@ -3,7 +3,6 @@ package workers
 import (
 	"context"
 	"os"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -25,7 +24,6 @@ const (
 // LocalSender represents blah balh
 type LocalReceiver struct {
 	ctx        context.Context
-	wg         *sync.WaitGroup
 	list       []*lfs.FileDesc
 	inbox      <-chan *core.Message
 	sender     chan<- *core.Message
@@ -33,10 +31,9 @@ type LocalReceiver struct {
 	senderUUID uuid.UUID
 }
 
-func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
+func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		ctx:    ctx,
-		wg:     wg,
 		inbox:  in,
 		sender: sender,
 		state:  RST,
@@ -44,7 +41,6 @@ func NewLocalReceiver(ctx context.Context, wg *sync.WaitGroup, in <-chan *core.M
 }
 
 func (w *LocalReceiver) Start() error {
-	defer w.wg.Done()
 
 	var (
 		pkt   *core.Message

@@ -17,17 +17,15 @@ import (
 // LocalSender represents blah balh
 type LocalSender struct {
 	ctx      context.Context
-	wg       *sync.WaitGroup
 	list     []*lfs.FileDesc
 	inbox    <-chan *core.Message
 	receiver chan<- *core.Message
 	uuid     uuid.UUID
 }
 
-func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
-		wg:       wg,
 		list:     fl,
 		inbox:    in,
 		receiver: receiver,
@@ -36,7 +34,6 @@ func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc,
 }
 
 func (w *LocalSender) Start() error {
-	defer w.wg.Done()
 
 	// send the filelist to the receiver
 	// q := []int{2, 3, 5, 7, 11, 13}
