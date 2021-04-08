@@ -12,7 +12,6 @@ type Flag int
 const (
 	RST Flag = iota // reset, (re)initialize), hello
 	ACK             // acknowledge, everything is ok
-	FLS             // initial filelist from sender
 	DTA             // data from receiver
 	ERR             // error
 	FIN             // done, disconnect

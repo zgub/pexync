@@ -50,7 +50,7 @@ func (w *LocalReceiver) Start() error {
 	for check {
 		select {
 		case <-w.ctx.Done():
-			log.Trace().Msg("local receiver closing, context done")
+			log.Debug().Msg("local receiver closing, context done")
 			check = false
 			break
 		case pkt = <-w.inbox:
@@ -98,12 +98,18 @@ func (w *LocalReceiver) Start() error {
 									Time("sender file mod", senderFile.Modified).
 									Time("receiver file mod", receiverFile.Modified).
 									Msg("DIFF")
+
 								senderFile.State = lfs.Diff
 
 								// determine what has changed, if permission and/or modtime only, do not set it to diff
 
 								if !senderFile.IsDir {
 									blockSize := lfs.GetBlockSize(senderFile)
+									// treat "remote" files smaller than block sizes as missing
+									if uint64(blockSize) > receiverFile.FileSize {
+										senderFile.State = lfs.Missing
+										break
+									}
 									log.Info().
 										Int("checksum block size", blockSize).
 										Send()
