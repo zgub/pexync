@@ -3,11 +3,11 @@ package workers
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
@@ -40,7 +40,7 @@ func NewRollReader(ctx context.Context, wg *sync.WaitGroup, senderID uuid.UUID, 
 	}
 }
 
-func (rr *RollReader) Start() {
+func (rr *RollReader) Start() error {
 	defer rr.wg.Done()
 	log.Trace().Msg("starting file reader")
 
@@ -55,28 +55,28 @@ func (rr *RollReader) Start() {
 
 	// initial data for boll hash buffer initialization
 	n, err := io.ReadFull(br, buf)
-	if n == 0 && err == io.EOF {
-		core.Fatality(err)
+	if n == 0 {
+
+		if err == nil {
+			return errors.New("read 0 bytes")
+		} else if err != io.EOF {
+			return err
+		}
+		if err == io.EOF {
+			return nil
+		}
 	}
 
 	// initilaize the roll hash
 	rh := core.Pour()
 	_, err = rh.Write(buf)
 	if err != nil {
-		log.Fatal().
-			Caller().
-			Stack().
-			Err(err).
-			Send()
+		return errors.Wrap(err, "error writing to roll window")
 	}
 
 	skip, err = rr.lookup(rh)
 	if err != nil {
-		log.Fatal().
-			Caller().
-			Stack().
-			Err(err).
-			Send()
+		errors.Wrap(err, "lookup error")
 	}
 	rr.fd.Matches = append(rr.fd.Matches, 0)
 
@@ -90,33 +90,15 @@ func (rr *RollReader) Start() {
 		if n == 0 {
 
 			if err == nil {
-				log.Info().
-					Msg("read zero bytes")
-					// well, that's cute, let's try again
-				continue
+				return errors.New("read 0 bytes")
 			} else if err != io.EOF {
-				// poor error handling :-/
-				fmt.Printf("this error: %s", err.Error())
-				panic(err)
+				return errors.Wrap(err, "error reading file")
 			}
 			if err == io.EOF {
-				// yay, end of file, ehm section, well this should be addressed later
 				break
 			}
 		}
 
-		/*
-			pos += int64(n)
-
-			log.Trace().
-				Str("name", rr.fd.FileName).
-				Int("read bytes", n).
-				Int("data buf len", len(rr.dataBuf)).
-				Bool("skipped", skip).
-				Int("block size", rr.blockSize).
-				Msgf("rolling %d / %d", pos, rr.reader.Size())
-		*/
-		// one never knows, but should not be an issue except for the end of file
 		buf = buf[:n]
 
 		// last time we've found a matching block, let's read another whole block
@@ -126,20 +108,12 @@ func (rr *RollReader) Start() {
 			rh.Reset()
 			_, err := rh.Write(buf)
 			if err != nil {
-				log.Fatal().
-					Caller().
-					Stack().
-					Err(err).
-					Send()
+				return errors.Wrap(err, "error writing to roll window")
 			}
 			//log.Trace().Msg("read a wrote whole block")
 			skip, err = rr.lookup(rh)
 			if err != nil {
-				log.Fatal().
-					Caller().
-					Stack().
-					Err(err).
-					Send()
+				return errors.Wrap(err, "lookup error")
 			}
 			if skip {
 				// again matching block, next!
@@ -153,11 +127,7 @@ func (rr *RollReader) Start() {
 			// lookup in the remote file hash list
 			skip, err = rr.lookup(rh)
 			if err != nil {
-				log.Fatal().
-					Caller().
-					Stack().
-					Err(err).
-					Send()
+				return errors.Wrap(err, "lookup error")
 			}
 			if skip {
 				break
@@ -172,6 +142,8 @@ func (rr *RollReader) Start() {
 		Str("name", rr.fd.FileName).
 		Int("block count", len(rr.fd.Weak)).
 		Msg("report")
+
+	return nil
 }
 
 // write value to the circular buffer
@@ -211,8 +183,10 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 			}
 			// send thepackage when full
 			err := sendWithTimeout(pkt, rr.receiver)
+			if err != nil {
+				return false, err
+			}
 			rr.dataBuf = make([]byte, rr.blockSize)
-			core.Fatality(err)
 		}
 		// store the byte in the circular buffer
 	}
