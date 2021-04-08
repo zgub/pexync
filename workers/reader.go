@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"io"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -15,7 +14,6 @@ import (
 
 type RollReader struct {
 	ctx       context.Context
-	wg        *sync.WaitGroup
 	reader    *io.SectionReader
 	receiver  chan<- *core.Message
 	blockSize int
@@ -26,10 +24,9 @@ type RollReader struct {
 	dataBuf   []byte
 }
 
-func NewRollReader(ctx context.Context, wg *sync.WaitGroup, senderID uuid.UUID, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
 		ctx:       ctx,
-		wg:        wg,
 		senderID:  senderID,
 		reader:    sr,
 		receiver:  receiver,
@@ -41,7 +38,6 @@ func NewRollReader(ctx context.Context, wg *sync.WaitGroup, senderID uuid.UUID, 
 }
 
 func (rr *RollReader) Start() error {
-	defer rr.wg.Done()
 	log.Trace().Msg("starting file reader")
 
 	// buffered "should" be better

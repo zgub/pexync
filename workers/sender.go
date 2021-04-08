@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
+	"golang.org/x/sync/errgroup"
 )
 
 // LocalSender represents blah balh
@@ -60,10 +60,7 @@ func (w *LocalSender) Start() error {
 	//spew.Dump(w.list)
 
 	// spawn filereaders
-
-	// this has to be reworked
-	var wg sync.WaitGroup
-
+	g := new(errgroup.Group)
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing {
 			fmt.Printf("[-] %s\n", fd.RelPath)
@@ -78,9 +75,9 @@ func (w *LocalSender) Start() error {
 			size := stat.Size()
 			r := io.ReaderAt(f)
 			sr := io.NewSectionReader(r, 0, size)
-			fileReader := NewRollReader(w.ctx, &wg, w.uuid, fd, blockSize, sr, w.receiver)
-			go fileReader.Start()
-			wg.Add(1)
+			fileReader := NewRollReader(w.ctx, w.uuid, fd, blockSize, sr, w.receiver)
+
+			g.Go(func() error { return fileReader.Start() })
 		} else {
 			fmt.Printf("[x] %s\n", fd.RelPath)
 		}
@@ -91,7 +88,10 @@ func (w *LocalSender) Start() error {
 	// validate ???
 
 	// end
-	wg.Wait()
+	err = g.Wait()
+	if err != nil {
+		return errors.Wrap(err, "file reader error")
+	}
 	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
 	pkt = &core.Message{
