@@ -2,9 +2,6 @@ package workers
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -60,17 +57,48 @@ func (w *LocalSender) Start() error {
 	w.list = pkt.List
 	log.Debug().
 		Int("sender received files list, length", len(w.list)).
-		Send()
+		Msg("analyzing")
 
-	// spawn filereaders
+	// analyze
 	g := new(errgroup.Group)
+	sendList := make([]*lfs.FileDesc, 0)
 	for _, fd := range w.list {
-		if fd.State == lfs.Missing {
-			fmt.Printf("[-] %s\n", fd.RelPath)
+		if fd.State == lfs.Missing && !fd.IsDir {
+			fd.BlockSize = lfs.GetBlockSize(fd)
+			log.Debug().
+				Int("block size", fd.BlockSize).
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msg(fd.State.String())
+			sendList = append(sendList, fd)
 		} else if fd.State == lfs.Diff {
-			fmt.Printf("[+] %s\t %d checksums\n", fd.RelPath, len(fd.Weak))
-			blockSize := lfs.GetBlockSize(fd)
+			fd.BlockSize = lfs.GetBlockSize(fd)
+			log.Debug().
+				Int("block size", fd.BlockSize).
+				Int("checksum received", len(fd.Weak)).
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msg(fd.State.String())
+			sendList = append(sendList, fd)
+
+		} else {
+			log.Debug().
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msg(fd.State.String())
+		}
+	}
+
+	// spawn readers
+
+	// send data
+	for _, fd := range sendList {
+		log.Debug().
+			Str("sending", fd.Prefix+"/"+fd.FileName).
+			Send()
+
+		/*
 			f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
+			if err != nil {
+				return errors.Wrap(err, "error opening file")
+			}
 			stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
 			if err != nil {
 				return errors.Wrap(err, "error file stat")
@@ -78,12 +106,11 @@ func (w *LocalSender) Start() error {
 			size := stat.Size()
 			r := io.ReaderAt(f)
 			sr := io.NewSectionReader(r, 0, size)
-			fileReader := NewRollReader(w.ctx, w.uuid, fd, blockSize, sr, w.receiver)
+			fileReader := NewRollReader(w.ctx, w.uuid, fd, fd.BlockSize, sr, w.receiver)
 
 			g.Go(func() error { return fileReader.Start() })
-		} else {
-			fmt.Printf("[x] %s\n", fd.RelPath)
-		}
+		*/
+
 	}
 
 	// wait for the transfer to finish
