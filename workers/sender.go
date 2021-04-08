@@ -57,7 +57,6 @@ func (w *LocalSender) Start() error {
 		return err
 	}
 	w.list = pkt.List
-	//spew.Dump(w.list)
 
 	// spawn filereaders
 	g := new(errgroup.Group)
