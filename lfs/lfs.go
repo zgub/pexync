@@ -20,6 +20,16 @@ const (
 	Skip                 // file exists and matches
 )
 
+var fileStatus = [...]string{
+	"MISS",
+	"DIFF",
+	"SKIP",
+}
+
+func (s State) String() string {
+	return fileStatus[s]
+}
+
 // common errors, lazy to type
 const (
 	absPathError = "error listing directory - failed while determining the absolute path"
@@ -27,20 +37,21 @@ const (
 )
 
 type FileDesc struct {
-	Idx      int32
-	State    State
-	IsDir    bool
-	RelPath  string
-	Prefix   string
-	FileName string
-	FileSize uint64
-	Modified time.Time
-	Mode     os.FileMode
-	Uid, Gid uint32
-	Sha1     []byte
-	Weak     []uint32
-	Matches  []int
-	Data     []byte
+	Idx       int32
+	State     State
+	IsDir     bool
+	RelPath   string
+	Prefix    string
+	FileName  string
+	FileSize  uint64
+	BlockSize int
+	Modified  time.Time
+	Mode      os.FileMode
+	Uid, Gid  uint32
+	Sha1      []byte
+	Weak      []uint32
+	Matches   []int
+	Data      []byte
 }
 
 func GetList(walkDir string) ([]*FileDesc, error) {

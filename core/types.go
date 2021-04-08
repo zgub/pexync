@@ -10,14 +10,16 @@ import (
 type Flag int
 
 const (
-	RST Flag = iota // reset, (re)initialize), hello
+	NIL Flag = iota // no flag set
+	RST             // reset, (re)initialize), hello
 	SUM             // checksum data from receiver
-	DTA             // data from receiver
+	DTA             // data from file reader
 	ERR             // error
 	FIN             // done, disconnect
 )
 
 var messageTypes = [...]string{
+	"NIL",
 	"RST",
 	"SUM",
 	"DTA",
