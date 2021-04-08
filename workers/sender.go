@@ -56,6 +56,7 @@ func (w *LocalSender) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
+
 	w.list = pkt.List
 	log.Debug().
 		Int("sender received files list, length", len(w.list)).

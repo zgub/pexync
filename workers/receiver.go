@@ -50,7 +50,7 @@ func (w *LocalReceiver) Start() error {
 	for check {
 		select {
 		case <-w.ctx.Done():
-			log.Trace().Msg("local receiver closing, context done")
+			log.Debug().Msg("local receiver closing, context done")
 			check = false
 			break
 		case pkt = <-w.inbox:
@@ -75,13 +75,13 @@ func (w *LocalReceiver) Start() error {
 					return err
 				}
 
-				log.Debug().Msg("listing files")
+				log.Debug().Msg("receiver listing files")
 				lfl, err := lfs.GetList(dst)
 				if err != nil {
 					return errors.Wrap(err, "unable to list directory")
 				}
 
-				log.Debug().Msg("parsing files")
+				log.Debug().Msg("receiver parsing files")
 				for _, senderFile := range w.list {
 					for _, receiverFile := range lfl {
 						senderFile.State = lfs.Missing
@@ -90,20 +90,26 @@ func (w *LocalReceiver) Start() error {
 								// check permissions and ownership
 								senderFile.State = lfs.Skip
 							} else {
-								log.Trace().
+								log.Debug().
 									Str("sender path", senderFile.RelPath).
 									Str("receiver path", receiverFile.RelPath).
 									Uint64("sender file size", senderFile.FileSize).
 									Uint64("receiver file size", receiverFile.FileSize).
 									Time("sender file mod", senderFile.Modified).
 									Time("receiver file mod", receiverFile.Modified).
-									Msg("DIFF")
+									Msg("receiver DIFF")
+
 								senderFile.State = lfs.Diff
 
 								// determine what has changed, if permission and/or modtime only, do not set it to diff
 
 								if !senderFile.IsDir {
 									blockSize := lfs.GetBlockSize(senderFile)
+									// treat "remote" files smaller than block sizes as missing
+									if uint64(blockSize) > receiverFile.FileSize {
+										senderFile.State = lfs.Missing
+										break
+									}
 									log.Info().
 										Int("checksum block size", blockSize).
 										Send()
@@ -121,7 +127,7 @@ func (w *LocalReceiver) Start() error {
 						}
 					}
 				}
-
+				pkt.Flag = core.SUM
 				err = sendWithTimeout(pkt, w.sender)
 				if err != nil {
 					return err
