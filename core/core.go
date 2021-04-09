@@ -8,18 +8,10 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"github.com/zgub/pexync/lfs"
 )
 
 func AddChecksums(fd *lfs.FileDesc) error {
-
-	blockSize := viper.GetInt("block_size")
-	log.Trace().
-		Int("using block size", blockSize).
-		Str("file", fd.FileName).
-		Send()
 
 	f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 	if err != nil {
@@ -27,7 +19,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	}
 	defer f.Close()
 
-	buffer := make([]byte, blockSize)
+	buffer := make([]byte, fd.BlockSize)
 	fileInfo, err := f.Stat()
 	if err != nil {
 		return errors.Wrap(err, "file stata error")
@@ -38,8 +30,8 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	// func TeeReader(r Reader, w Writer) Reader
 	r := io.TeeReader(bufio.NewReader(f), sha1sh)
 
-	l := size / int64(blockSize)
-	if (size % int64(blockSize)) != 0 {
+	l := size / int64(fd.BlockSize)
+	if (size % int64(fd.BlockSize)) != 0 {
 		l++
 	}
 

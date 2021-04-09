@@ -13,27 +13,25 @@ import (
 )
 
 type RollReader struct {
-	ctx       context.Context
-	reader    *io.SectionReader
-	receiver  chan<- *core.Message
-	blockSize int
-	fd        *lfs.FileDesc
-	senderID  uuid.UUID
-	keep      []byte // circular buffer to 'remember' previous data
-	p         int
-	dataBuf   []byte
+	ctx      context.Context
+	reader   *io.SectionReader
+	receiver chan<- *core.Message
+	fd       *lfs.FileDesc
+	senderID uuid.UUID
+	keep     []byte // circular buffer to 'remember' previous data
+	p        int
+	dataBuf  []byte
 }
 
-func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, blockSize int, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
-		ctx:       ctx,
-		senderID:  senderID,
-		reader:    sr,
-		receiver:  receiver,
-		blockSize: blockSize,
-		fd:        fd,
-		keep:      make([]byte, blockSize),
-		dataBuf:   make([]byte, blockSize),
+		ctx:      ctx,
+		senderID: senderID,
+		reader:   sr,
+		receiver: receiver,
+		fd:       fd,
+		keep:     make([]byte, fd.BlockSize),
+		dataBuf:  make([]byte, fd.BlockSize),
 	}
 }
 
@@ -42,7 +40,7 @@ func (rr *RollReader) Start() error {
 
 	// buffered "should" be better
 	br := bufio.NewReader(rr.reader)
-	buf := make([]byte, rr.blockSize)
+	buf := make([]byte, rr.fd.BlockSize)
 
 	var (
 		skip      bool // default false
@@ -171,7 +169,7 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 		// not found, append the oldest ring buffer byte to the packet
 		rr.dataBuf = append(rr.dataBuf, rr.pop())
 		// check length
-		if len(rr.dataBuf) == rr.blockSize {
+		if len(rr.dataBuf) == rr.fd.BlockSize {
 			pkt := &core.Message{
 				Flag: core.DTA,
 				File: rr.fd,
@@ -182,7 +180,7 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			rr.dataBuf = make([]byte, rr.blockSize)
+			rr.dataBuf = make([]byte, rr.fd.BlockSize)
 		}
 		// store the byte in the circular buffer
 	}

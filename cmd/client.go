@@ -33,7 +33,7 @@ var (
 
 func startClient() {
 	log.Info().Msg("initializing PeXync client")
-	list, err := lfs.GetList(viper.GetString("directory"))
+	list, err := lfs.ParseDir(viper.GetString("directory"))
 	if err != nil {
 		log.Fatal().
 			Err(err).
