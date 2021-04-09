@@ -64,14 +64,16 @@ func (w *LocalSender) Start() error {
 	sendList := make([]*lfs.FileDesc, 0)
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing && !fd.IsDir {
-			fd.BlockSize = lfs.GetBlockSize(fd)
+			// new file
+			fd.SetBlockSize()
 			log.Debug().
 				Int("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msg(fd.State.String())
 			sendList = append(sendList, fd)
 		} else if fd.State == lfs.Diff {
-			fd.BlockSize = lfs.GetBlockSize(fd)
+			// diff file
+			fd.SetBlockSize()
 			log.Debug().
 				Int("block size", fd.BlockSize).
 				Int("checksum received", len(fd.Weak)).
@@ -80,6 +82,7 @@ func (w *LocalSender) Start() error {
 			sendList = append(sendList, fd)
 
 		} else {
+			// skipped file
 			log.Debug().
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msg(fd.State.String())

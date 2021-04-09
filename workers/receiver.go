@@ -76,7 +76,7 @@ func (w *LocalReceiver) Start() error {
 				}
 
 				log.Debug().Msg("receiver listing files")
-				lfl, err := lfs.GetList(dst)
+				lfl, err := lfs.ParseDir(dst)
 				if err != nil {
 					return errors.Wrap(err, "unable to list directory")
 				}
@@ -104,17 +104,11 @@ func (w *LocalReceiver) Start() error {
 								// determine what has changed, if permission and/or modtime only, do not set it to diff
 
 								if !senderFile.IsDir {
-									blockSize := lfs.GetBlockSize(senderFile)
 									// treat "remote" files smaller than block sizes as missing
-									if uint64(blockSize) > receiverFile.FileSize {
+									if uint64(senderFile.BlockSize) > receiverFile.FileSize {
 										senderFile.State = lfs.Missing
 										break
 									}
-									log.Info().
-										Int("checksum block size", blockSize).
-										Send()
-									viper.Set("block_size", blockSize)
-									// ???
 									err := core.AddChecksums(senderFile)
 									if err != nil {
 										return err

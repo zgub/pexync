@@ -54,7 +54,7 @@ type FileDesc struct {
 	Data      []byte
 }
 
-func GetList(walkDir string) ([]*FileDesc, error) {
+func ParseDir(walkDir string) ([]*FileDesc, error) {
 	//walkPath = prefix + walkPath
 	var list []*FileDesc
 
@@ -152,15 +152,14 @@ func GetList(walkDir string) ([]*FileDesc, error) {
 	return list, nil
 }
 
-func GetBlockSize(fd *FileDesc) int {
+func (fd *FileDesc) SetBlockSize() {
 	blockSize := viper.GetInt("block_size")
 	if fd.FileSize > 490000 && blockSize == 700 {
 		// stolen from rsync doc :)
 		sqrt := math.Sqrt(float64(fd.FileSize))
-		blockSize = int(math.Round(sqrt))
+		fd.BlockSize = int(math.Round(sqrt))
 		if blockSize > 131072 {
-			blockSize = 131072
+			fd.BlockSize = 131072
 		}
 	}
-	return blockSize
 }
