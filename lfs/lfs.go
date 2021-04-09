@@ -88,10 +88,6 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		if err != nil {
 			return errors.Wrap(err, absPathError)
 		}
-		log.Trace().
-			Str("path", path).
-			Str("walk dir", walkDir).
-			Send()
 
 		// not cheap, but it's not done that often
 		if absPath == dest && walkDirAbs != dest {
@@ -116,10 +112,9 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		prefix := filepath.Dir(absPath)
 		log.Trace().
 			Str("path", path).
-			Str("walk dir", walkDir).
-			Str("rel path", relPath).
 			Str("prefix path", prefix).
-			Send()
+			Bool("is dir", entry.IsDir()).
+			Msg("parsing")
 
 		if relPath != "." {
 			fileDesc := &FileDesc{
@@ -153,13 +148,20 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 }
 
 func (fd *FileDesc) SetBlockSize() {
-	blockSize := viper.GetInt("block_size")
-	if fd.FileSize > 490000 && blockSize == 700 {
+	// fetch the config value, which has priority if changed and remains 700 if filesize is sma;;
+	fd.BlockSize = viper.GetInt("block_size")
+	// if the file size is big enoigh anf the value is still default
+	if fd.FileSize > 490000 && fd.BlockSize == 700 {
 		// stolen from rsync doc :)
 		sqrt := math.Sqrt(float64(fd.FileSize))
 		fd.BlockSize = int(math.Round(sqrt))
-		if blockSize > 131072 {
+		if fd.BlockSize > 131072 {
 			fd.BlockSize = 131072
 		}
 	}
+
+	if fd.FileSize < 700 {
+		fd.BlockSize = int(fd.FileSize)
+	}
+
 }
