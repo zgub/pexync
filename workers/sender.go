@@ -68,8 +68,8 @@ func (w *LocalSender) Start() error {
 
 	w.list = pkt.List
 	log.Debug().
-		Int("sender received files list, length", len(w.list)).
-		Msg("analyzing")
+		Int("liles", len(w.list)).
+		Msg("sender analyzing data from receiver")
 
 	// analyze
 	g := new(errgroup.Group)

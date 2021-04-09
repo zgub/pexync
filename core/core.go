@@ -8,12 +8,13 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/lfs"
 )
 
 func AddChecksums(fd *lfs.FileDesc) error {
 
-	f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
+	f, err := os.Open(fd.Prefix + "/" + fd.FileName)
 	if err != nil {
 		return errors.Wrap(err, "error opening file")
 	}
@@ -29,7 +30,6 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	sha1sh := sha1.New()
 	// func TeeReader(r Reader, w Writer) Reader
 	r := io.TeeReader(bufio.NewReader(f), sha1sh)
-
 	l := size / int64(fd.BlockSize)
 	if (size % int64(fd.BlockSize)) != 0 {
 		l++
@@ -58,5 +58,9 @@ func AddChecksums(fd *lfs.FileDesc) error {
 
 	fd.Sha1 = sha1sh.Sum(nil)[:20]
 	fd.Weak = hashList
+	log.Trace().
+		Str("path", fd.Prefix+"/"+fd.FileName).
+		Int("checksums added", len(hashList)).
+		Msg("checksums calculated")
 	return nil
 }

@@ -27,6 +27,7 @@ var (
 	debug    bool
 	port     int
 	syncDir  string
+	ccIo     int
 
 	// core
 	blockSize int
@@ -58,6 +59,9 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
 
 	viper.SetDefault("timeout", 5*time.Second)
+
+	rootCmd.PersistentFlags().IntVarP(&ccIo, "io-concurrency", "i", 2, "concurent io operations")
+	viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
 
 }
 
