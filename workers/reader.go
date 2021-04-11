@@ -2,6 +2,7 @@ package workers
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"io"
 
@@ -18,9 +19,9 @@ type RollReader struct {
 	receiver chan<- *core.Message
 	fd       *lfs.FileDesc
 	senderID uuid.UUID
-	keep     []byte // circular buffer to 'remember' previous data  bytes.Buffer?
+	ring     []byte // ring buffer won't do, nor bytes.Buffer
 	p        int
-	dataBuf  []byte // bytes.BUffer?
+	sendBuf  bytes.Buffer
 }
 
 func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
@@ -29,8 +30,6 @@ func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, sr
 		reader:   sr,
 		receiver: receiver,
 		fd:       fd,
-		keep:     make([]byte, fd.BlockSize),
-		dataBuf:  make([]byte, fd.BlockSize),
 	}
 }
 
@@ -75,7 +74,7 @@ func (rr *RollReader) Start() error {
 	rr.fd.Matches = append(rr.fd.Matches, 0)
 
 	// initialize out byte with the first byte of the section
-	rr.keep = buf
+	rr.ring = buf
 
 	// read through the file
 	for {
@@ -142,9 +141,9 @@ func (rr *RollReader) Start() error {
 
 // write value to the circular buffer
 func (rr *RollReader) push(b byte) {
-	rr.keep[rr.p] = b
+	rr.ring[rr.p] = b
 	rr.p++
-	if rr.p == len(rr.keep) {
+	if rr.p == len(rr.ring) {
 		// reset
 		rr.p = 0
 	}
@@ -152,7 +151,7 @@ func (rr *RollReader) push(b byte) {
 
 // read the oldest value
 func (rr *RollReader) pop() byte {
-	return rr.keep[rr.p]
+	return rr.ring[rr.p]
 }
 
 func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
@@ -167,9 +166,9 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 			return true, nil
 		}
 		// not found, append the oldest ring buffer byte to the packet
-		rr.dataBuf = append(rr.dataBuf, rr.pop())
+		rr.sendBuf.WriteByte(rr.pop())
 		// check length
-		if len(rr.dataBuf) == rr.fd.BlockSize {
+		if rr.sendBuf.Len() == rr.fd.BlockSize {
 			pkt := &core.Message{
 				Flag: core.DTA,
 				File: rr.fd,
@@ -180,9 +179,8 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 			if err != nil {
 				return false, err
 			}
-			rr.dataBuf = make([]byte, rr.fd.BlockSize)
+			rr.sendBuf.Reset()
 		}
-		// store the byte in the circular buffer
 	}
 	return false, nil
 }
