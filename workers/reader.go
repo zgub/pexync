@@ -18,15 +18,14 @@ type RollReader struct {
 	receiver chan<- *core.Message
 	fd       *lfs.FileDesc
 	senderID uuid.UUID
-	keep     []byte // circular buffer to 'remember' previous data
+	keep     []byte // circular buffer to 'remember' previous data  bytes.Buffer?
 	p        int
-	dataBuf  []byte
+	dataBuf  []byte // bytes.BUffer?
 }
 
 func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
 		ctx:      ctx,
-		senderID: senderID,
 		reader:   sr,
 		receiver: receiver,
 		fd:       fd,
@@ -35,6 +34,7 @@ func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, sr
 	}
 }
 
+// todo implement map index
 func (rr *RollReader) Start() error {
 	log.Trace().Msg("starting file reader")
 
@@ -185,4 +185,39 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 		// store the byte in the circular buffer
 	}
 	return false, nil
+}
+
+type HashReader struct {
+	ctx   context.Context
+	inbox <-chan *core.Message
+}
+
+func NewHashreader(ctx context.Context, inbox <-chan *core.Message) *HashReader {
+	return &HashReader{
+		ctx:   ctx,
+		inbox: inbox,
+	}
+}
+
+func (w *HashReader) Start() error {
+	var done bool
+	for !done {
+		select {
+		case <-w.ctx.Done():
+			log.Debug().Msg("hash reader closing, context done")
+			done = true
+		case msg := <-w.inbox:
+			if msg.Flag == core.FIN {
+				log.Debug().
+					Msg("hash reader received FIN")
+				done = true
+			} else {
+				err := core.AddChecksums(msg.File)
+				if err != nil {
+					return errors.Wrap(err, "error calculating initial hash array")
+				}
+			}
+		}
+	}
+	return nil
 }

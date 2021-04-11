@@ -2,6 +2,7 @@ package workers
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/google/uuid"
@@ -58,7 +59,7 @@ func (w *LocalReceiver) Start() error {
 					return errors.Wrap(err, "failed during sync init")
 				}
 			case core.FIN:
-				log.Trace().
+				log.Debug().
 					Msg("receiver received FIN")
 				done = true
 				break
@@ -218,25 +219,39 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 		}
 	}
 
-	// add checksums
-	ccIo := viper.GetInt("io_concurrency")
-	rc := 0
+	// starting checksums workers
 	g := new(errgroup.Group)
-	for _, srcFd := range msg.List {
-		if srcFd.State == lfs.Diff || srcFd.State == lfs.Missing {
-			if rc < ccIo {
-				log.Debug().
-					Str("file name", srcFd.FileName).
-					Msg("calculating checksums")
-				g.Go(func() error { return core.AddChecksums(srcFd) })
-				rc++
-			} else {
-				if err := g.Wait(); err != nil {
-					return errors.Wrapf(err, "%s - error adding checksum", srcFd.RelPath)
-				}
-				rc -= ccIo
+	ccIo := viper.GetInt("io_concurrency")
+	hashChan := make(chan *core.Message)
+	for i := 0; i < ccIo; i++ {
+		dCtx := context.Context(w.ctx)
+		w := NewHashreader(dCtx, hashChan)
+		g.Go(func() error { return w.Start() })
+	}
+
+	// send data to checksum workers
+
+	for i, fd := range msg.List {
+		if fd.State == lfs.Diff || fd.State == lfs.Missing {
+			log.Trace().
+				Int("hash reader", i).
+				Str("state", fd.State.String()).
+				Str("file name", fd.Prefix+"/"+fd.FileName).
+				Msg("sending to hash reader")
+			hashChan <- &core.Message{
+				File: fd,
 			}
 		}
+	}
+	for i := 0; i < ccIo; i++ {
+		hashChan <- &core.Message{
+			Flag: core.FIN,
+		}
+	}
+	fmt.Println("waiting")
+	err = g.Wait()
+	if err != nil {
+		return errors.Wrap(err, "error caclulation initial check sums")
 	}
 
 	msg.Flag = core.SUM
