@@ -1,6 +1,8 @@
 package lfs
 
 import (
+	"bytes"
+	"encoding/binary"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,18 +22,18 @@ const (
 	Skip                 // file exists and matches
 )
 
-type DataFlag int
-
-type DataHeader struct {
-	Seq  int64
-	Flag DataFlag
-	Len  int32
-}
-
 const (
-	Data DataFlag = iota
-	HashIndex
+	DataFlag  bool = true
+	IndexFlag bool = false
 )
+
+// lets talk 64bit only to keep this simple
+type Header struct {
+	Seq  int
+	Flag bool // true - data / false - index
+	Len  int
+	// hash index = int = int64 on 64bit machines = 8bytes
+}
 
 var fileStatus = [...]string{
 	"MISS",
@@ -50,7 +52,67 @@ const (
 )
 
 type DataDesc struct {
+	dataBuf     *bytes.Buffer // intermediate data buffer
+	iBuff       []int         // intermediate index buffer
+	writingData bool          // true - writing data / false - writing index data
+	data        *bytes.Buffer
 }
+
+func (dd *DataDesc) WriteByte(b byte) error {
+	if !dd.writingData {
+		// wanna write data bytes, we have to flush the index buffer with the header
+		// first the header
+		header := &Header{
+			Flag: IndexFlag,
+			Len:  len(dd.iBuff),
+		}
+		// write header
+		err := binary.Write(dd.data, binary.BigEndian, header)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// write data
+		err = binary.Write(dd.data, binary.BigEndian, dd.iBuff)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// switch to data writes
+		dd.writingData = true
+		// reset the intermediate data buffer for new data
+		dd.dataBuf.Reset()
+	}
+	err := dd.dataBuf.WriteByte(b)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	return nil
+}
+
+func (dd *DataDesc) WriteIndex(i int) error {
+	if dd.writingData {
+		// first flush data
+		// header first
+		header := &Header{
+			Flag: DataFlag,
+			Len:  dd.dataBuf.Len(),
+		}
+		// write header
+		err := binary.Write(dd.data, binary.BigEndian, header)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// flush the intermediate data buffer to main buffer
+		_, err = dd.data.Write(dd.dataBuf.Bytes())
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// make new slice for index data
+		dd.iBuff = make([]int, 0)
+	}
+	dd.iBuff = append(dd.iBuff, i)
+	return nil
+}
+
 type FileDesc struct {
 	Idx           int32
 	State         State
