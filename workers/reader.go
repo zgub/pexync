@@ -10,41 +10,51 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
-	"github.com/zgub/pexync/lfs"
 )
 
 type RollReader struct {
 	ctx      context.Context
 	reader   *io.SectionReader
 	receiver chan<- *core.Message
-	inbox       chan-> *core.Message
+	inbox    <-chan *core.Message
 	senderID uuid.UUID
 	ring     []byte // ring buffer won't do, nor bytes.Buffer
 	p        int
 	sendBuf  bytes.Buffer
 }
 
-func NewRollReader(ctx context.Context, senderID uuid.UUID, fd *lfs.FileDesc, sr *io.SectionReader, receiver chan<- *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, senderID uuid.UUID, sr *io.SectionReader, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
 		ctx:      ctx,
-		reader:   sr,
+		inbox:    inbox,
 		receiver: receiver,
-		fd:       fd,
 	}
 }
 
 // todo implement map index
-func (rr *RollReader) Start() error {
+func (w *RollReader) Start() error {
 	log.Trace().Msg("starting file reader")
+
+	var (
+		skip, done bool // default false
+		skipCount  int
+	)
+
+	for !done {
+		select {
+		case <-w.ctx.Done():
+			log.Debug().Msg("local receiver closing, context done")
+			done = true
+			break
+		case msg := <-w.inbox:
+			path := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
+
+		}
+	}
 
 	// buffered "should" be better
 	br := bufio.NewReader(rr.reader)
 	buf := make([]byte, rr.fd.BlockSize)
-
-	var (
-		skip      bool // default false
-		skipCount int
-	)
 
 	// initial data for boll hash buffer initialization
 	n, err := io.ReadFull(br, buf)
@@ -170,9 +180,9 @@ func (rr *RollReader) lookup(rh *core.Radler32) (bool, error) {
 		// check length
 		if rr.sendBuf.Len() == rr.fd.BlockSize {
 			pkt := &core.Message{
-				Flag: core.DTA,
-				File: rr.fd,
-				UUID: rr.senderID,
+				Flag:     core.DTA,
+				FileDesc: rr.fd,
+				UUID:     rr.senderID,
 			}
 			// send thepackage when full
 			err := sendWithTimeout(pkt, rr.receiver)
@@ -210,7 +220,7 @@ func (w *HashReader) Start() error {
 					Msg("hash reader received FIN")
 				done = true
 			} else {
-				err := core.AddChecksums(msg.File)
+				err := core.AddChecksums(msg.FileDesc)
 				if err != nil {
 					return errors.Wrap(err, "error calculating initial hash array")
 				}

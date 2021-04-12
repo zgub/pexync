@@ -37,21 +37,21 @@ const (
 )
 
 type FileDesc struct {
-	Idx       int32
-	State     State
-	IsDir     bool
-	RelPath   string
-	Prefix    string
-	FileName  string
-	FileSize  uint64
-	BlockSize int
-	Modified  time.Time
-	Mode      os.FileMode
-	Uid, Gid  uint32
-	Sha1      []byte
-	Weak      []uint32
-	Matches   []int
-	Data      []byte
+	Idx           int32
+	State         State
+	IsDir         bool
+	RelPath       string
+	Prefix        string
+	FileName      string
+	FileSize      uint64
+	BlockSize     int
+	Modified      time.Time
+	Mode          os.FileMode
+	Uid, Gid      uint32
+	Sha1          []byte
+	Weak          []uint32
+	Data          []byte
+	Offset, Limit int64
 }
 
 func ParseDir(walkDir string) ([]*FileDesc, error) {
