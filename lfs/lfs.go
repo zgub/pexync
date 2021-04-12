@@ -20,6 +20,19 @@ const (
 	Skip                 // file exists and matches
 )
 
+type DataFlag int
+
+type DataHeader struct {
+	Seq  int64
+	Flag DataFlag
+	Len  int32
+}
+
+const (
+	Data DataFlag = iota
+	HashIndex
+)
+
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
@@ -36,6 +49,8 @@ const (
 	walkError    = "error listing directory"
 )
 
+type DataDesc struct {
+}
 type FileDesc struct {
 	Idx           int32
 	State         State

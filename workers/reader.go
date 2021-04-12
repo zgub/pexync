@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -13,14 +14,14 @@ import (
 )
 
 type RollReader struct {
-	ctx      context.Context
-	reader   *io.SectionReader
+	ctx context.Context
+	//reader   *io.SectionReader
 	receiver chan<- *core.Message
 	inbox    <-chan *core.Message
-	senderID uuid.UUID
-	ring     []byte // ring buffer won't do, nor bytes.Buffer
-	p        int
-	sendBuf  bytes.Buffer
+	//senderID uuid.UUID
+	ring    []byte // ring buffer won't do, nor bytes.Buffer
+	p       int
+	sendBuf bytes.Buffer
 }
 
 func NewRollReader(ctx context.Context, senderID uuid.UUID, sr *io.SectionReader, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
@@ -41,6 +42,7 @@ func (w *RollReader) Start() error {
 	)
 
 	for !done {
+		// wait for file (or a section)
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("local receiver closing, context done")
@@ -48,6 +50,39 @@ func (w *RollReader) Start() error {
 			break
 		case msg := <-w.inbox:
 			path := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
+			// this could be possibly optimized in order to save file descriptors
+			f, err := os.Open(path)
+			if err != nil {
+				return errors.Wrap(err, "unable to open file for hash comparison")
+			}
+			r := io.ReaderAt(f)
+			sr := io.NewSectionReader(r, msg.FileDesc.Offset, msg.FileDesc.Limit)
+			br := bufio.NewReader(sr)
+			buf := make([]byte, msg.FileDesc.BlockSize)
+
+			n, err := io.ReadFull(br, buf)
+			if n == 0 {
+				if err == nil {
+					return errors.Wrapf(err, "%s - hash comparator receiver 0 bytes while readind the file", msg.FileDesc.FileName)
+				} else if err != io.EOF {
+					return errors.Wrapf(err, "%s error reading file while comparing hashes", msg.FileDesc.FileName)
+				}
+				if err == io.EOF {
+					return nil
+				}
+			}
+
+			// initialize the roll buffer by writting the first block
+			rh := core.Pour()
+			_, err = rh.Write(buf)
+			if err != nil {
+				return errors.Wrap(err, "error writing to roll window")
+			}
+
+			skip, err = w.lookup(rh)
+			if err != nil {
+				return errors.Wrap(err, "hash lookup failure")
+			}
 
 		}
 	}

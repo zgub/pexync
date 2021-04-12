@@ -35,6 +35,7 @@
     4. posle sa senderovi
 5. ak --delete zmaze nesync data
 6. pre kazdy file vznikne jedna alebo dve goroutinny
+7. struktura bbbbbsbbbsssssbbss
 
 ### sender reader
 
