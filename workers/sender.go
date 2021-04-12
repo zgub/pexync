@@ -2,6 +2,9 @@ package workers
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -107,22 +110,20 @@ func (w *LocalSender) Start() error {
 			Str("sending", fd.Prefix+"/"+fd.FileName).
 			Send()
 
-		/*
-			f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
-			if err != nil {
-				return errors.Wrap(err, "error opening file")
-			}
-			stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
-			if err != nil {
-				return errors.Wrap(err, "error file stat")
-			}
-			size := stat.Size()
-			r := io.ReaderAt(f)
-			sr := io.NewSectionReader(r, 0, size)
-			fileReader := NewRollReader(w.ctx, w.uuid, fd, fd.BlockSize, sr, w.receiver)
+		f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
+		if err != nil {
+			return errors.Wrap(err, "error opening file")
+		}
+		stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
+		if err != nil {
+			return errors.Wrap(err, "error file stat")
+		}
+		size := stat.Size()
+		r := io.ReaderAt(f)
+		sr := io.NewSectionReader(r, 0, size)
+		fileReader := NewRollReader(w.ctx, w.uuid, fd, sr, w.receiver)
 
-			g.Go(func() error { return fileReader.Start() })
-		*/
+		g.Go(func() error { return fileReader.Start() })
 
 	}
 
@@ -131,6 +132,7 @@ func (w *LocalSender) Start() error {
 	// validate ???
 
 	// end
+	fmt.Println("waiting")
 	err = g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "file reader error")

@@ -17,7 +17,7 @@ type RollReader struct {
 	ctx      context.Context
 	reader   *io.SectionReader
 	receiver chan<- *core.Message
-	fd       *lfs.FileDesc
+	inbox       chan-> *core.Message
 	senderID uuid.UUID
 	ring     []byte // ring buffer won't do, nor bytes.Buffer
 	p        int
