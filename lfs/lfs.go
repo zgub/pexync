@@ -60,6 +60,50 @@ type DataDesc struct {
 
 func (dd *DataDesc) WriteByte(b byte) error {
 	if !dd.writingData {
+		err := dd.flush()
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+	}
+	err := dd.dataBuf.WriteByte(b)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	return nil
+}
+
+func (dd *DataDesc) WriteIndex(i int) error {
+	if dd.writingData {
+		err := dd.flush()
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+	}
+	dd.iBuff = append(dd.iBuff, i)
+	return nil
+}
+
+func (dd *DataDesc) flush() error {
+	if dd.writingData {
+		// first flush data
+		// header first
+		header := &Header{
+			Flag: DataFlag,
+			Len:  dd.dataBuf.Len(),
+		}
+		// write header
+		err := binary.Write(dd.data, binary.BigEndian, header)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// flush the intermediate data buffer to main buffer
+		_, err = dd.data.Write(dd.dataBuf.Bytes())
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// make new slice for index data
+		dd.iBuff = make([]int, 0)
+	} else {
 		// wanna write data bytes, we have to flush the index buffer with the header
 		// first the header
 		header := &Header{
@@ -81,36 +125,15 @@ func (dd *DataDesc) WriteByte(b byte) error {
 		// reset the intermediate data buffer for new data
 		dd.dataBuf.Reset()
 	}
-	err := dd.dataBuf.WriteByte(b)
-	if err != nil {
-		return errors.Wrap(err, "unable to encode data")
-	}
 	return nil
 }
 
-func (dd *DataDesc) WriteIndex(i int) error {
-	if dd.writingData {
-		// first flush data
-		// header first
-		header := &Header{
-			Flag: DataFlag,
-			Len:  dd.dataBuf.Len(),
-		}
-		// write header
-		err := binary.Write(dd.data, binary.BigEndian, header)
-		if err != nil {
-			return errors.Wrap(err, "unable to encode data")
-		}
-		// flush the intermediate data buffer to main buffer
-		_, err = dd.data.Write(dd.dataBuf.Bytes())
-		if err != nil {
-			return errors.Wrap(err, "unable to encode data")
-		}
-		// make new slice for index data
-		dd.iBuff = make([]int, 0)
+func (dd *DataDesc) Serialize() ([]byte, error) {
+	err := dd.flush()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to encode data")
 	}
-	dd.iBuff = append(dd.iBuff, i)
-	return nil
+	return dd.data.Bytes(), nil
 }
 
 type FileDesc struct {
