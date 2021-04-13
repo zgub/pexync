@@ -3,12 +3,11 @@ package workers
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 	"golang.org/x/sync/errgroup"
@@ -75,7 +74,7 @@ func (w *LocalSender) Start() error {
 		Msg("sender analyzing data from receiver")
 
 	// analyze
-	g := new(errgroup.Group)
+	//g := new(errgroup.Group)
 	sendList := make([]*lfs.FileDesc, 0)
 	for _, fd := range w.list {
 		if fd.State == lfs.Missing && !fd.IsDir {
@@ -103,27 +102,40 @@ func (w *LocalSender) Start() error {
 	}
 
 	// spawn readers
+	rrInbox := make(chan *core.Message)
+	ccIo := viper.GetInt("io_concurency")
+	g := new(errgroup.Group)
+	for i := 0; i < ccIo; i++ {
+		dCtx := context.Context(w.ctx)
+		w := NewRollReader(dCtx, rrInbox, w.receiver)
+		g.Go(func() error { return w.Start() })
+	}
 
 	// send data
 	for _, fd := range sendList {
 		log.Debug().
 			Str("sending", fd.Prefix+"/"+fd.FileName).
 			Send()
-
-		f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
-		if err != nil {
-			return errors.Wrap(err, "error opening file")
+		fd.Offset = 0
+		fd.Limit = int64(fd.FileSize)
+		rrInbox <- &core.Message{
+			FileDesc: fd,
 		}
-		stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
-		if err != nil {
-			return errors.Wrap(err, "error file stat")
-		}
-		size := stat.Size()
-		r := io.ReaderAt(f)
-		sr := io.NewSectionReader(r, 0, size)
-		fileReader := NewRollReader(w.ctx, w.uuid, fd, sr, w.receiver)
 
-		g.Go(func() error { return fileReader.Start() })
+		//f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
+		//if err != nil {
+		//	return errors.Wrap(err, "error opening file")
+		//}
+		//stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
+		//if err != nil {
+		//	return errors.Wrap(err, "error file stat")
+		//}
+		//size := stat.Size()
+		//r := io.ReaderAt(f)
+		//sr := io.NewSectionReader(r, 0, size)
+		//fileReader := NewRollReader(w.ctx, w.uuid, fd, sr, w.receiver)
+
+		//g.Go(func() error { return fileReader.Start() })
 
 	}
 

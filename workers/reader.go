@@ -27,7 +27,7 @@ type RollReader struct {
 	hMap     map[uint32]int
 }
 
-func NewRollReader(ctx context.Context, senderID uuid.UUID, sr *io.SectionReader, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
 		ctx:      ctx,
 		inbox:    inbox,

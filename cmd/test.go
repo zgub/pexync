@@ -3,7 +3,6 @@ package cmd
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/zgub/pexync/core"
 )
 
 func init() {
@@ -26,5 +25,6 @@ var (
 func runTest() {
 	log.Info().
 		Msgf("PeXync version: %s", Version)
-	core.RollTest()
+	//core.RollTest()
+
 }
