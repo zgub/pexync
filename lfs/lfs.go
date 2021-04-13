@@ -1,6 +1,9 @@
 package lfs
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -20,6 +23,20 @@ const (
 	Skip                 // file exists and matches
 )
 
+const (
+	DataFlag  bool = true
+	IndexFlag bool = false
+)
+
+// lets talk 64bit only to keep this simple
+type Header struct {
+	Offset int64 // section reader offset
+	Seq    int   // packet order
+	Flag   bool  // true - data / false - index
+	Len    int
+	// hash index = int = int64 on 64bit machines = 8bytes
+}
+
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
@@ -36,22 +53,144 @@ const (
 	walkError    = "error listing directory"
 )
 
+type DataDesc struct {
+	dataBuf     *bytes.Buffer // intermediate data buffer
+	iBuff       []int64       // intermediate index buffer
+	writingData bool          // true - writing data / false - writing index data
+	data        *bytes.Buffer
+}
+
+func (dd *DataDesc) WriteByte(b byte) error {
+	if !dd.writingData {
+		err := dd.flush()
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+	}
+	err := dd.dataBuf.WriteByte(b)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	return nil
+}
+
+func (dd *DataDesc) WriteIndex(i int64) error {
+	if dd.writingData {
+		err := dd.flush()
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+	}
+	dd.iBuff = append(dd.iBuff, i)
+	return nil
+}
+
+func (dd *DataDesc) flush() error {
+	if dd.writingData {
+		// first flush data
+		// header first
+		header := &Header{
+			Flag: DataFlag,
+			Len:  dd.dataBuf.Len(),
+		}
+		// write header
+		err := binary.Write(dd.data, binary.BigEndian, header)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// flush the intermediate data buffer to main buffer
+		_, err = dd.data.Write(dd.dataBuf.Bytes())
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// make new slice for index data
+		dd.iBuff = make([]int64, 0)
+	} else {
+		// wanna write data bytes, we have to flush the index buffer with the header
+		// first the header
+		header := &Header{
+			Flag: IndexFlag,
+			Len:  len(dd.iBuff),
+		}
+		// write header
+		err := binary.Write(dd.data, binary.BigEndian, header)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// write data
+		err = binary.Write(dd.data, binary.BigEndian, dd.iBuff)
+		if err != nil {
+			return errors.Wrap(err, "unable to encode data")
+		}
+		// switch to data writes
+		dd.writingData = true
+		// reset the intermediate data buffer for new data
+		dd.dataBuf.Reset()
+	}
+	return nil
+}
+
+func (dd *DataDesc) Len() int {
+	// flushed data (bytes) + number of int64 /8 ("bytes") + intermediate data (bytes)
+	// not exact propably, if binary optimizes
+	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.dataBuf.Len()
+}
+
+func (dd *DataDesc) Serialize(offset int64, seq int) ([]byte, error) {
+	// global section reader offset, data sequence
+	header := &Header{
+		Offset: offset,
+		Seq:    seq,
+	}
+	buf := new(bytes.Buffer)
+	// write global header to new buffer
+	err := binary.Write(buf, binary.BigEndian, header)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to encode data")
+	}
+	// flush any remainung data
+	err = dd.flush()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to encode data")
+	}
+	_, err = buf.Write(dd.data.Bytes())
+	return buf.Bytes(), nil
+}
+
 type FileDesc struct {
-	Idx       int32
-	State     State
-	IsDir     bool
-	RelPath   string
-	Prefix    string
-	FileName  string
-	FileSize  uint64
-	BlockSize int
-	Modified  time.Time
-	Mode      os.FileMode
-	Uid, Gid  uint32
-	Sha1      []byte
-	Weak      []uint32
-	Matches   []int
-	Data      []byte
+	Idx           int32
+	State         State
+	IsDir         bool
+	RelPath       string
+	Prefix        string
+	FileName      string
+	FileSize      uint64
+	BlockSize     int
+	Modified      time.Time
+	Mode          os.FileMode
+	Uid, Gid      uint32
+	Sha1          []byte
+	Weak          []uint32
+	Offset, Limit int64
+}
+
+func (fd *FileDesc) SetBlockSize() {
+	// fetch the config value, which has priority if changed and remains 700 if filesize is sma;;
+	fd.BlockSize = viper.GetInt("block_size")
+	// if the file size is big enoigh anf the value is still default
+	if fd.FileSize > 490000 && fd.BlockSize == 700 {
+		// stolen from rsync doc :)
+		sqrt := math.Sqrt(float64(fd.FileSize))
+		fd.BlockSize = int(math.Round(sqrt))
+		if fd.BlockSize > 131072 {
+			fd.BlockSize = 131072
+		}
+	}
+
+	if fd.FileSize < 700 {
+		fd.BlockSize = int(fd.FileSize)
+	}
+
 }
 
 func ParseDir(walkDir string) ([]*FileDesc, error) {
@@ -147,21 +286,46 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	return list, nil
 }
 
-func (fd *FileDesc) SetBlockSize() {
-	// fetch the config value, which has priority if changed and remains 700 if filesize is sma;;
-	fd.BlockSize = viper.GetInt("block_size")
-	// if the file size is big enoigh anf the value is still default
-	if fd.FileSize > 490000 && fd.BlockSize == 700 {
-		// stolen from rsync doc :)
-		sqrt := math.Sqrt(float64(fd.FileSize))
-		fd.BlockSize = int(math.Round(sqrt))
-		if fd.BlockSize > 131072 {
-			fd.BlockSize = 131072
+func (fd *FileDesc) DummyWriter(b []byte) {
+	header := new(Header)
+	r := bytes.NewReader(b)
+	err := binary.Read(r, binary.BigEndian, header)
+	if err != nil {
+		log.Fatal().
+			Msg("error reading section header")
+	}
+	offset := header.Offset
+	seq := header.Seq
+	log.Info().
+		Int64("offset", offset).
+		Int("sequence", seq).
+		Send()
+	for {
+		binary.Read(r, binary.BigEndian, header)
+		len := header.Len
+		flag := header.Flag
+
+		// DataFlag = true
+		if flag {
+			// data
+			dataBuf := make([]byte, len)
+			err = binary.Read(r, binary.BigEndian, dataBuf)
+			if err != nil {
+				log.Fatal().
+					Msg("error reading data")
+			}
+			fmt.Println(dataBuf)
+		} else {
+			indexes := make([]int64, len)
+			err = binary.Read(r, binary.BigEndian, indexes)
+			if err != nil {
+				log.Fatal().
+					Msg("error reading data")
+			}
+			for _, idx := range indexes {
+				fmt.Printf("%d, ", idx)
+			}
+			fmt.Println(".")
 		}
 	}
-
-	if fd.FileSize < 700 {
-		fd.BlockSize = int(fd.FileSize)
-	}
-
 }
