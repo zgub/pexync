@@ -53,6 +53,9 @@ func (w *RollReader) Start() error {
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.DTA:
+				log.Debug().
+					Str("filename", msg.FileDesc.FileName).
+					Msgf("file received by comparator worker")
 				err := w.handleData(msg)
 				if err != nil {
 					return errors.Wrap(err, "unable to compare files")
