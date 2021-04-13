@@ -103,7 +103,8 @@ func (w *LocalSender) Start() error {
 
 	// spawn readers
 	rrInbox := make(chan *core.Message)
-	ccIo := viper.GetInt("io_concurency")
+	ccIo := viper.GetInt("io_concurrency")
+	fmt.Printf("iocc: %d\n", ccIo)
 	g := new(errgroup.Group)
 	for i := 0; i < ccIo; i++ {
 		log.Debug().
@@ -115,16 +116,16 @@ func (w *LocalSender) Start() error {
 
 	// send data
 	for _, fd := range sendList {
-		log.Debug().
-			Str("sending", fd.Prefix+"/"+fd.FileName).
-			Caller().
-			Send()
+
 		fd.Offset = 0
 		fd.Limit = int64(fd.FileSize)
 		rrInbox <- &core.Message{
 			FileDesc: fd,
 		}
-
+		log.Debug().
+			Str("filename", fd.Prefix+"/"+fd.FileName).
+			Caller().
+			Msg("sent to (rock 'n') roll")
 		//f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
 		//if err != nil {
 		//	return errors.Wrap(err, "error opening file")
@@ -142,8 +143,12 @@ func (w *LocalSender) Start() error {
 
 	}
 
-	// wait for the transfer to finish
-
+	// sent all data, stop zee workerz
+	for i := 0; i < ccIo; i++ {
+		rrInbox <- &core.Message{
+			Flag: core.FIN,
+		}
+	}
 	// validate ???
 
 	// end

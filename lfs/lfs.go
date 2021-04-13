@@ -60,6 +60,13 @@ type DataDesc struct {
 	data        *bytes.Buffer
 }
 
+func NewDataDesc() *DataDesc {
+	return &DataDesc{
+		dataBuf: new(bytes.Buffer),
+		data:    new(bytes.Buffer),
+	}
+}
+
 func (dd *DataDesc) WriteByte(b byte) error {
 	if !dd.writingData {
 		err := dd.flush()
