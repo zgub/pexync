@@ -191,6 +191,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			w.push(b)
 		}
 	}
+	return nil
 }
 
 // write value to the circular buffer

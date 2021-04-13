@@ -121,6 +121,7 @@ func (w *LocalSender) Start() error {
 		fd.Limit = int64(fd.FileSize)
 		rrInbox <- &core.Message{
 			FileDesc: fd,
+			Flag:     core.DTA,
 		}
 		log.Debug().
 			Str("filename", fd.Prefix+"/"+fd.FileName).
