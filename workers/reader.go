@@ -48,7 +48,7 @@ func (w *RollReader) Start() error {
 		// wait for file (or a section)
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("local receiver closing, context done")
+			log.Debug().Msg("roll reader closing, context done")
 			done = true
 			break
 		case msg := <-w.inbox:

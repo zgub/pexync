@@ -106,6 +106,8 @@ func (w *LocalSender) Start() error {
 	ccIo := viper.GetInt("io_concurency")
 	g := new(errgroup.Group)
 	for i := 0; i < ccIo; i++ {
+		log.Debug().
+			Msgf("starting roll reader: %d", i)
 		dCtx := context.Context(w.ctx)
 		w := NewRollReader(dCtx, rrInbox, w.receiver)
 		g.Go(func() error { return w.Start() })
@@ -115,6 +117,7 @@ func (w *LocalSender) Start() error {
 	for _, fd := range sendList {
 		log.Debug().
 			Str("sending", fd.Prefix+"/"+fd.FileName).
+			Caller().
 			Send()
 		fd.Offset = 0
 		fd.Limit = int64(fd.FileSize)
