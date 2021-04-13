@@ -70,7 +70,7 @@ func (w *LocalSender) Start() error {
 
 	w.list = msg.List
 	log.Debug().
-		Int("liles", len(w.list)).
+		Int("files", len(w.list)).
 		Msg("sender analyzing data from receiver")
 
 	// analyze
