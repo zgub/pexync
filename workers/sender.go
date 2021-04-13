@@ -37,7 +37,7 @@ func (w *LocalSender) Start() error {
 
 	// send the filelist to the receiver
 	// q := []int{2, 3, 5, 7, 11, 13}
-	pkt := &core.Message{
+	msg := &core.Message{
 		Flag: core.RST,
 		UUID: w.uuid,
 		List: w.list,
@@ -58,18 +58,18 @@ func (w *LocalSender) Start() error {
 	log.Trace().
 		Msgf("sender list length: %d", len(w.list))
 
-	err := sendWithTimeout(pkt, w.receiver)
+	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
 		return err
 	}
 
 	// receive the filelist with checksums
-	pkt, err = recvWithTimeout(w.inbox)
+	msg, err = recvWithTimeout(w.inbox)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
-	w.list = pkt.List
+	w.list = msg.List
 	log.Debug().
 		Int("liles", len(w.list)).
 		Msg("sender analyzing data from receiver")
@@ -139,10 +139,10 @@ func (w *LocalSender) Start() error {
 	}
 	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
-	pkt = &core.Message{
+	msg = &core.Message{
 		Flag: core.FIN,
 		UUID: w.uuid,
 	}
-	sendWithTimeout(pkt, w.receiver)
+	sendWithTimeout(msg, w.receiver)
 	return nil
 }

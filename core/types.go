@@ -32,9 +32,9 @@ func (f Flag) String() string {
 }
 
 type Message struct {
-	// Flags ?
-	Flag     Flag
-	List     []*lfs.FileDesc
-	FileDesc *lfs.FileDesc
-	UUID     uuid.UUID
+	Flag     Flag            // meta data
+	List     []*lfs.FileDesc // meta data
+	FileDesc *lfs.FileDesc   // meta data
+	DataDesc *lfs.DataDesc   // binary (actual) data
+	UUID     uuid.UUID       // meta data
 }
