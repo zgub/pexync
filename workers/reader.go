@@ -17,6 +17,7 @@ const (
 	HashNotFound int64 = -1
 )
 
+// RollReader reads a file, compares the data witha hash table and send either data or indexes
 type RollReader struct {
 	ctx      context.Context
 	receiver chan<- *core.Message
@@ -35,7 +36,6 @@ func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver cha
 	}
 }
 
-// todo implement map index
 func (w *RollReader) Start() error {
 
 	var (
@@ -252,6 +252,19 @@ func (w *RollReader) lookup(sum uint32) int64 {
 	return HashNotFound
 }
 
+// BytesReader reads a file by blocks with given block size and sends them
+type BytesReader struct {
+	ctx      context.Context
+	receiver chan<- *core.Message
+	inbox    <-chan *core.Message
+	senderID uuid.UUID
+}
+
+func (w *BytesReader) Start() error {
+	return nil
+}
+
+// HasReader reads a file and calculates a hashList using a given block size
 type HashReader struct {
 	ctx   context.Context
 	inbox <-chan *core.Message
@@ -265,17 +278,16 @@ func NewHashreader(ctx context.Context, inbox <-chan *core.Message) *HashReader 
 }
 
 func (w *HashReader) Start() error {
-	var done bool
-	for !done {
+	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("hash reader closing, context done")
-			done = true
+			return nil
 		case msg := <-w.inbox:
 			if msg.Flag == core.FIN {
 				log.Debug().
 					Msg("hash reader received FIN")
-				done = true
+				return nil
 			} else {
 				err := core.AddChecksums(msg.FileDesc)
 				if err != nil {
@@ -284,5 +296,4 @@ func (w *HashReader) Start() error {
 			}
 		}
 	}
-	return nil
 }
