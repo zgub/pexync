@@ -3,13 +3,14 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -30,11 +31,9 @@ const (
 
 // lets talk 64bit only to keep this simple
 type Header struct {
-	Offset int64 // section reader offset
-	Seq    int64 // packet order
-	Flag   bool  // true - data / false - index
-	Len    int64
-	// hash index = int = int64 on 64bit machines = 8bytes
+	Seq  int64 // packet order
+	Flag bool  // true - data / false - index
+	Len  int64
 }
 
 var fileStatus = [...]string{
@@ -140,25 +139,20 @@ func (dd *DataDesc) flush() error {
 func (dd *DataDesc) Len() int {
 	// flushed data (bytes) + number of int64 /8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
-	log.Trace().
-		Int("data len", dd.data.Len()).
-		Int("iBuf len", len(dd.iBuff)).
-		Int("data buf len", dd.dataBuf.Len()).
-		Send()
 	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.dataBuf.Len()
 }
 
-func (dd *DataDesc) Serialize(offset int64, seq int64) ([]byte, error) {
+func (dd *DataDesc) Serialize(seq int64) ([]byte, error) {
 	// global section reader offset, data sequence
 	header := &Header{
-		Offset: offset,
-		Seq:    seq,
+		//Offset: offset,
+		Seq: seq,
 	}
 	buf := new(bytes.Buffer)
 	// write global header to new buffer
 	err := binary.Write(buf, binary.BigEndian, header)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to encode data")
+		return nil, errors.Wrap(err, "unable to encode data header")
 	}
 	// flush any remainung data
 	err = dd.flush()
@@ -170,20 +164,19 @@ func (dd *DataDesc) Serialize(offset int64, seq int64) ([]byte, error) {
 }
 
 type FileDesc struct {
-	Idx           int32
-	State         State
-	IsDir         bool
-	RelPath       string
-	Prefix        string
-	FileName      string
-	FileSize      uint64
-	BlockSize     int
-	Modified      time.Time
-	Mode          os.FileMode
-	Uid, Gid      uint32
-	Sha1          []byte
-	Weak          []uint32
-	Offset, Limit int64
+	Idx       int32
+	State     State
+	IsDir     bool
+	RelPath   string
+	Prefix    string
+	FileName  string
+	FileSize  uint64
+	BlockSize int
+	Modified  time.Time
+	Mode      os.FileMode
+	Uid, Gid  uint32
+	Sha1      []byte
+	Weak      []uint32
 }
 
 func (fd *FileDesc) SetBlockSize() {
@@ -298,47 +291,78 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	return list, nil
 }
 
-func DummyWriter(b []byte) {
+func DummyWriter(b []byte) error {
 	header := new(Header)
 	r := bytes.NewReader(b)
+	// read section header
 	err := binary.Read(r, binary.BigEndian, header)
 	if err != nil {
-		log.Fatal().
-			Msg("error reading section header")
+		return errors.Wrap(err, "unable to dummy read ")
 	}
-	offset := header.Offset
+	//offset := header.Offset
 	seq := header.Seq
 	log.Info().
-		Int64("offset", offset).
+		Caller().
 		Int64("sequence", seq).
-		Send()
+		Msg("section header")
 	for {
-		binary.Read(r, binary.BigEndian, header)
-		len := header.Len
+		// read data header
+		err = binary.Read(r, binary.BigEndian, header)
+		if err != nil {
+			if err == io.EOF {
+				log.Trace().
+					Msg("DummyReader - EOF")
+				break
+			} else {
+				return errors.Wrap(err, "DummyReader - error reading header data")
+			}
+		}
+		spew.Dump(header)
+		dLen := header.Len
 		flag := header.Flag
-
 		// DataFlag = true
 		if flag {
 			// data
-			dataBuf := make([]byte, len)
+			/*log.Trace().
+			Int64("data length", dLen).
+			Caller().
+			Msg("data header")*/
+			dataBuf := make([]byte, dLen)
 			err = binary.Read(r, binary.BigEndian, dataBuf)
 			if err != nil {
-				log.Fatal().
-					Err(err).
-					Msg("error reading data")
+				if err == io.EOF {
+					log.Trace().
+						Msg("DummyReader - EOF")
+					break
+				} else {
+					return errors.Wrap(err, "DummyReader - error reading data")
+				}
 			}
-			fmt.Println(dataBuf)
+			/*log.Trace().
+			Int("data length", len(dataBuf)).
+			Send()*/
 		} else {
-			indexes := make([]int64, len)
+			log.Trace().
+				Caller().
+				Int64("index data length", dLen).
+				Msg("index data header")
+			indexes := make([]int64, dLen)
 			err = binary.Read(r, binary.BigEndian, indexes)
 			if err != nil {
-				log.Fatal().
-					Msg("error reading data")
+				if err == io.EOF {
+					log.Trace().
+						Msg("DummyReader - EOF")
+					break
+				} else {
+					return errors.Wrap(err, "DummyReader - error reading index data")
+				}
+
 			}
-			for _, idx := range indexes {
-				fmt.Printf("%d, ", idx)
-			}
-			fmt.Println(".")
+			log.Trace().
+				Int("index data length", len(indexes)).
+				Msg("index data read")
 		}
+		//fmt.Println(".")
 	}
+	return nil
 }

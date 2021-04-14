@@ -63,10 +63,10 @@ func (w *LocalReceiver) Start() error {
 					Msg("receiver received FIN")
 				done = true
 				break
-			case core.DTA:
+			case core.WSQ:
 				log.Trace().
 					Msg("receiver - data received")
-				data, err := msg.DataDesc.Serialize(msg.FileDesc.Offset, msg.FileDesc.Limit)
+				data, err := msg.DataDesc.Serialize(msg.Seq)
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}

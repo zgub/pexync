@@ -117,31 +117,17 @@ func (w *LocalSender) Start() error {
 	// send data
 	for _, fd := range sendList {
 
-		fd.Offset = 0
-		fd.Limit = int64(fd.FileSize)
 		rrInbox <- &core.Message{
 			FileDesc: fd,
-			Flag:     core.DTA,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+			Seq:      0,
 		}
 		log.Debug().
 			Str("filename", fd.Prefix+"/"+fd.FileName).
 			Caller().
 			Msg("sent to (rock 'n') roll")
-		//f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
-		//if err != nil {
-		//	return errors.Wrap(err, "error opening file")
-		//}
-		//stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
-		//if err != nil {
-		//	return errors.Wrap(err, "error file stat")
-		//}
-		//size := stat.Size()
-		//r := io.ReaderAt(f)
-		//sr := io.NewSectionReader(r, 0, size)
-		//fileReader := NewRollReader(w.ctx, w.uuid, fd, sr, w.receiver)
-
-		//g.Go(func() error { return fileReader.Start() })
-
 	}
 
 	// sent all data, stop zee workerz

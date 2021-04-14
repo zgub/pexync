@@ -52,7 +52,7 @@ func (w *RollReader) Start() error {
 			break
 		case msg := <-w.inbox:
 			switch msg.Flag {
-			case core.DTA:
+			case core.RSQ: // read sequence
 				log.Debug().
 					Str("filename", msg.FileDesc.FileName).
 					Msgf("file received by comparator worker")
@@ -83,7 +83,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	}
 	defer f.Close()
 	r := io.ReaderAt(f)
-	sr := io.NewSectionReader(r, msg.FileDesc.Offset, msg.FileDesc.Limit)
+	sr := io.NewSectionReader(r, msg.Offset, msg.Limit)
 	br := bufio.NewReader(sr)
 	buf := make([]byte, msg.FileDesc.BlockSize)
 
@@ -183,13 +183,10 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			// first add the oldes byte to the send buffer
 			dd.WriteByte(w.pop())
 			// check the sendBuf size and send it eventually
-			log.Trace().
-				Int("data length", dd.Len()).
-				Send()
 			if dd.Len() > msg.FileDesc.BlockSize {
 				// append is not thread safe!
 				nMsg := &core.Message{
-					Flag:     core.DTA,
+					Flag:     core.WSQ,
 					FileDesc: msg.FileDesc,
 					DataDesc: dd,
 				}
@@ -208,7 +205,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	// don't forget the last data OR if the whole thing was tiny
 	if dd.Len() > 0 {
 		nMsg := &core.Message{
-			Flag:     core.DTA,
+			Flag:     core.WSQ,
 			FileDesc: msg.FileDesc,
 			DataDesc: dd,
 		}
