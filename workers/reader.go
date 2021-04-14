@@ -38,17 +38,12 @@ func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver cha
 
 func (w *RollReader) Start() error {
 
-	var (
-		done bool // default false
-	)
-
-	for !done {
+	for {
 		// wait for file (or a section)
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("roll reader closing, context done")
-			done = true
-			break
+			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.RSQ: // read sequence
@@ -62,14 +57,12 @@ func (w *RollReader) Start() error {
 			case core.FIN:
 				log.Debug().
 					Msg("file comparator received FIN")
-				done = true
-				break
+				return nil
 			default:
 				return errors.New("unknown message received")
 			}
 		}
 	}
-	return nil
 }
 
 func (w *RollReader) handleData(msg *core.Message) error {
