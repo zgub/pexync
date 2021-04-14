@@ -231,6 +231,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 				Str("file name", fd.Prefix+"/"+fd.FileName).
 				Msg("sending to hash reader")
 			hashChan <- &core.Message{
+				Flag:     core.HSH,
 				FileDesc: fd,
 			}
 		}

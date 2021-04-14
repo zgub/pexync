@@ -9,9 +9,11 @@ import (
 
 type Flag int
 
+// not all are strictly neccessary, but concept is concept :-/
 const (
 	NIL Flag = iota // no flag set
 	INI             // reset, (re)initialize), hello
+	HSH             // calculate hashes
 	SUM             // checksum data from receiver
 	RSQ             // read sequence
 	WSQ             // write sequence

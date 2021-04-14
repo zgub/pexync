@@ -253,7 +253,30 @@ type BytesReader struct {
 	senderID uuid.UUID
 }
 
+func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *BytesReader {
+	return &BytesReader{
+		ctx:      ctx,
+		receiver: receiver,
+		inbox:    inbox,
+	}
+}
+
 func (w *BytesReader) Start() error {
+	for {
+		select {
+		case <-w.ctx.Done():
+			log.Debug().Msg("hash reader closing, context done")
+			return nil
+		case msg := <-w.inbox:
+			if msg.Flag == core.FIN {
+				log.Debug().
+					Msg("hash reader received FIN")
+				return nil
+			} else {
+
+			}
+		}
+	}
 	return nil
 }
 
@@ -277,15 +300,18 @@ func (w *HashReader) Start() error {
 			log.Debug().Msg("hash reader closing, context done")
 			return nil
 		case msg := <-w.inbox:
-			if msg.Flag == core.FIN {
+			switch msg.Flag {
+			case core.FIN:
 				log.Debug().
 					Msg("hash reader received FIN")
 				return nil
-			} else {
+			case core.HSH:
 				err := core.AddChecksums(msg.FileDesc)
 				if err != nil {
 					return errors.Wrap(err, "error calculating initial hash array")
 				}
+			default:
+				return errors.New("HashReader unknown message")
 			}
 		}
 	}
