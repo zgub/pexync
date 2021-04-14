@@ -14,8 +14,8 @@ import (
 
 // LocalSender represents blah balh
 type LocalSender struct {
-	ctx context.Context
-	//list     []*lfs.FileDesc
+	ctx      context.Context
+	srcList  []*lfs.FileDesc
 	inbox    <-chan *core.Message
 	receiver chan<- *core.Message
 	uuid     uuid.UUID
@@ -24,6 +24,7 @@ type LocalSender struct {
 func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
+		srcList:  fl,
 		inbox:    in,
 		receiver: receiver,
 		uuid:     uuid.New(),
@@ -32,27 +33,27 @@ func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Mes
 
 func (w *LocalSender) Start() error {
 
-	// send the filelist to the receiver
-	// q := []int{2, 3, 5, 7, 11, 13}
-	msg := &core.Message{
-		Flag: core.RST,
-		UUID: w.uuid,
-	}
-
 	// calculate block sizes
-	for _, fd := range msg.List {
+	for _, fd := range w.srcList {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
-				Int("calculated block size", fd.BlockSize).
+				Int("block size calculated", fd.BlockSize).
 				Send()
 		}
 	}
 
+	// prepare a message for the receiver
+	msg := &core.Message{
+		Flag: core.RST,
+		UUID: w.uuid,
+		List: w.srcList,
+	}
+
 	log.Debug().
-		Msgf("sender processing file list, length: %d", len(msg.List))
+		Msgf("sending source file list, length: %d", len(w.srcList))
 
 	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
@@ -65,10 +66,9 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	//w.list = msg.List
-
+	w.list = msg.List
 	sendList := make([]*lfs.FileDesc, 0)
-	for _, fd := range msg.List {
+	for _, fd := range w.list {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
