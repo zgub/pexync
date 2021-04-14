@@ -42,14 +42,11 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-	var done bool
-
-	for !done {
+	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("local receiver closing, context done")
-			done = true
-			break
+			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
@@ -60,8 +57,7 @@ func (w *LocalReceiver) Start() error {
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-				done = true
-				break
+				return nil
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
@@ -70,23 +66,21 @@ func (w *LocalReceiver) Start() error {
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
+
+				// spawn filewriters
+
+				// wait for the transfer to finish
+
+				// validate ???
+
+				// end
+
 				lfs.DummyWriter(data, msg.FileDesc.FileName)
 			default:
 				return errors.New("unknown message received")
 			}
 		}
 	}
-
-	// spawn filewriters
-
-	// wait for the transfer to finish
-
-	// validate ???
-
-	// end
-	log.Trace().
-		Msg("local receiver finished")
-	return nil
 }
 
 func (w *LocalReceiver) handleRst(msg *core.Message) error {
