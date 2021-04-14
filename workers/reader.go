@@ -207,6 +207,8 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			Flag:     core.WSQ,
 			FileDesc: msg.FileDesc,
 			DataDesc: dd,
+			Offset:   msg.Offset,
+			Limit:    msg.Limit,
 		}
 		log.Trace().
 			Str("filename", msg.FileDesc.FileName).
@@ -268,16 +270,62 @@ func (w *BytesReader) Start() error {
 			log.Debug().Msg("hash reader closing, context done")
 			return nil
 		case msg := <-w.inbox:
-			if msg.Flag == core.FIN {
+			switch msg.Flag {
+			case core.FIN:
 				log.Debug().
 					Msg("hash reader received FIN")
 				return nil
-			} else {
+			case core.RSQ:
+				offset := msg.Offset
+				limit := msg.Limit
+				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
+				if err != nil {
+					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
+				}
+				r := io.ReaderAt(f)
+				sr := io.NewSectionReader(r, offset, limit)
+				br := bufio.NewReader(sr)
+				buf := make([]byte, msg.FileDesc.BlockSize)
+				dd := lfs.NewDataDesc()
 
+				for {
+					n, err := io.ReadFull(br, buf)
+					if n == 0 {
+
+						if err == nil {
+							return errors.New("read 0 bytes")
+						} else if err != io.EOF {
+							return errors.Wrap(err, "error reading file")
+						}
+						if err == io.EOF {
+							break
+						}
+					}
+					buf = buf[:n]
+					err = dd.WriteBlock(buf)
+					if err != nil {
+						return errors.Wrap(err, "error reading file")
+					}
+					nMsg := &core.Message{
+						Flag:     core.WSQ,
+						FileDesc: msg.FileDesc,
+						DataDesc: dd,
+						Offset:   msg.Offset,
+						Limit:    msg.Limit,
+					}
+					log.Trace().
+						Str("filename", msg.FileDesc.FileName).
+						Msg("sending pure data")
+					err = sendWithTimeout(nMsg, w.receiver)
+					if err != nil {
+						return errors.Wrap(err, "error sending data")
+					}
+				}
+			default:
+				return errors.New("BytesReader unknown message")
 			}
 		}
 	}
-	return nil
 }
 
 // HasReader reads a file and calculates a hashList using a given block size

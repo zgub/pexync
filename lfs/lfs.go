@@ -66,6 +66,22 @@ func NewDataDesc() *DataDesc {
 	}
 }
 
+func (dd *DataDesc) WriteBlock(b []byte) error {
+	header := &Header{
+		Flag: DataFlag,
+		Len:  int64(len(b)),
+	}
+	err := binary.Write(dd.data, binary.BigEndian, header)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	_, err = dd.data.Write(b)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	return nil
+}
+
 func (dd *DataDesc) WriteByte(b byte) error {
 	if !dd.writingData {
 		err := dd.flush()
