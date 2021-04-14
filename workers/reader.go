@@ -81,6 +81,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to open file for hash comparison")
 	}
+	defer f.Close()
 	r := io.ReaderAt(f)
 	sr := io.NewSectionReader(r, msg.FileDesc.Offset, msg.FileDesc.Limit)
 	br := bufio.NewReader(sr)
@@ -125,6 +126,10 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	// store the old buf
 	w.ring = buf
 
+	log.Trace().
+		Str("filename", msg.FileDesc.FileName).
+		Bool("first block skipped", hIndex != HashNotFound).
+		Msg("Rolling")
 	// now continue through the rest of the file secion
 	for {
 		n, err := io.ReadFull(br, buf)
@@ -178,20 +183,41 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			// first add the oldes byte to the send buffer
 			dd.WriteByte(w.pop())
 			// check the sendBuf size and send it eventually
+			log.Trace().
+				Int("data length", dd.Len()).
+				Send()
 			if dd.Len() > msg.FileDesc.BlockSize {
 				// append is not thread safe!
-				msg := &core.Message{
+				nMsg := &core.Message{
 					Flag:     core.DTA,
 					FileDesc: msg.FileDesc,
 					DataDesc: dd,
 				}
-				err = sendWithTimeout(msg, w.receiver)
+				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
+					Msg("sending data")
+				err = sendWithTimeout(nMsg, w.receiver)
 				if err != nil {
 					return errors.Wrap(err, "error sending data")
 				}
 			}
 			// then push the new into the ring buffer
 			w.push(b)
+		}
+	}
+	// don't forget the last data OR if the whole thing was tiny
+	if dd.Len() > 0 {
+		nMsg := &core.Message{
+			Flag:     core.DTA,
+			FileDesc: msg.FileDesc,
+			DataDesc: dd,
+		}
+		log.Trace().
+			Str("filename", msg.FileDesc.FileName).
+			Msg("sending remaining data")
+		err = sendWithTimeout(nMsg, w.receiver)
+		if err != nil {
+			return errors.Wrap(err, "error sending data")
 		}
 	}
 	return nil

@@ -140,6 +140,11 @@ func (dd *DataDesc) flush() error {
 func (dd *DataDesc) Len() int {
 	// flushed data (bytes) + number of int64 /8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
+	log.Trace().
+		Int("data len", dd.data.Len()).
+		Int("iBuf len", len(dd.iBuff)).
+		Int("data buf len", dd.dataBuf.Len()).
+		Send()
 	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.dataBuf.Len()
 }
 
