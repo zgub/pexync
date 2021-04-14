@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/google/uuid"
@@ -65,6 +64,7 @@ func (w *LocalReceiver) Start() error {
 				break
 			case core.WSQ:
 				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
 					Msg("receiver - data received")
 				data, err := msg.DataDesc.Serialize(msg.Seq)
 				if err != nil {
@@ -143,8 +143,8 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 					Str("sender path", srcFd.RelPath).
 					Uint64("source file size", srcFd.FileSize).
 					Uint64("destination file size", dstFd.FileSize).
-					Time("source file mod", srcFd.Modified).
-					Time("receiver file mod", dstFd.Modified).
+					Time("source file modified", srcFd.Modified.UTC()).
+					Time("receiver file modified", dstFd.Modified.UTC()).
 					Msg("receiver DIFF")
 
 				srcFd.State = lfs.Diff
@@ -218,8 +218,10 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 				}
 				srcFd.State = lfs.Missing
 				log.Debug().
-					Str("path", path).
-					Msg("receiver regular missing file")
+					Str("sender path", srcFd.RelPath).
+					Uint64("source file size", srcFd.FileSize).
+					Time("source file modified", srcFd.Modified.UTC()).
+					Msg("receiver MISS")
 			}
 		}
 	}
@@ -253,7 +255,6 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 			Flag: core.FIN,
 		}
 	}
-	fmt.Println("waiting")
 	err = g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error caclulation initial check sums")

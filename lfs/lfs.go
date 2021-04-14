@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -53,6 +52,7 @@ const (
 )
 
 type DataDesc struct {
+	ic, bc      int64         // index / byte counters
 	dataBuf     *bytes.Buffer // intermediate data buffer
 	iBuff       []int64       // intermediate index buffer
 	writingData bool          // true - writing data / false - writing index data
@@ -77,6 +77,7 @@ func (dd *DataDesc) WriteByte(b byte) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to encode data")
 	}
+	dd.bc++
 	return nil
 }
 
@@ -88,6 +89,7 @@ func (dd *DataDesc) WriteIndex(i int64) error {
 		}
 	}
 	dd.iBuff = append(dd.iBuff, i)
+	dd.ic++
 	return nil
 }
 
@@ -143,9 +145,12 @@ func (dd *DataDesc) Len() int {
 }
 
 func (dd *DataDesc) Serialize(seq int64) ([]byte, error) {
+	log.Debug().
+		Int64("indexes", dd.ic).
+		Int64("bytes", dd.bc).
+		Msg("serializing")
 	// global section reader offset, data sequence
 	header := &Header{
-		//Offset: offset,
 		Seq: seq,
 	}
 	buf := new(bytes.Buffer)
@@ -202,10 +207,6 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	//walkPath = prefix + walkPath
 	var list []*FileDesc
 
-	log.Trace().
-		Str("walk dir", walkDir).
-		Send()
-
 	// don't do walk over abs path, makes comparing more difficult
 	walkDirAbs, err := filepath.Abs(walkDir)
 	if err != nil {
@@ -258,7 +259,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			Str("path", path).
 			Str("prefix path", prefix).
 			Bool("is dir", entry.IsDir()).
-			Msg("parsing")
+			Msg("parsing fs entry")
 
 		if relPath != "." {
 			fileDesc := &FileDesc{
@@ -283,9 +284,9 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		return nil, errors.Wrap(err, "error listing directory")
 	}
 	log.Trace().
-		Int("returning filelist size", len(list)).
-		Str("walk dir", walkDir).
-		Send()
+		Int("entries", len(list)).
+		Str("directory", walkDir).
+		Msg("directory walk")
 		// increment file index
 	idx++
 	return list, nil
@@ -317,7 +318,7 @@ func DummyWriter(b []byte) error {
 				return errors.Wrap(err, "DummyReader - error reading header data")
 			}
 		}
-		spew.Dump(header)
+		//spew.Dump(header)
 		dLen := header.Len
 		flag := header.Flag
 		// DataFlag = true

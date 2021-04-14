@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -15,8 +14,8 @@ import (
 
 // LocalSender represents blah balh
 type LocalSender struct {
-	ctx      context.Context
-	list     []*lfs.FileDesc
+	ctx context.Context
+	//list     []*lfs.FileDesc
 	inbox    <-chan *core.Message
 	receiver chan<- *core.Message
 	uuid     uuid.UUID
@@ -25,7 +24,6 @@ type LocalSender struct {
 func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
-		list:     fl,
 		inbox:    in,
 		receiver: receiver,
 		uuid:     uuid.New(),
@@ -39,11 +37,10 @@ func (w *LocalSender) Start() error {
 	msg := &core.Message{
 		Flag: core.RST,
 		UUID: w.uuid,
-		List: w.list,
 	}
 
 	// calculate block sizes
-	for _, fd := range w.list {
+	for _, fd := range msg.List {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().
@@ -54,8 +51,8 @@ func (w *LocalSender) Start() error {
 		}
 	}
 
-	log.Trace().
-		Msgf("sender list length: %d", len(w.list))
+	log.Debug().
+		Msgf("sender processing file list, length: %d", len(msg.List))
 
 	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
@@ -68,15 +65,10 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	w.list = msg.List
-	log.Debug().
-		Int("files", len(w.list)).
-		Msg("sender analyzing data from receiver")
+	//w.list = msg.List
 
-	// analyze
-	//g := new(errgroup.Group)
 	sendList := make([]*lfs.FileDesc, 0)
-	for _, fd := range w.list {
+	for _, fd := range msg.List {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
@@ -104,7 +96,6 @@ func (w *LocalSender) Start() error {
 	// spawn readers
 	rrInbox := make(chan *core.Message)
 	ccIo := viper.GetInt("io_concurrency")
-	fmt.Printf("iocc: %d\n", ccIo)
 	g := new(errgroup.Group)
 	for i := 0; i < ccIo; i++ {
 		log.Debug().
@@ -124,10 +115,6 @@ func (w *LocalSender) Start() error {
 			Limit:    int64(fd.FileSize),
 			Seq:      0,
 		}
-		log.Debug().
-			Str("filename", fd.Prefix+"/"+fd.FileName).
-			Caller().
-			Msg("sent to (rock 'n') roll")
 	}
 
 	// sent all data, stop zee workerz
@@ -139,7 +126,6 @@ func (w *LocalSender) Start() error {
 	// validate ???
 
 	// end
-	fmt.Println("waiting")
 	err = g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "file reader error")

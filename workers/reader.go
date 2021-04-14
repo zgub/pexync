@@ -37,7 +37,6 @@ func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver cha
 
 // todo implement map index
 func (w *RollReader) Start() error {
-	log.Trace().Msg("starting file reader")
 
 	var (
 		done bool // default false
@@ -192,11 +191,15 @@ func (w *RollReader) handleData(msg *core.Message) error {
 				}
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msg("sending data")
+					Int64("datadesc len", int64(dd.Len())).
+					Int("block size", msg.FileDesc.BlockSize).
+					Msg("roll reader sending data")
 				err = sendWithTimeout(nMsg, w.receiver)
 				if err != nil {
 					return errors.Wrap(err, "error sending data")
 				}
+				// new data block
+				dd = lfs.NewDataDesc()
 			}
 			// then push the new into the ring buffer
 			w.push(b)
