@@ -66,16 +66,16 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	w.list = msg.List
-	sendList := make([]*lfs.FileDesc, 0)
-	for _, fd := range w.list {
+	// prepare a slice with the delta
+	diffList := make([]*lfs.FileDesc, 0)
+	for _, fd := range msg.List {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
 				Int("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msg(fd.State.String())
-			sendList = append(sendList, fd)
+			diffList = append(diffList, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
 			log.Debug().
@@ -83,7 +83,7 @@ func (w *LocalSender) Start() error {
 				Int("checksum received", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msg(fd.State.String())
-			sendList = append(sendList, fd)
+			diffList = append(diffList, fd)
 
 		} else {
 			// skipped file
@@ -106,7 +106,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	// send data
-	for _, fd := range sendList {
+	for _, fd := range diffList {
 
 		rrInbox <- &core.Message{
 			FileDesc: fd,
