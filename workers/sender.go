@@ -47,7 +47,7 @@ func (w *LocalSender) Start() error {
 
 	// prepare a message for the receiver
 	msg := &core.Message{
-		Flag: core.RST,
+		Flag: core.INI,
 		UUID: w.uuid,
 		List: w.srcList,
 	}
@@ -74,15 +74,15 @@ func (w *LocalSender) Start() error {
 			log.Debug().
 				Int("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msg(fd.State.String())
+				Msgf("sender %s", fd.State.String())
 			diffList = append(diffList, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
 			log.Debug().
 				Int("block size", fd.BlockSize).
-				Int("checksum received", len(fd.Weak)).
+				Int("hashes count", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msg(fd.State.String())
+				Msgf("sender %s", fd.State.String())
 			diffList = append(diffList, fd)
 
 		} else {

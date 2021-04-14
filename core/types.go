@@ -11,7 +11,7 @@ type Flag int
 
 const (
 	NIL Flag = iota // no flag set
-	RST             // reset, (re)initialize), hello
+	INI             // reset, (re)initialize), hello
 	SUM             // checksum data from receiver
 	RSQ             // read sequence
 	WSQ             // write sequence
@@ -22,7 +22,7 @@ const (
 
 var messageTypes = [...]string{
 	"NIL",
-	"RST",
+	"INI",
 	"SUM",
 	"RSQ",
 	"WSQ",

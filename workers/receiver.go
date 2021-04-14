@@ -52,7 +52,7 @@ func (w *LocalReceiver) Start() error {
 			break
 		case msg := <-w.inbox:
 			switch msg.Flag {
-			case core.RST:
+			case core.INI:
 				err := w.handleRst(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
@@ -70,7 +70,7 @@ func (w *LocalReceiver) Start() error {
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
-				lfs.DummyWriter(data)
+				lfs.DummyWriter(data, msg.FileDesc.FileName)
 			default:
 				return errors.New("unknown message received")
 			}
@@ -91,9 +91,9 @@ func (w *LocalReceiver) Start() error {
 
 func (w *LocalReceiver) handleRst(msg *core.Message) error {
 	w.senderUUID = msg.UUID
-	log.Trace().
+	log.Debug().
 		Str("sender uuid", w.senderUUID.String()).
-		Msgf("local receiver received file list, length: %d", len(msg.List))
+		Msgf("receiver handling src file list, length: %d", len(msg.List))
 	// stop all writers if any, this is a reset!
 
 	// get local (destination file list)
@@ -107,13 +107,10 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 		return err
 	}
 
-	log.Debug().Msg("receiver listing files")
 	dstList, err := lfs.ParseDir(dstDir)
 	if err != nil {
 		return errors.Wrap(err, "unable to list directory")
 	}
-
-	log.Debug().Msg("receiver parsing files")
 
 	// build a map of local entries for faster lookup
 	dstMap := make(map[string]*lfs.FileDesc, len(dstList))
@@ -124,9 +121,6 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 	for _, srcFd := range msg.List {
 		path := dstDir + srcFd.RelPath
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
-			log.Debug().
-				Str("path", path).
-				Msg("file exists")
 			// it does exist on destination
 			if srcFd.FileSize == dstFd.FileSize && srcFd.Modified == dstFd.Modified {
 				// check permission, modtime and ownership and aupdate if needed
@@ -159,7 +153,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 					}
 					// check for zero sized files
 					if srcFd.FileSize == 0 {
-						log.Debug().
+						log.Trace().
 							Str("path", path).
 							Msg("empty file")
 
@@ -171,7 +165,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 						srcFd.State = lfs.Skip
 					}
 				} else {
-					log.Debug().
+					log.Trace().
 						Str("path", path).
 						Msg("receiver fixing dir meta")
 					// directory that exists, check meta only
@@ -185,9 +179,6 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 			continue
 		} else {
 			// it does not exist on destination, check if it's a ditrectory
-			log.Debug().
-				Str("path", path).
-				Msg("file does not exist")
 			if srcFd.IsDir {
 				// create directory
 				log.Debug().
@@ -203,7 +194,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 				// set it as missing
 				// check for zero sized files
 				if srcFd.FileSize == 0 {
-					log.Debug().
+					log.Trace().
 						Str("path", path).
 						Msg("empty file")
 					file, err := os.Create(path)

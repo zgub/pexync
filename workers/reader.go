@@ -88,6 +88,9 @@ func (w *RollReader) handleData(msg *core.Message) error {
 
 	// create a hash map for faster lookup
 	w.hMap = make(map[uint32]int)
+	if len(msg.FileDesc.Weak) == 0 {
+		log.Warn().Msg("WTF")
+	}
 	for i, h := range msg.FileDesc.Weak {
 		w.hMap[h] = i
 	}
