@@ -340,7 +340,7 @@ func DummyWriter(b []byte, name string) error {
 			log.Trace().
 				Int64("length", dLen).
 				Str("filename", name).
-				Msg("DummyWritter- byte data header")
+				Msg("DummyWritter - byte data header")
 			dataBuf := make([]byte, dLen)
 			err = binary.Read(r, binary.BigEndian, dataBuf)
 			if err != nil {
@@ -352,10 +352,10 @@ func DummyWriter(b []byte, name string) error {
 					return errors.Wrap(err, "DummyWriter - error reading data")
 				}
 			}
-			log.Trace().
-				Int("length", len(dataBuf)).
-				Str("filename", name).
-				Msg("DummyWritter - byte data processed")
+			/*log.Trace().
+			Int("length", len(dataBuf)).
+			Str("filename", name).
+			Msg("DummyWritter - byte data processed")*/
 		} else {
 			log.Trace().
 				Int64("length", dLen).

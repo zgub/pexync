@@ -94,21 +94,40 @@ func (w *LocalSender) Start() error {
 		}
 	}
 
-	// spawn readers if we have diff files
 	rrInbox := make(chan *core.Message)
+	brInbox := make(chan *core.Message)
 	ccIo := viper.GetInt("io_concurrency")
 	g := new(errgroup.Group)
-	for i := 0; i < ccIo; i++ {
+	dCtx := context.Context(w.ctx)
+
+	// spawn readers if we have diff files
+	if len(diffList) > 0 {
 		log.Debug().
-			Msgf("starting roll reader: %d", i)
-		dCtx := context.Context(w.ctx)
-		w := NewRollReader(dCtx, rrInbox, w.receiver)
-		g.Go(func() error { return w.Start() })
+			Msg("sender spawning roll readers")
+
+		for i := 0; i < ccIo; i++ {
+			log.Debug().
+				Msgf("starting roll reader: %d", i)
+
+			w := NewRollReader(dCtx, rrInbox, w.receiver)
+			g.Go(func() error { return w.Start() })
+		}
 	}
 
 	// spawn missing file senders if we have missing files
+	if len(missList) > 0 {
+		log.Debug().
+			Msg("sender spawning bytes readers")
 
-	// send data
+		for i := 0; i < ccIo; i++ {
+			log.Debug().
+				Msgf("starting byte reader: %d", i)
+			w := NewBytesReader(dCtx, brInbox, w.receiver)
+			g.Go(func() error { return w.Start() })
+		}
+	}
+
+	// send data - diff first
 	for _, fd := range diffList {
 
 		rrInbox <- &core.Message{
@@ -120,10 +139,31 @@ func (w *LocalSender) Start() error {
 		}
 	}
 
-	// sent all data, stop zee workerz
-	for i := 0; i < ccIo; i++ {
-		rrInbox <- &core.Message{
-			Flag: core.FIN,
+	// new files next
+	for _, fd := range missList {
+
+		brInbox <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+			Seq:      0,
+		}
+	}
+
+	// all data sent, stop zee workerz
+	if len(diffList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			rrInbox <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
+	if len(missList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			brInbox <- &core.Message{
+				Flag: core.FIN,
+			}
 		}
 	}
 	// validate ???

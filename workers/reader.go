@@ -267,13 +267,13 @@ func (w *BytesReader) Start() error {
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("hash reader closing, context done")
+			log.Debug().Msg("bytes reader closing, context done")
 			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.FIN:
 				log.Debug().
-					Msg("hash reader received FIN")
+					Msg("bytes reader received FIN")
 				return nil
 			case core.RSQ:
 				offset := msg.Offset
