@@ -31,9 +31,9 @@ const (
 // lets talk 64bit only to keep this simple
 type Header struct {
 	Offset int64 // section reader offset
-	Seq    int   // packet order
+	Seq    int64 // packet order
 	Flag   bool  // true - data / false - index
-	Len    int
+	Len    int64
 	// hash index = int = int64 on 64bit machines = 8bytes
 }
 
@@ -98,7 +98,7 @@ func (dd *DataDesc) flush() error {
 		// header first
 		header := &Header{
 			Flag: DataFlag,
-			Len:  dd.dataBuf.Len(),
+			Len:  int64(dd.dataBuf.Len()),
 		}
 		// write header
 		err := binary.Write(dd.data, binary.BigEndian, header)
@@ -117,7 +117,7 @@ func (dd *DataDesc) flush() error {
 		// first the header
 		header := &Header{
 			Flag: IndexFlag,
-			Len:  len(dd.iBuff),
+			Len:  int64(len(dd.iBuff)),
 		}
 		// write header
 		err := binary.Write(dd.data, binary.BigEndian, header)
@@ -148,7 +148,7 @@ func (dd *DataDesc) Len() int {
 	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.dataBuf.Len()
 }
 
-func (dd *DataDesc) Serialize(offset int64, seq int) ([]byte, error) {
+func (dd *DataDesc) Serialize(offset int64, seq int64) ([]byte, error) {
 	// global section reader offset, data sequence
 	header := &Header{
 		Offset: offset,
@@ -298,7 +298,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	return list, nil
 }
 
-func (fd *FileDesc) DummyWriter(b []byte) {
+func DummyWriter(b []byte) {
 	header := new(Header)
 	r := bytes.NewReader(b)
 	err := binary.Read(r, binary.BigEndian, header)
@@ -310,7 +310,7 @@ func (fd *FileDesc) DummyWriter(b []byte) {
 	seq := header.Seq
 	log.Info().
 		Int64("offset", offset).
-		Int("sequence", seq).
+		Int64("sequence", seq).
 		Send()
 	for {
 		binary.Read(r, binary.BigEndian, header)
@@ -324,6 +324,7 @@ func (fd *FileDesc) DummyWriter(b []byte) {
 			err = binary.Read(r, binary.BigEndian, dataBuf)
 			if err != nil {
 				log.Fatal().
+					Err(err).
 					Msg("error reading data")
 			}
 			fmt.Println(dataBuf)

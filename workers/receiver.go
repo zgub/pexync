@@ -65,7 +65,12 @@ func (w *LocalReceiver) Start() error {
 				break
 			case core.DTA:
 				log.Trace().
-					Msg("data received")
+					Msg("receiver - data received")
+				data, err := msg.DataDesc.Serialize(msg.FileDesc.Offset, msg.FileDesc.Limit)
+				if err != nil {
+					return errors.Wrap(err, "error serializing data")
+				}
+				lfs.DummyWriter(data)
 			default:
 				return errors.New("unknown message received")
 			}
