@@ -68,6 +68,7 @@ func (w *LocalSender) Start() error {
 
 	// prepare a slice with the delta
 	diffList := make([]*lfs.FileDesc, 0)
+	missList := make([]*lfs.FileDesc, 0)
 	for _, fd := range msg.List {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
@@ -75,7 +76,7 @@ func (w *LocalSender) Start() error {
 				Int("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("sender %s", fd.State.String())
-			diffList = append(diffList, fd)
+			missList = append(missList, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
 			log.Debug().
@@ -93,7 +94,7 @@ func (w *LocalSender) Start() error {
 		}
 	}
 
-	// spawn readers
+	// spawn readers if we have diff files
 	rrInbox := make(chan *core.Message)
 	ccIo := viper.GetInt("io_concurrency")
 	g := new(errgroup.Group)
@@ -104,6 +105,8 @@ func (w *LocalSender) Start() error {
 		w := NewRollReader(dCtx, rrInbox, w.receiver)
 		g.Go(func() error { return w.Start() })
 	}
+
+	// spawn missing file senders if we have missing files
 
 	// send data
 	for _, fd := range diffList {

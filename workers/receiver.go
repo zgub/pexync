@@ -230,7 +230,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 	// send data to checksum workers
 
 	for i, fd := range msg.List {
-		if fd.State == lfs.Diff || fd.State == lfs.Missing {
+		if fd.State == lfs.Diff {
 			log.Trace().
 				Int("hash reader", i).
 				Str("state", fd.State.String()).
