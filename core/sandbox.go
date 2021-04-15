@@ -522,7 +522,6 @@ func RollTest() {
 		}
 		sum := adler32.Checksum(buf)
 		hashList = append(hashList, sum)
-		fmt.Printf("data: %s\t sum: %d\n", string(buf), sum)
 	}
 	f.Close()
 	rh := Pour()
@@ -550,7 +549,6 @@ func RollTest() {
 	rh.Write(buf)
 	sum := rh.Sum32()
 	skip := lookup(sum, hashList)
-	fmt.Printf("\n***\ndata: %s\t sum: %d, skip: %t\n", string(buf), sum, skip)
 	var bBuf bytes.Buffer
 	for {
 		n, err := io.ReadFull(r, buf)
@@ -579,7 +577,6 @@ func RollTest() {
 			sum = rh.Sum32()
 			rh.WriteWindow(&bBuf)
 			skip = lookup(sum, hashList)
-			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
 			bBuf.Reset()
 			continue
 		}
@@ -588,7 +585,6 @@ func RollTest() {
 			sum = rh.Sum32()
 			rh.WriteWindow(&bBuf)
 			skip = lookup(sum, hashList)
-			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
 			bBuf.Reset()
 		}
 	}
@@ -619,12 +615,10 @@ func CreateTestFile(blockSize, count int) error {
 			n := utf8.EncodeRune(buf, rn)
 			buf = buf[:n]
 			n, err = bw.Write(buf)
-			//fmt.Printf("%d ", n)
 			if err != nil {
 				return err
 			}
 		}
-		//fmt.Printf("- %d\n", blockSize)
 		rn++
 	}
 

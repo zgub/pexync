@@ -3,7 +3,6 @@ package workers
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -299,7 +298,6 @@ func (w *BytesReader) Start() error {
 					dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 
 					n, err := io.ReadFull(br, buf)
-					fmt.Printf("s: %d n: %d\n", seq, n)
 					if n == 0 {
 						if err == nil {
 							return errors.New("read 0 bytes")
@@ -307,7 +305,6 @@ func (w *BytesReader) Start() error {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
-							fmt.Printf("EOF s: %d n: %d\n", seq, n)
 							break
 						}
 					}

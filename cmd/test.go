@@ -32,5 +32,10 @@ func runTest() {
 			Err(err).
 			Msg("unable to create test file")
 	}
-
+	err = core.CreateTestFile(700, 5)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("unable to create test file")
+	}
 }

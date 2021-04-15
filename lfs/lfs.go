@@ -164,12 +164,12 @@ func (dd *DataDesc) Serialize() ([]byte, error) {
 	log.Debug().
 		Int64("length", int64(dd.Len())).
 		Msg("serializing")
-	// global section reader offset, data sequence
 	// flush any remainung data
 	err := dd.flush()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode data")
 	}
+	// global header
 	header := &Header{
 		FileIndex: dd.fileIndex,
 		Offset:    dd.offset,
@@ -274,6 +274,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		}
 		prefix := filepath.Dir(absPath)
 		log.Trace().
+			Int64("file index", idx).
 			Str("path", path).
 			Str("prefix path", prefix).
 			Bool("is dir", entry.IsDir()).
@@ -295,6 +296,9 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 
 			list = append(list, fileDesc)
 		}
+
+		// increment file index
+		idx++
 		return nil
 	})
 
@@ -302,58 +306,62 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		return nil, errors.Wrap(err, "error listing directory")
 	}
 
-	// increment file index
-	idx++
 	return list, nil
 }
 
 func DummyWriter(b []byte, name string) error {
+	var (
+		headerCnt, dataCnt, indexCnt int64
+	)
 	header := new(Header)
 	r := bytes.NewReader(b)
-	// read section header
+	// read global
 	err := binary.Read(r, binary.BigEndian, header)
 	if err != nil {
 		return errors.Wrap(err, "unable to dummy read ")
 	}
-	//offset := header.Offset
-	seq := header.Seq
+	headerCnt++
 	log.Trace().
-		Int64("sequence", seq).
+		Int64("file index", header.FileIndex).
+		Int64("offset", header.Offset).
+		Int64("section data length", header.Len).
 		Str("filename", name).
-		Msg("DummyWriter - section header")
+		Msg("DummyWriter - section global header")
 	for {
 		// read data header
 		err = binary.Read(r, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
 				log.Trace().
-					Msg("DummyWriter - EOF")
+					Msg("DummyWriter - EOF - while reading global header")
 				break
 			} else {
 				return errors.Wrap(err, "DummyWritter - error reading header data")
 			}
 		}
+		headerCnt++
 		//spew.Dump(header)
-		dLen := header.Len
-		flag := header.Flag
+		//dLen := header.Len
+		//flag := header.Flag
 		// DataFlag = true
-		if flag {
-			// data
+		if header.Flag {
+			// true = data
 			/*log.Trace().
 			Int64("length", dLen).
 			Str("filename", name).
 			Msg("DummyWritter - byte data header")*/
-			dataBuf := make([]byte, dLen)
+			dataBuf := make([]byte, header.Len)
 			err = binary.Read(r, binary.BigEndian, dataBuf)
 			if err != nil {
 				if err == io.EOF {
 					log.Trace().
-						Msg("DummyWriter - EOF")
+						Msg("DummyWriter - EOF - while reading data")
 					break
 				} else {
 					return errors.Wrap(err, "DummyWriter - error reading data")
 				}
 			}
+			dataCnt += header.Len
 			/*log.Trace().
 			Int("length", len(dataBuf)).
 			Str("filename", name).
@@ -363,24 +371,31 @@ func DummyWriter(b []byte, name string) error {
 			Int64("length", dLen).
 			Str("filename", name).
 			Msg("DummyWriter - index data header")*/
-			indexes := make([]int64, dLen)
+			indexes := make([]int64, header.Len)
 			err = binary.Read(r, binary.BigEndian, indexes)
 			if err != nil {
 				if err == io.EOF {
 					log.Trace().
-						Msg("DummyWritter - EOF")
+						Msg("DummyWritter - EOF - while reading indexes")
 					break
 				} else {
 					return errors.Wrap(err, "DummyWriter - error reading index data")
 				}
 
 			}
-			log.Trace().
-				Int("length", len(indexes)).
-				Str("filename", name).
-				Msg("DummyWriter - index data processed")
+			indexCnt += header.Len
+			/*log.Trace().
+			Int("length", len(indexes)).
+			Str("filename", name).
+			Msg("DummyWriter - index data processed")*/
 		}
-		//fmt.Println(".")
 	}
+	log.Trace().
+		Int64("headers", headerCnt).
+		Int64("bytes", dataCnt).
+		Int64("indexes", indexCnt).
+		Int64("file index", header.FileIndex).
+		Str("filename", name).
+		Msg("decoded")
 	return nil
 }
