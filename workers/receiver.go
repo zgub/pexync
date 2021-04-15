@@ -50,7 +50,7 @@ func (w *LocalReceiver) Start() error {
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
-				err := w.handleRst(msg)
+				err := w.handleIni(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
@@ -83,7 +83,7 @@ func (w *LocalReceiver) Start() error {
 	}
 }
 
-func (w *LocalReceiver) handleRst(msg *core.Message) error {
+func (w *LocalReceiver) handleIni(msg *core.Message) error {
 	w.senderUUID = msg.UUID
 	log.Debug().
 		Str("sender uuid", w.senderUUID.String()).
@@ -111,7 +111,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 	for _, dstFd := range dstList {
 		dstMap[dstFd.RelPath] = dstFd
 	}
-
+	diffList := make([]*lfs.FileDesc, 0)
 	for _, srcFd := range msg.List {
 		path := dstDir + srcFd.RelPath
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
@@ -136,6 +136,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 					Msg("receiver DIFF")
 
 				srcFd.State = lfs.Diff
+				diffList = append(diffList, srcFd)
 
 				// determine what has changed, if permission and/or modtime only, do not set it to diff
 
@@ -223,17 +224,15 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 
 	// send data to checksum workers
 
-	for i, fd := range msg.List {
-		if fd.State == lfs.Diff {
-			log.Trace().
-				Int("hash reader", i).
-				Str("state", fd.State.String()).
-				Str("file name", fd.Prefix+"/"+fd.FileName).
-				Msg("sending to hash reader")
-			hashChan <- &core.Message{
-				Flag:     core.HSH,
-				FileDesc: fd,
-			}
+	for i, fd := range diffList {
+		log.Trace().
+			Int("hash reader", i).
+			Str("state", fd.State.String()).
+			Str("file name", fd.Prefix+"/"+fd.FileName).
+			Msg("sending to hash reader")
+		hashChan <- &core.Message{
+			Flag:     core.HSH,
+			FileDesc: fd,
 		}
 	}
 	for i := 0; i < ccIo; i++ {

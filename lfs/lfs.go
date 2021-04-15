@@ -322,7 +322,7 @@ func DummyWriter(b []byte, name string) error {
 	}
 	headerCnt++
 	log.Trace().
-		Int64("file index", header.FileIndex).
+		Int64("file-index", header.FileIndex).
 		Int64("offset", header.Offset).
 		Int64("section data length", header.Len).
 		Str("filename", name).
@@ -394,8 +394,9 @@ func DummyWriter(b []byte, name string) error {
 		Int64("headers", headerCnt).
 		Int64("bytes", dataCnt).
 		Int64("indexes", indexCnt).
-		Int64("file index", header.FileIndex).
+		Int64("file-index", header.FileIndex).
 		Str("filename", name).
 		Msg("decoded")
+
 	return nil
 }

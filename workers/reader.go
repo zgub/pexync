@@ -3,9 +3,11 @@ package workers
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -103,6 +105,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			return nil
 		}
 	}
+	fmt.Printf("buf0: %s\n", string(buf[0]))
 
 	// initialize the roll buffer by writting the first block
 	rh := core.Pour()
@@ -119,6 +122,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	seq := int64(0)
 	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 	if hIndex != HashNotFound {
+		skipCnt++
 		err = dd.WriteIndex(hIndex)
 		if err != nil {
 			return errors.Wrap(err, "roll hash calculation failed")
@@ -136,7 +140,6 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	for {
 		n, err := io.ReadFull(br, buf)
 		if n == 0 {
-
 			if err == nil {
 				return errors.New("read 0 bytes")
 			} else if err != io.EOF {
@@ -150,10 +153,10 @@ func (w *RollReader) handleData(msg *core.Message) error {
 		}
 
 		buf = buf[:n]
-
+		fmt.Printf("buf: %s\n", string(buf[0]))
 		// if for the last time we've found a matching block, let's read another whole block
 		if hIndex != HashNotFound {
-			skipCnt++
+			//skipCnt++
 			// lets read full blocksize, because the lat one matched
 			rh.Reset()
 			_, err := rh.Write(buf)
@@ -163,6 +166,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			//log.Trace().Msg("read a wrote whole block")
 			hIndex = w.lookup(rh.Sum32())
 			if hIndex != HashNotFound {
+				skipCnt++
 				// again matching block, next!
 				err = dd.WriteIndex(hIndex)
 				if err != nil {
@@ -259,10 +263,14 @@ func (rr *RollReader) pop() byte {
 
 func (w *RollReader) lookup(sum uint32) int64 {
 
+	fmt.Printf("==> sum: %d\n", sum)
+	spew.Dump(w.hMap)
 	if hIndex, ok := w.hMap[sum]; ok {
 		// found
+		fmt.Println("match")
 		return int64(hIndex)
 	}
+	fmt.Println("nomatch")
 	return HashNotFound
 }
 
