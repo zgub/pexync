@@ -66,7 +66,9 @@ func (w *RollReader) Start() error {
 }
 
 func (w *RollReader) handleData(msg *core.Message) error {
-	var skipCount int
+	var (
+		skipCnt, dataCnt int64
+	)
 	path := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
 	// this could be possibly optimized in order to save file descriptors
 	f, err := os.Open(path)
@@ -96,6 +98,8 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			return errors.Wrapf(err, "%s error reading file while comparing hashes", msg.FileDesc.FileName)
 		}
 		if err == io.EOF {
+			log.Trace().
+				Msg("roll reader - EOF - while reading first buffer")
 			return nil
 		}
 	}
@@ -139,6 +143,8 @@ func (w *RollReader) handleData(msg *core.Message) error {
 				return errors.Wrap(err, "error reading file")
 			}
 			if err == io.EOF {
+				log.Trace().
+					Msg("roll reader - EOF")
 				break
 			}
 		}
@@ -147,7 +153,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 
 		// if for the last time we've found a matching block, let's read another whole block
 		if hIndex != HashNotFound {
-			skipCount++
+			skipCnt++
 			// lets read full blocksize, because the lat one matched
 			rh.Reset()
 			_, err := rh.Write(buf)
@@ -171,10 +177,12 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			// lookup in the remote file hash list
 			hIndex = w.lookup(rh.Sum32())
 			if hIndex != HashNotFound {
+				// another match
 				err = dd.WriteIndex(hIndex)
 				if err != nil {
 					return errors.Wrap(err, "roll hash calculation failed")
 				}
+				skipCnt++
 				continue
 			}
 			// no luck this time
@@ -203,6 +211,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			}
 			// then push the new into the ring buffer
 			w.push(b)
+			dataCnt++
 		}
 	}
 	// don't forget the last data OR if the whole thing was tiny
@@ -222,6 +231,12 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			return errors.Wrap(err, "error sending data")
 		}
 	}
+	log.Debug().
+		Str("filename", msg.FileDesc.FileName).
+		Int64("indexes", skipCnt).
+		Int64("data", dataCnt).
+		Int("dd len", int(dd.Len())).
+		Msg("roll stats")
 	return nil
 }
 

@@ -155,9 +155,9 @@ func (dd *DataDesc) flush() error {
 }
 
 func (dd *DataDesc) Len() int64 {
-	// flushed data (bytes) + number of int64 /8 ("bytes") + intermediate data (bytes)
+	// flushed data (bytes) + number of int64 * 8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
-	return int64(dd.data.Len() + (len(dd.iBuff) / 8) + dd.readBuf.Len())
+	return int64(dd.data.Len() + (len(dd.iBuff) * 8) + dd.readBuf.Len())
 }
 
 func (dd *DataDesc) Serialize() ([]byte, error) {
