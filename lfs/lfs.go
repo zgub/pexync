@@ -154,10 +154,10 @@ func (dd *DataDesc) flush() error {
 	return nil
 }
 
-func (dd *DataDesc) Len() int {
+func (dd *DataDesc) Len() int64 {
 	// flushed data (bytes) + number of int64 /8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
-	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.readBuf.Len()
+	return int64(dd.data.Len() + (len(dd.iBuff) / 8) + dd.readBuf.Len())
 }
 
 func (dd *DataDesc) Serialize() ([]byte, error) {
@@ -194,7 +194,7 @@ type FileDesc struct {
 	Prefix    string
 	FileName  string
 	FileSize  uint64
-	BlockSize int
+	BlockSize int64
 	Modified  time.Time
 	Mode      os.FileMode
 	Uid, Gid  uint32
@@ -204,19 +204,19 @@ type FileDesc struct {
 
 func (fd *FileDesc) SetBlockSize() {
 	// fetch the config value, which has priority if changed and remains 700 if filesize is sma;;
-	fd.BlockSize = viper.GetInt("block_size")
+	fd.BlockSize = viper.GetInt64("block_size")
 	// if the file size is big enoigh anf the value is still default
 	if fd.FileSize > 490000 && fd.BlockSize == 700 {
 		// stolen from rsync doc :)
 		sqrt := math.Sqrt(float64(fd.FileSize))
-		fd.BlockSize = int(math.Round(sqrt))
+		fd.BlockSize = int64(math.Round(sqrt))
 		if fd.BlockSize > 131072 {
 			fd.BlockSize = 131072
 		}
 	}
 
 	if fd.FileSize < 700 {
-		fd.BlockSize = int(fd.FileSize)
+		fd.BlockSize = int64(fd.FileSize)
 	}
 
 }

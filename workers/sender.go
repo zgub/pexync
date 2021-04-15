@@ -40,7 +40,7 @@ func (w *LocalSender) Start() error {
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
-				Int("block size calculated", fd.BlockSize).
+				Int64("block size calculated", fd.BlockSize).
 				Send()
 		}
 	}
@@ -73,14 +73,14 @@ func (w *LocalSender) Start() error {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
-				Int("block size", fd.BlockSize).
+				Int64("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("sender %s", fd.State.String())
 			missList = append(missList, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
 			log.Debug().
-				Int("block size", fd.BlockSize).
+				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("sender %s", fd.State.String())

@@ -82,7 +82,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	// create a hash map for faster lookup
 	w.hMap = make(map[uint32]int)
 	if len(msg.FileDesc.Weak) == 0 {
-		log.Warn().Msg("WTF")
+		log.Warn().Msg("WTH")
 	}
 	for i, h := range msg.FileDesc.Weak {
 		w.hMap[h] = i
@@ -125,6 +125,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 
 	log.Trace().
 		Str("filename", msg.FileDesc.FileName).
+		Int64("block size", msg.FileDesc.BlockSize).
 		Bool("first block skipped", hIndex != HashNotFound).
 		Msg("Rolling")
 	// now continue through the rest of the file secion
@@ -190,7 +191,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
 					Int64("datadesc len", int64(dd.Len())).
-					Int("block size", msg.FileDesc.BlockSize).
+					Int64("block size", msg.FileDesc.BlockSize).
 					Msg("roll reader sending data")
 				err = sendWithTimeout(nMsg, w.receiver)
 				if err != nil {
