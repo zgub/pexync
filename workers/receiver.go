@@ -62,7 +62,7 @@ func (w *LocalReceiver) Start() error {
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
 					Msg("receiver - data received")
-				data, err := msg.DataDesc.Serialize(msg.Seq)
+				data, err := msg.DataDesc.Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}

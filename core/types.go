@@ -37,10 +37,10 @@ func (f Flag) String() string {
 }
 
 type Message struct {
-	Flag               Flag            // meta data
-	List               []*lfs.FileDesc // meta data
-	FileDesc           *lfs.FileDesc   // meta data
-	DataDesc           *lfs.DataDesc   // binary (actual) data
-	UUID               uuid.UUID       // meta data
-	Offset, Limit, Seq int64           // file section description
+	Flag          Flag            // meta data
+	List          []*lfs.FileDesc // meta data
+	FileDesc      *lfs.FileDesc   // meta data
+	DataDesc      *lfs.DataDesc   // binary (actual) data
+	UUID          uuid.UUID       // meta data
+	Offset, Limit int64           // meta data required for reconstruction
 }

@@ -28,13 +28,6 @@ const (
 	IndexFlag bool = false
 )
 
-// lets talk 64bit only to keep this simple
-type Header struct {
-	Seq  int64 // packet order
-	Flag bool  // true - data / false - index
-	Len  int64
-}
-
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
@@ -51,49 +44,61 @@ const (
 	walkError    = "error listing directory"
 )
 
+// lets talk 64bit only to keep this simple
+type Header struct {
+	FileIndex int64 // global header only
+	Offset    int64 // global header only
+	Seq       int64 // for proper reconstruction
+	Flag      bool  // true - data / false - index
+	Len       int64
+}
 type DataDesc struct {
-	ic, bc      int64         // index / byte counters
-	dataBuf     *bytes.Buffer // intermediate data buffer
-	iBuff       []int64       // intermediate index buffer
-	writingData bool          // true - writing data / false - writing index data
-	data        *bytes.Buffer
+	readBuf                *bytes.Buffer // intermediate data buffer
+	iBuff                  []int64       // intermediate index buffer
+	writingData            bool          // true - writing data / false - writing index data
+	data                   *bytes.Buffer
+	offset, seq, fileIndex int64
 }
 
-func NewDataDesc() *DataDesc {
+func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
 	return &DataDesc{
-		dataBuf: new(bytes.Buffer),
-		data:    new(bytes.Buffer),
+		fileIndex: fileIndex,
+		readBuf:   new(bytes.Buffer),
+		data:      new(bytes.Buffer),
+		offset:    offset,
+		seq:       sequence,
 	}
 }
 
-func (dd *DataDesc) WriteBlock(b []byte) error {
+func (dd *DataDesc) Write(b []byte) (int, error) {
 	header := &Header{
 		Flag: DataFlag,
 		Len:  int64(len(b)),
 	}
 	err := binary.Write(dd.data, binary.BigEndian, header)
 	if err != nil {
-		return errors.Wrap(err, "unable to encode data")
+		return 0, errors.Wrap(err, "unable to encode data")
 	}
-	_, err = dd.data.Write(b)
+	n, err := dd.data.Write(b)
 	if err != nil {
-		return errors.Wrap(err, "unable to encode data")
+		return 0, errors.Wrap(err, "unable to encode data")
 	}
-	return nil
+	return n, nil
 }
 
 func (dd *DataDesc) WriteByte(b byte) error {
+	// make sure to write the header when it is the first data write and writingata is true
 	if !dd.writingData {
 		err := dd.flush()
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
+		dd.writingData = true
 	}
-	err := dd.dataBuf.WriteByte(b)
+	err := dd.readBuf.WriteByte(b)
 	if err != nil {
 		return errors.Wrap(err, "unable to encode data")
 	}
-	dd.bc++
 	return nil
 }
 
@@ -103,35 +108,33 @@ func (dd *DataDesc) WriteIndex(i int64) error {
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
+		dd.writingData = false
 	}
 	dd.iBuff = append(dd.iBuff, i)
-	dd.ic++
 	return nil
 }
 
 func (dd *DataDesc) flush() error {
-	if dd.writingData {
-		// first flush data
+	// we were (probably) witing data, flush them
+	if dd.writingData && dd.readBuf.Len() != 0 {
 		// header first
 		header := &Header{
 			Flag: DataFlag,
-			Len:  int64(dd.dataBuf.Len()),
+			Len:  int64(dd.readBuf.Len()),
 		}
 		// write header
 		err := binary.Write(dd.data, binary.BigEndian, header)
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		// flush the intermediate data buffer to main buffer
-		_, err = dd.data.Write(dd.dataBuf.Bytes())
+		// flush the intermediate data buffer to main buffer if there is somethign to write
+		_, err = dd.data.Write(dd.readBuf.Bytes())
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		// make new slice for index data
-		dd.iBuff = make([]int64, 0)
-	} else {
-		// wanna write data bytes, we have to flush the index buffer with the header
-		// first the header
+		dd.readBuf.Reset()
+	} else if len(dd.iBuff) != 0 {
+		// we were writing indexes, flush them
 		header := &Header{
 			Flag: IndexFlag,
 			Len:  int64(len(dd.iBuff)),
@@ -141,15 +144,12 @@ func (dd *DataDesc) flush() error {
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		// write data
+		// write data, but only if there is something to write
 		err = binary.Write(dd.data, binary.BigEndian, dd.iBuff)
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		// switch to data writes
-		dd.writingData = true
-		// reset the intermediate data buffer for new data
-		dd.dataBuf.Reset()
+		dd.iBuff = make([]int64, 0)
 	}
 	return nil
 }
@@ -157,35 +157,37 @@ func (dd *DataDesc) flush() error {
 func (dd *DataDesc) Len() int {
 	// flushed data (bytes) + number of int64 /8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
-	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.dataBuf.Len()
+	return dd.data.Len() + (len(dd.iBuff) / 8) + dd.readBuf.Len()
 }
 
-func (dd *DataDesc) Serialize(seq int64) ([]byte, error) {
+func (dd *DataDesc) Serialize() ([]byte, error) {
 	log.Debug().
-		Int64("indexes", dd.ic).
-		Int64("bytes", dd.bc).
+		Int64("length", int64(dd.Len())).
 		Msg("serializing")
 	// global section reader offset, data sequence
-	header := &Header{
-		Seq: seq,
-	}
-	buf := new(bytes.Buffer)
-	// write global header to new buffer
-	err := binary.Write(buf, binary.BigEndian, header)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to encode data header")
-	}
 	// flush any remainung data
-	err = dd.flush()
+	err := dd.flush()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode data")
 	}
+	header := &Header{
+		FileIndex: dd.fileIndex,
+		Offset:    dd.offset,
+		Len:       int64(dd.data.Len()),
+	}
+	buf := new(bytes.Buffer)
+	// write global header to new buffer
+	err = binary.Write(buf, binary.BigEndian, header)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to encode data header")
+	}
+	// wite data
 	_, err = buf.Write(dd.data.Bytes())
 	return buf.Bytes(), nil
 }
 
 type FileDesc struct {
-	Idx       int32
+	Idx       int64
 	State     State
 	IsDir     bool
 	RelPath   string
@@ -230,7 +232,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	}
 
 	// filepath index to refer tol later
-	var idx int32
+	var idx int64
 
 	// avoid endless recursive deadend
 	dest, err := filepath.Abs(viper.GetString("local_destination"))
@@ -337,10 +339,10 @@ func DummyWriter(b []byte, name string) error {
 		// DataFlag = true
 		if flag {
 			// data
-			log.Trace().
-				Int64("length", dLen).
-				Str("filename", name).
-				Msg("DummyWritter - byte data header")
+			/*log.Trace().
+			Int64("length", dLen).
+			Str("filename", name).
+			Msg("DummyWritter - byte data header")*/
 			dataBuf := make([]byte, dLen)
 			err = binary.Read(r, binary.BigEndian, dataBuf)
 			if err != nil {
@@ -357,10 +359,10 @@ func DummyWriter(b []byte, name string) error {
 			Str("filename", name).
 			Msg("DummyWritter - byte data processed")*/
 		} else {
-			log.Trace().
-				Int64("length", dLen).
-				Str("filename", name).
-				Msg("DummyWriter - index data header")
+			/*log.Trace().
+			Int64("length", dLen).
+			Str("filename", name).
+			Msg("DummyWriter - index data header")*/
 			indexes := make([]int64, dLen)
 			err = binary.Read(r, binary.BigEndian, indexes)
 			if err != nil {

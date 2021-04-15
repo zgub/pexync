@@ -122,7 +122,7 @@ func (w *LocalSender) Start() error {
 		for i := 0; i < ccIo; i++ {
 			log.Debug().
 				Msgf("starting byte reader: %d", i)
-			w := NewBytesReader(dCtx, brInbox, w.receiver)
+			w := NewBytesReader(dCtx, brInbox, w.receiver, i)
 			g.Go(func() error { return w.Start() })
 		}
 	}
@@ -135,7 +135,6 @@ func (w *LocalSender) Start() error {
 			Flag:     core.RSQ,
 			Offset:   0,
 			Limit:    int64(fd.FileSize),
-			Seq:      0,
 		}
 	}
 
@@ -147,7 +146,6 @@ func (w *LocalSender) Start() error {
 			Flag:     core.RSQ,
 			Offset:   0,
 			Limit:    int64(fd.FileSize),
-			Seq:      0,
 		}
 	}
 

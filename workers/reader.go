@@ -3,6 +3,7 @@ package workers
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -111,7 +112,9 @@ func (w *RollReader) handleData(msg *core.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "hash lookup failure")
 	}
-	dd := lfs.NewDataDesc()
+	// initialize sequence counter
+	seq := int64(0)
+	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 	if hIndex != HashNotFound {
 		err = dd.WriteIndex(hIndex)
 		if err != nil {
@@ -195,7 +198,8 @@ func (w *RollReader) handleData(msg *core.Message) error {
 					return errors.Wrap(err, "error sending data")
 				}
 				// new data block
-				dd = lfs.NewDataDesc()
+				seq++
+				dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 			}
 			// then push the new into the ring buffer
 			w.push(b)
@@ -253,13 +257,15 @@ type BytesReader struct {
 	receiver chan<- *core.Message
 	inbox    <-chan *core.Message
 	senderID uuid.UUID
+	id       int
 }
 
-func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *BytesReader {
+func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message, tempId int) *BytesReader {
 	return &BytesReader{
 		ctx:      ctx,
 		receiver: receiver,
 		inbox:    inbox,
+		id:       tempId,
 	}
 }
 
@@ -267,42 +273,46 @@ func (w *BytesReader) Start() error {
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("bytes reader closing, context done")
+			log.Debug().
+				Msg("bytes reader closing, context done")
 			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.FIN:
 				log.Debug().
-					Msg("bytes reader received FIN")
+					Msgf("%d bytes reader received FIN", w.id)
 				return nil
 			case core.RSQ:
-				offset := msg.Offset
-				limit := msg.Limit
+				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
+					Msgf("%d byte reader received message", w.id)
 				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
 				if err != nil {
 					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
 				}
 				r := io.ReaderAt(f)
-				sr := io.NewSectionReader(r, offset, limit)
+				sr := io.NewSectionReader(r, msg.Offset, msg.Limit)
 				br := bufio.NewReader(sr)
 				buf := make([]byte, msg.FileDesc.BlockSize)
-				dd := lfs.NewDataDesc()
 
-				for {
+				for seq := int64(0); ; seq++ {
+					dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+
 					n, err := io.ReadFull(br, buf)
+					fmt.Printf("s: %d n: %d\n", seq, n)
 					if n == 0 {
-
 						if err == nil {
 							return errors.New("read 0 bytes")
 						} else if err != io.EOF {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
+							fmt.Printf("EOF s: %d n: %d\n", seq, n)
 							break
 						}
 					}
 					buf = buf[:n]
-					err = dd.WriteBlock(buf)
+					_, err = dd.Write(buf)
 					if err != nil {
 						return errors.Wrap(err, "error reading file")
 					}
@@ -310,11 +320,14 @@ func (w *BytesReader) Start() error {
 						Flag:     core.WSQ,
 						FileDesc: msg.FileDesc,
 						DataDesc: dd,
-						Offset:   msg.Offset,
-						Limit:    msg.Limit,
 					}
 					log.Trace().
 						Str("filename", msg.FileDesc.FileName).
+						Int64("dd len", int64(dd.Len())).
+						Int64("block size", int64(msg.FileDesc.BlockSize)).
+						Int64("offset", msg.Offset).
+						Int64("seq", seq).
+						Int("reader id", w.id).
 						Msg("sending pure data")
 					err = sendWithTimeout(nMsg, w.receiver)
 					if err != nil {

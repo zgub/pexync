@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -600,4 +601,34 @@ func lookup(hash uint32, hashList []uint32) bool {
 		}
 	}
 	return false
+}
+
+func CreateTestFile(blockSize, count int) error {
+	path := fmt.Sprintf("test/%dx%d-test-data", count, blockSize)
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bw := bufio.NewWriter(io.Writer(f))
+	rn := rune('a')
+	buf := make([]byte, utf8.UTFMax)
+	for block := 0; block < count; block++ {
+		for byte := 0; byte < blockSize; byte++ {
+			n := utf8.EncodeRune(buf, rn)
+			buf = buf[:n]
+			n, err = bw.Write(buf)
+			//fmt.Printf("%d ", n)
+			if err != nil {
+				return err
+			}
+		}
+		//fmt.Printf("- %d\n", blockSize)
+		rn++
+	}
+
+	bw.Flush()
+	f.Sync()
+	return nil
 }
