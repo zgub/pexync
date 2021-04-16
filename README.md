@@ -12,6 +12,7 @@
 - [ ] do not create cfg file automaticaly, add a command **confgen**
 - [ ] permissions / ownership / sha1 receiver comparison
 - [ ] missing file sender
+- [ ] multicore
 
 ## Ideas
 
