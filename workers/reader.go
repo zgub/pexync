@@ -3,6 +3,7 @@ package workers
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 
@@ -17,6 +18,7 @@ const (
 	HashNotFound int64 = -1
 )
 
+// RollReader reads a file, compares the data witha hash table and send either data or indexes
 type RollReader struct {
 	ctx      context.Context
 	receiver chan<- *core.Message
@@ -27,7 +29,7 @@ type RollReader struct {
 	hMap     map[uint32]int
 }
 
-func NewRollReader(ctx context.Context, senderID uuid.UUID, sr *io.SectionReader, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
+func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
 	return &RollReader{
 		ctx:      ctx,
 		inbox:    inbox,
@@ -35,144 +37,209 @@ func NewRollReader(ctx context.Context, senderID uuid.UUID, sr *io.SectionReader
 	}
 }
 
-// todo implement map index
 func (w *RollReader) Start() error {
-	log.Trace().Msg("starting file reader")
 
-	var (
-		done      bool // default false
-		skipCount int
-	)
-
-	for !done {
+	for {
 		// wait for file (or a section)
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("local receiver closing, context done")
-			done = true
-			break
+			log.Debug().Msg("roll reader closing, context done")
+			return nil
 		case msg := <-w.inbox:
-			path := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
-			// this could be possibly optimized in order to save file descriptors
-			f, err := os.Open(path)
-			if err != nil {
-				return errors.Wrap(err, "unable to open file for hash comparison")
-			}
-			r := io.ReaderAt(f)
-			sr := io.NewSectionReader(r, msg.FileDesc.Offset, msg.FileDesc.Limit)
-			br := bufio.NewReader(sr)
-			buf := make([]byte, msg.FileDesc.BlockSize)
-
-			// create a hash map for faster lookup
-			w.hMap = make(map[uint32]int)
-			for i, h := range msg.FileDesc.Weak {
-				w.hMap[h] = i
-			}
-
-			n, err := io.ReadFull(br, buf)
-			if n == 0 {
-				if err == nil {
-					return errors.Wrapf(err, "%s - hash comparator receiver 0 bytes while readind the file", msg.FileDesc.FileName)
-				} else if err != io.EOF {
-					return errors.Wrapf(err, "%s error reading file while comparing hashes", msg.FileDesc.FileName)
+			switch msg.Flag {
+			case core.RSQ: // read sequence
+				log.Debug().
+					Str("filename", msg.FileDesc.FileName).
+					Msgf("file received by comparator worker")
+				err := w.handleData(msg)
+				if err != nil {
+					return errors.Wrap(err, "unable to compare files")
 				}
-				if err == io.EOF {
-					return nil
-				}
+			case core.FIN:
+				log.Debug().
+					Msg("file comparator received FIN")
+				return nil
+			default:
+				return errors.New("unknown message received")
 			}
+		}
+	}
+}
 
-			// initialize the roll buffer by writting the first block
-			rh := core.Pour()
-			_, err = rh.Write(buf)
+func (w *RollReader) handleData(msg *core.Message) error {
+	var (
+		skipCnt, dataCnt int64
+	)
+	path := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
+	// this could be possibly optimized in order to save file descriptors
+	f, err := os.Open(path)
+	if err != nil {
+		return errors.Wrap(err, "unable to open file for hash comparison")
+	}
+	defer f.Close()
+	r := io.ReaderAt(f)
+	sr := io.NewSectionReader(r, msg.Offset, msg.Limit)
+	br := bufio.NewReader(sr)
+	buf := make([]byte, msg.FileDesc.BlockSize)
+
+	// create a hash map for faster lookup
+	w.hMap = make(map[uint32]int)
+	if len(msg.FileDesc.Weak) == 0 {
+		log.Warn().Msg("WTH")
+	}
+	for i, h := range msg.FileDesc.Weak {
+		w.hMap[h] = i
+	}
+
+	n, err := io.ReadFull(br, buf)
+	if n == 0 {
+		if err == nil {
+			return errors.Wrapf(err, "%s - hash comparator receiver 0 bytes while readind the file", msg.FileDesc.FileName)
+		} else if err != io.EOF {
+			return errors.Wrapf(err, "%s error reading file while comparing hashes", msg.FileDesc.FileName)
+		}
+		if err == io.EOF {
+			log.Trace().
+				Msg("roll reader - EOF - while reading first buffer")
+			return nil
+		}
+	}
+	fmt.Printf("buf0: %s\n", string(buf[0]))
+
+	// initialize the roll buffer by writting the first block
+	rh := core.Pour()
+	_, err = rh.Write(buf)
+	if err != nil {
+		return errors.Wrap(err, "error writing to roll window")
+	}
+
+	hIndex := w.lookup(rh.Sum32())
+	if err != nil {
+		return errors.Wrap(err, "hash lookup failure")
+	}
+	// initialize sequence counter
+	seq := int64(0)
+	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+	if hIndex != HashNotFound {
+		skipCnt++
+		err = dd.WriteIndex(hIndex)
+		if err != nil {
+			return errors.Wrap(err, "roll hash calculation failed")
+		}
+	}
+	// store the old buf
+	w.ring = buf
+
+	log.Trace().
+		Str("filename", msg.FileDesc.FileName).
+		Int64("block size", msg.FileDesc.BlockSize).
+		Bool("first block skipped", hIndex != HashNotFound).
+		Msg("Rolling")
+	// now continue through the rest of the file secion
+	for {
+		n, err := io.ReadFull(br, buf)
+		if n == 0 {
+			if err == nil {
+				return errors.New("read 0 bytes")
+			} else if err != io.EOF {
+				return errors.Wrap(err, "error reading file")
+			}
+			if err == io.EOF {
+				log.Trace().
+					Msg("roll reader - EOF")
+				break
+			}
+		}
+
+		buf = buf[:n]
+		fmt.Printf("buf: %s\n", string(buf[0]))
+		// if for the last time we've found a matching block, let's read another whole block
+		if hIndex != HashNotFound {
+			//skipCnt++
+			// lets read full blocksize, because the lat one matched
+			rh.Reset()
+			_, err := rh.Write(buf)
 			if err != nil {
 				return errors.Wrap(err, "error writing to roll window")
 			}
-
-			hIndex := w.lookup(rh.Sum32())
-			if err != nil {
-				return errors.Wrap(err, "hash lookup failure")
-			}
-			dd := new(lfs.DataDesc)
+			//log.Trace().Msg("read a wrote whole block")
+			hIndex = w.lookup(rh.Sum32())
 			if hIndex != HashNotFound {
+				skipCnt++
+				// again matching block, next!
 				err = dd.WriteIndex(hIndex)
 				if err != nil {
 					return errors.Wrap(err, "roll hash calculation failed")
 				}
-			}
-			// store the old buf
-			w.ring = buf
-
-			// now continue through the rest of the file secion
-			for {
-				n, err := io.ReadFull(br, buf)
-				if n == 0 {
-
-					if err == nil {
-						return errors.New("read 0 bytes")
-					} else if err != io.EOF {
-						return errors.Wrap(err, "error reading file")
-					}
-					if err == io.EOF {
-						break
-					}
-				}
-
-				buf = buf[:n]
-
-				// if for the last time we've found a matching block, let's read another whole block
-				if hIndex != HashNotFound {
-					skipCount++
-					// lets read full blocksize, because the lat one matched
-					rh.Reset()
-					_, err := rh.Write(buf)
-					if err != nil {
-						return errors.Wrap(err, "error writing to roll window")
-					}
-					//log.Trace().Msg("read a wrote whole block")
-					hIndex = w.lookup(rh.Sum32())
-					if hIndex != HashNotFound {
-						// again matching block, next!
-						err = dd.WriteIndex(hIndex)
-						if err != nil {
-							return errors.Wrap(err, "roll hash calculation failed")
-						}
-						continue
-					}
-				}
-				// last buffer was no luck, go byte by byte
-				for _, b := range buf {
-					rh.Roll(b)
-					// lookup in the remote file hash list
-					hIndex = w.lookup(rh.Sum32())
-					if hIndex != HashNotFound {
-						err = dd.WriteIndex(hIndex)
-						if err != nil {
-							return errors.Wrap(err, "roll hash calculation failed")
-						}
-						continue
-					}
-					// no luck this time
-					// first add the oldes byte to the send buffer
-					dd.WriteByte(w.pop())
-					// check the sendBuf size and send it eventually
-					if dd.Len() > msg.FileDesc.BlockSize {
-						// append is not thread safe!
-						msg := &core.Message{
-							Flag:     core.DTA,
-							FileDesc: msg.FileDesc,
-							DataDesc: dd,
-						}
-						err = sendWithTimeout(msg, w.receiver)
-						if err != nil {
-							return errors.Wrap(err, "error sending data")
-						}
-					}
-					// then push the new into the ring buffer
-					w.push(b)
-				}
+				continue
 			}
 		}
+		// last buffer was no luck, go byte by byte
+		for _, b := range buf {
+			rh.Roll(b)
+			// lookup in the remote file hash list
+			hIndex = w.lookup(rh.Sum32())
+			if hIndex != HashNotFound {
+				// another match
+				err = dd.WriteIndex(hIndex)
+				if err != nil {
+					return errors.Wrap(err, "roll hash calculation failed")
+				}
+				skipCnt++
+				continue
+			}
+			// no luck this time
+			// first add the oldes byte to the send buffer
+			dd.WriteByte(w.pop())
+			// check the sendBuf size and send it eventually
+			if dd.Len() > msg.FileDesc.BlockSize {
+				// append is not thread safe!
+				nMsg := &core.Message{
+					Flag:     core.WSQ,
+					FileDesc: msg.FileDesc,
+					DataDesc: dd,
+				}
+				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
+					Int64("datadesc len", int64(dd.Len())).
+					Int64("block size", msg.FileDesc.BlockSize).
+					Msg("==> roll reader sending data")
+				err = sendWithTimeout(nMsg, w.receiver)
+				if err != nil {
+					return errors.Wrap(err, "error sending data")
+				}
+				// new data block
+				seq++
+				dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+			}
+			// then push the new into the ring buffer
+			w.push(b)
+			dataCnt++
+		}
 	}
+	// don't forget the last data OR if the whole thing was tiny
+	if dd.Len() > 0 {
+		nMsg := &core.Message{
+			Flag:     core.WSQ,
+			FileDesc: msg.FileDesc,
+			DataDesc: dd,
+			Offset:   msg.Offset,
+			Limit:    msg.Limit,
+		}
+		log.Trace().
+			Str("filename", msg.FileDesc.FileName).
+			Msg("sending remaining data")
+		err = sendWithTimeout(nMsg, w.receiver)
+		if err != nil {
+			return errors.Wrap(err, "error sending data")
+		}
+	}
+	log.Debug().
+		Str("filename", msg.FileDesc.FileName).
+		Int64("indexes", skipCnt).
+		Int64("data", dataCnt).
+		Int("dd len", int(dd.Len())).
+		Msg("roll stats")
 	return nil
 }
 
@@ -195,13 +262,106 @@ func (rr *RollReader) pop() byte {
 
 func (w *RollReader) lookup(sum uint32) int64 {
 
+	//fmt.Printf("==> sum: %d\n", sum)
+	//spew.Dump(w.hMap)
 	if hIndex, ok := w.hMap[sum]; ok {
 		// found
+		//fmt.Println("match")
 		return int64(hIndex)
 	}
+	//fmt.Println("nomatch")
 	return HashNotFound
 }
 
+// BytesReader reads a file by blocks with given block size and sends them
+type BytesReader struct {
+	ctx      context.Context
+	receiver chan<- *core.Message
+	inbox    <-chan *core.Message
+	senderID uuid.UUID
+	id       int
+}
+
+func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message, tempId int) *BytesReader {
+	return &BytesReader{
+		ctx:      ctx,
+		receiver: receiver,
+		inbox:    inbox,
+		id:       tempId,
+	}
+}
+
+func (w *BytesReader) Start() error {
+	for {
+		select {
+		case <-w.ctx.Done():
+			log.Debug().
+				Msg("bytes reader closing, context done")
+			return nil
+		case msg := <-w.inbox:
+			switch msg.Flag {
+			case core.FIN:
+				log.Debug().
+					Msgf("%d bytes reader received FIN", w.id)
+				return nil
+			case core.RSQ:
+				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
+					Msgf("%d byte reader received message", w.id)
+				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
+				if err != nil {
+					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
+				}
+				r := io.ReaderAt(f)
+				sr := io.NewSectionReader(r, msg.Offset, msg.Limit)
+				br := bufio.NewReader(sr)
+				buf := make([]byte, msg.FileDesc.BlockSize)
+
+				for seq := int64(0); ; seq++ {
+					dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+
+					n, err := io.ReadFull(br, buf)
+					if n == 0 {
+						if err == nil {
+							return errors.New("read 0 bytes")
+						} else if err != io.EOF {
+							return errors.Wrap(err, "error reading file")
+						}
+						if err == io.EOF {
+							break
+						}
+					}
+					buf = buf[:n]
+					_, err = dd.Write(buf)
+					if err != nil {
+						return errors.Wrap(err, "error reading file")
+					}
+					nMsg := &core.Message{
+						Flag:     core.WSQ,
+						FileDesc: msg.FileDesc,
+						DataDesc: dd,
+					}
+					log.Trace().
+						Str("filename", msg.FileDesc.FileName).
+						Int64("dd len", int64(dd.Len())).
+						Int64("block size", int64(msg.FileDesc.BlockSize)).
+						Int64("offset", msg.Offset).
+						Int64("seq", seq).
+						Int("reader id", w.id).
+						Msg("sending pure data")
+					err = sendWithTimeout(nMsg, w.receiver)
+					if err != nil {
+						return errors.Wrap(err, "error sending data")
+					}
+				}
+			default:
+				return errors.New("BytesReader unknown message")
+			}
+		}
+	}
+}
+
+// HasReader reads a file and calculates a hashList using a given block size
 type HashReader struct {
 	ctx   context.Context
 	inbox <-chan *core.Message
@@ -215,24 +375,25 @@ func NewHashreader(ctx context.Context, inbox <-chan *core.Message) *HashReader 
 }
 
 func (w *HashReader) Start() error {
-	var done bool
-	for !done {
+	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("hash reader closing, context done")
-			done = true
+			return nil
 		case msg := <-w.inbox:
-			if msg.Flag == core.FIN {
+			switch msg.Flag {
+			case core.FIN:
 				log.Debug().
 					Msg("hash reader received FIN")
-				done = true
-			} else {
+				return nil
+			case core.HSH:
 				err := core.AddChecksums(msg.FileDesc)
 				if err != nil {
 					return errors.Wrap(err, "error calculating initial hash array")
 				}
+			default:
+				return errors.New("HashReader unknown message")
 			}
 		}
 	}
-	return nil
 }

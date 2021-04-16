@@ -2,13 +2,11 @@ package workers
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 	"golang.org/x/sync/errgroup"
@@ -17,7 +15,7 @@ import (
 // LocalSender represents blah balh
 type LocalSender struct {
 	ctx      context.Context
-	list     []*lfs.FileDesc
+	srcList  []*lfs.FileDesc
 	inbox    <-chan *core.Message
 	receiver chan<- *core.Message
 	uuid     uuid.UUID
@@ -26,7 +24,7 @@ type LocalSender struct {
 func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
-		list:     fl,
+		srcList:  fl,
 		inbox:    in,
 		receiver: receiver,
 		uuid:     uuid.New(),
@@ -35,28 +33,27 @@ func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Mes
 
 func (w *LocalSender) Start() error {
 
-	// send the filelist to the receiver
-	// q := []int{2, 3, 5, 7, 11, 13}
-	msg := &core.Message{
-		Flag: core.RST,
-		UUID: w.uuid,
-		List: w.list,
-	}
-
 	// calculate block sizes
-	for _, fd := range w.list {
+	for _, fd := range w.srcList {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
-				Int("calculated block size", fd.BlockSize).
+				Int64("block size calculated", fd.BlockSize).
 				Send()
 		}
 	}
 
-	log.Trace().
-		Msgf("sender list length: %d", len(w.list))
+	// prepare a message for the receiver
+	msg := &core.Message{
+		Flag: core.INI,
+		UUID: w.uuid,
+		List: w.srcList,
+	}
+
+	log.Debug().
+		Msgf("sending source file list, length: %d", len(w.srcList))
 
 	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
@@ -69,30 +66,25 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	w.list = msg.List
-	log.Debug().
-		Int("liles", len(w.list)).
-		Msg("sender analyzing data from receiver")
-
-	// analyze
-	g := new(errgroup.Group)
-	sendList := make([]*lfs.FileDesc, 0)
-	for _, fd := range w.list {
+	// prepare a slice with the delta
+	diffList := make([]*lfs.FileDesc, 0)
+	missList := make([]*lfs.FileDesc, 0)
+	for _, fd := range msg.List {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
-				Int("block size", fd.BlockSize).
+				Int64("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msg(fd.State.String())
-			sendList = append(sendList, fd)
+				Msgf("sender %s", fd.State.String())
+			missList = append(missList, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
 			log.Debug().
-				Int("block size", fd.BlockSize).
-				Int("checksum received", len(fd.Weak)).
+				Int64("block size", fd.BlockSize).
+				Int("hashes count", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msg(fd.State.String())
-			sendList = append(sendList, fd)
+				Msgf("sender %s", fd.State.String())
+			diffList = append(diffList, fd)
 
 		} else {
 			// skipped file
@@ -102,37 +94,79 @@ func (w *LocalSender) Start() error {
 		}
 	}
 
-	// spawn readers
+	rrInbox := make(chan *core.Message)
+	brInbox := make(chan *core.Message)
+	ccIo := viper.GetInt("io_concurrency")
+	g := new(errgroup.Group)
+	dCtx := context.Context(w.ctx)
 
-	// send data
-	for _, fd := range sendList {
+	// spawn readers if we have diff files
+	if len(diffList) > 0 {
 		log.Debug().
-			Str("sending", fd.Prefix+"/"+fd.FileName).
-			Send()
+			Msg("sender spawning roll readers")
 
-		f, err := os.Open(fd.Prefix + "/" + fd.RelPath)
-		if err != nil {
-			return errors.Wrap(err, "error opening file")
+		for i := 0; i < ccIo; i++ {
+			log.Debug().
+				Msgf("starting roll reader: %d", i)
+
+			w := NewRollReader(dCtx, rrInbox, w.receiver)
+			g.Go(func() error { return w.Start() })
 		}
-		stat, err := os.Stat(fd.Prefix + "/" + fd.RelPath)
-		if err != nil {
-			return errors.Wrap(err, "error file stat")
-		}
-		size := stat.Size()
-		r := io.ReaderAt(f)
-		sr := io.NewSectionReader(r, 0, size)
-		fileReader := NewRollReader(w.ctx, w.uuid, fd, sr, w.receiver)
-
-		g.Go(func() error { return fileReader.Start() })
-
 	}
 
-	// wait for the transfer to finish
+	// spawn missing file senders if we have missing files
+	if len(missList) > 0 {
+		log.Debug().
+			Msg("sender spawning bytes readers")
 
+		for i := 0; i < ccIo; i++ {
+			log.Debug().
+				Msgf("starting byte reader: %d", i)
+			w := NewBytesReader(dCtx, brInbox, w.receiver, i)
+			g.Go(func() error { return w.Start() })
+		}
+	}
+
+	// send data - diff first
+	for _, fd := range diffList {
+
+		rrInbox <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+	// new files next
+	for _, fd := range missList {
+
+		brInbox <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+	// all data sent, stop zee workerz
+	if len(diffList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			rrInbox <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
+	if len(missList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			brInbox <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
 	// validate ???
 
 	// end
-	fmt.Println("waiting")
 	err = g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "file reader error")

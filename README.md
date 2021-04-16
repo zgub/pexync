@@ -2,8 +2,8 @@
 
 ## TODO
 
-- [ ] ~~fetch blockSize from viper~~
-- [ ] blocksize to be calculated
+- [x] fetch blockSize from viper and overwrite calculated size
+- [x] blocksize to be calculated
 - [ ] study the rolling adler32
 - [x] test the checksums
 - [x] test various readers with paralelism
@@ -11,6 +11,7 @@
 - [ ] receiver should stop all go routines at RST
 - [ ] do not create cfg file automaticaly, add a command **confgen**
 - [ ] permissions / ownership / sha1 receiver comparison
+- [ ] missing file sender
 
 ## Ideas
 

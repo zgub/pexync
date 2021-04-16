@@ -9,20 +9,25 @@ import (
 
 type Flag int
 
+// not all are strictly neccessary, but concept is concept :-/
 const (
 	NIL Flag = iota // no flag set
-	RST             // reset, (re)initialize), hello
+	INI             // reset, (re)initialize), hello
+	HSH             // calculate hashes
 	SUM             // checksum data from receiver
-	DTA             // data from file reader
+	RSQ             // read sequence
+	WSQ             // write sequence
 	ERR             // error
 	FIN             // done, disconnect
+
 )
 
 var messageTypes = [...]string{
 	"NIL",
-	"RST",
+	"INI",
 	"SUM",
-	"DTA",
+	"RSQ",
+	"WSQ",
 	"ERR",
 	"FIN",
 }
@@ -32,9 +37,10 @@ func (f Flag) String() string {
 }
 
 type Message struct {
-	Flag     Flag            // meta data
-	List     []*lfs.FileDesc // meta data
-	FileDesc *lfs.FileDesc   // meta data
-	DataDesc *lfs.DataDesc   // binary (actual) data
-	UUID     uuid.UUID       // meta data
+	Flag          Flag            // meta data
+	List          []*lfs.FileDesc // meta data
+	FileDesc      *lfs.FileDesc   // meta data
+	DataDesc      *lfs.DataDesc   // binary (actual) data
+	UUID          uuid.UUID       // meta data
+	Offset, Limit int64           // meta data required for reconstruction
 }

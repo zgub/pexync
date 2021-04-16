@@ -26,5 +26,16 @@ var (
 func runTest() {
 	log.Info().
 		Msgf("PeXync version: %s", Version)
-	core.RollTest()
+	err := core.CreateTestFile(700, 4)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("unable to create test file")
+	}
+	err = core.CreateTestFile(700, 6)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("unable to create test file")
+	}
 }

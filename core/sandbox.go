@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -521,7 +522,6 @@ func RollTest() {
 		}
 		sum := adler32.Checksum(buf)
 		hashList = append(hashList, sum)
-		fmt.Printf("data: %s\t sum: %d\n", string(buf), sum)
 	}
 	f.Close()
 	rh := Pour()
@@ -549,7 +549,6 @@ func RollTest() {
 	rh.Write(buf)
 	sum := rh.Sum32()
 	skip := lookup(sum, hashList)
-	fmt.Printf("\n***\ndata: %s\t sum: %d, skip: %t\n", string(buf), sum, skip)
 	var bBuf bytes.Buffer
 	for {
 		n, err := io.ReadFull(r, buf)
@@ -578,7 +577,6 @@ func RollTest() {
 			sum = rh.Sum32()
 			rh.WriteWindow(&bBuf)
 			skip = lookup(sum, hashList)
-			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
 			bBuf.Reset()
 			continue
 		}
@@ -587,7 +585,6 @@ func RollTest() {
 			sum = rh.Sum32()
 			rh.WriteWindow(&bBuf)
 			skip = lookup(sum, hashList)
-			fmt.Printf("data: %s\t sum: %d, skip: %t\n", string(bBuf.Bytes()), sum, skip)
 			bBuf.Reset()
 		}
 	}
@@ -600,4 +597,32 @@ func lookup(hash uint32, hashList []uint32) bool {
 		}
 	}
 	return false
+}
+
+func CreateTestFile(blockSize, count int) error {
+	path := fmt.Sprintf("test/%dx%d-test-data", count, blockSize)
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bw := bufio.NewWriter(io.Writer(f))
+	rn := rune('a')
+	buf := make([]byte, utf8.UTFMax)
+	for block := 0; block < count; block++ {
+		for byte := 0; byte < blockSize; byte++ {
+			n := utf8.EncodeRune(buf, rn)
+			buf = buf[:n]
+			n, err = bw.Write(buf)
+			if err != nil {
+				return err
+			}
+		}
+		rn++
+	}
+
+	bw.Flush()
+	f.Sync()
+	return nil
 }

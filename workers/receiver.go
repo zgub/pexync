@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/google/uuid"
@@ -43,52 +42,52 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-	var done bool
-
-	for !done {
+	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("local receiver closing, context done")
-			done = true
-			break
+			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
-			case core.RST:
-				err := w.handleRst(msg)
+			case core.INI:
+				err := w.handleIni(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-				done = true
-				break
-			case core.DTA:
+				return nil
+			case core.WSQ:
 				log.Trace().
-					Msg("data received")
+					Str("filename", msg.FileDesc.FileName).
+					Msg("==> receiver - data received")
+				data, err := msg.DataDesc.Serialize()
+				if err != nil {
+					return errors.Wrap(err, "error serializing data")
+				}
+
+				// spawn filewriters
+
+				// wait for the transfer to finish
+
+				// validate ???
+
+				// end
+
+				lfs.DummyWriter(data, msg.FileDesc.FileName)
 			default:
 				return errors.New("unknown message received")
 			}
 		}
 	}
-
-	// spawn filewriters
-
-	// wait for the transfer to finish
-
-	// validate ???
-
-	// end
-	log.Trace().
-		Msg("local receiver finished")
-	return nil
 }
 
-func (w *LocalReceiver) handleRst(msg *core.Message) error {
+func (w *LocalReceiver) handleIni(msg *core.Message) error {
 	w.senderUUID = msg.UUID
-	log.Trace().
+	log.Debug().
 		Str("sender uuid", w.senderUUID.String()).
-		Msgf("local receiver received file list, length: %d", len(msg.List))
+		Msgf("receiver handling src file list, length: %d", len(msg.List))
 	// stop all writers if any, this is a reset!
 
 	// get local (destination file list)
@@ -102,26 +101,20 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 		return err
 	}
 
-	log.Debug().Msg("receiver listing files")
 	dstList, err := lfs.ParseDir(dstDir)
 	if err != nil {
 		return errors.Wrap(err, "unable to list directory")
 	}
-
-	log.Debug().Msg("receiver parsing files")
 
 	// build a map of local entries for faster lookup
 	dstMap := make(map[string]*lfs.FileDesc, len(dstList))
 	for _, dstFd := range dstList {
 		dstMap[dstFd.RelPath] = dstFd
 	}
-
+	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
 	for _, srcFd := range msg.List {
 		path := dstDir + srcFd.RelPath
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
-			log.Debug().
-				Str("path", path).
-				Msg("file exists")
 			// it does exist on destination
 			if srcFd.FileSize == dstFd.FileSize && srcFd.Modified == dstFd.Modified {
 				// check permission, modtime and ownership and aupdate if needed
@@ -138,11 +131,14 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 					Str("sender path", srcFd.RelPath).
 					Uint64("source file size", srcFd.FileSize).
 					Uint64("destination file size", dstFd.FileSize).
-					Time("source file mod", srcFd.Modified).
-					Time("receiver file mod", dstFd.Modified).
+					Time("source file modified", srcFd.Modified.UTC()).
+					Time("receiver file modified", dstFd.Modified.UTC()).
 					Msg("receiver DIFF")
 
 				srcFd.State = lfs.Diff
+				dstFd.State = lfs.Diff
+				dstFd.BlockSize = srcFd.BlockSize
+				diffMap[dstFd] = srcFd
 
 				// determine what has changed, if permission and/or modtime only, do not set it to diff
 
@@ -154,7 +150,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 					}
 					// check for zero sized files
 					if srcFd.FileSize == 0 {
-						log.Debug().
+						log.Trace().
 							Str("path", path).
 							Msg("empty file")
 
@@ -166,7 +162,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 						srcFd.State = lfs.Skip
 					}
 				} else {
-					log.Debug().
+					log.Trace().
 						Str("path", path).
 						Msg("receiver fixing dir meta")
 					// directory that exists, check meta only
@@ -180,9 +176,6 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 			continue
 		} else {
 			// it does not exist on destination, check if it's a ditrectory
-			log.Debug().
-				Str("path", path).
-				Msg("file does not exist")
 			if srcFd.IsDir {
 				// create directory
 				log.Debug().
@@ -198,7 +191,7 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 				// set it as missing
 				// check for zero sized files
 				if srcFd.FileSize == 0 {
-					log.Debug().
+					log.Trace().
 						Str("path", path).
 						Msg("empty file")
 					file, err := os.Create(path)
@@ -213,8 +206,10 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 				}
 				srcFd.State = lfs.Missing
 				log.Debug().
-					Str("path", path).
-					Msg("receiver regular missing file")
+					Str("sender path", srcFd.RelPath).
+					Uint64("source file size", srcFd.FileSize).
+					Time("source file modified", srcFd.Modified.UTC()).
+					Msg("receiver MISS")
 			}
 		}
 	}
@@ -231,16 +226,14 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 
 	// send data to checksum workers
 
-	for i, fd := range msg.List {
-		if fd.State == lfs.Diff || fd.State == lfs.Missing {
-			log.Trace().
-				Int("hash reader", i).
-				Str("state", fd.State.String()).
-				Str("file name", fd.Prefix+"/"+fd.FileName).
-				Msg("sending to hash reader")
-			hashChan <- &core.Message{
-				FileDesc: fd,
-			}
+	for dstFd := range diffMap {
+		log.Trace().
+			Str("state", dstFd.State.String()).
+			Str("file name", dstFd.Prefix+"/"+dstFd.FileName).
+			Msg("sending to hash reader")
+		hashChan <- &core.Message{
+			Flag:     core.HSH,
+			FileDesc: dstFd,
 		}
 	}
 	for i := 0; i < ccIo; i++ {
@@ -248,10 +241,14 @@ func (w *LocalReceiver) handleRst(msg *core.Message) error {
 			Flag: core.FIN,
 		}
 	}
-	fmt.Println("waiting")
 	err = g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error caclulation initial check sums")
+	}
+
+	// make sure that we copy the block hashes!!
+	for dstFd, srcFd := range diffMap {
+		srcFd.Weak = dstFd.Weak
 	}
 
 	msg.Flag = core.SUM
