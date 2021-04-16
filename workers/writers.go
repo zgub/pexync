@@ -96,7 +96,16 @@ func (w FileWriter) Start() error {
 
 func (w *FileWriter) write() error {
 	dd := w.dataSeq[w.pSeq]
+
+	/*
+	 * nah, we should call a lfs function to write the data
+	 * give it DataDesc and it will read the description decode it and write
+	 * either data or read nad write referenced data
+	 * but we would hav to give it the reader and writer as well,
+	 * because there will be more dds
+	 */
+
 	header := new(lfs.Header)
-	br := bytes.NewReader(dd.Bytes)
+	br := bytes.NewReader(dd.Bytes())
 	return nil
 }
