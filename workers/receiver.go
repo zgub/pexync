@@ -135,9 +135,14 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 					Time("receiver file modified", dstFd.Modified.UTC()).
 					Msg("receiver DIFF")
 
+				// sync the states in both structs
 				srcFd.State = lfs.Diff
 				dstFd.State = lfs.Diff
+				// important for block checksum calculation
 				dstFd.BlockSize = srcFd.BlockSize
+				// remote index is not important, this is required for file writer
+				dstFd.Idx = srcFd.Idx
+				// map both here for block checksum calculation later
 				diffMap[dstFd] = srcFd
 
 				// determine what has changed, if permission and/or modtime only, do not set it to diff

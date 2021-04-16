@@ -29,6 +29,10 @@ const (
 	IndexFlag bool = false
 )
 
+const (
+	HeaderSize = 33
+)
+
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
@@ -59,6 +63,7 @@ type DataDesc struct {
 	writingData            bool          // true - writing data / false - writing index data
 	data                   *bytes.Buffer
 	offset, seq, fileIndex int64
+	len                    int64 //is ths really neccessary?
 }
 
 func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
@@ -69,6 +74,30 @@ func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
 		offset:    offset,
 		seq:       sequence,
 	}
+}
+
+func Deserialize(p []byte) (*DataDesc, error) {
+	header := new(Header)
+	r := bytes.NewReader(p)
+	err := binary.Read(r, binary.BigEndian, header)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to deserialize data")
+	}
+	dd := &DataDesc{
+		fileIndex: header.FileIndex,
+		offset:    header.Offset,
+		len:       header.Len,
+		data:      bytes.NewBuffer(p[HeaderSize:]),
+	}
+	return dd, nil
+}
+
+func (dd *DataDesc) Seq() int64 {
+	return dd.seq
+}
+
+func (dd *DataDesc) Bytes() []byte {
+	return dd.data.Bytes()
 }
 
 func (dd *DataDesc) Write(b []byte) (int, error) {

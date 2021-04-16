@@ -13,6 +13,8 @@
 - [ ] permissions / ownership / sha1 receiver comparison
 - [ ] missing file sender
 - [ ] multicore
+- [ ] remove unnecessary pointers
+- [ ] struct padding adjustment
 
 ## Ideas
 
