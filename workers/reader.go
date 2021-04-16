@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -204,7 +203,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 					Str("filename", msg.FileDesc.FileName).
 					Int64("datadesc len", int64(dd.Len())).
 					Int64("block size", msg.FileDesc.BlockSize).
-					Msg("roll reader sending data")
+					Msg("==> roll reader sending data")
 				err = sendWithTimeout(nMsg, w.receiver)
 				if err != nil {
 					return errors.Wrap(err, "error sending data")
@@ -263,14 +262,14 @@ func (rr *RollReader) pop() byte {
 
 func (w *RollReader) lookup(sum uint32) int64 {
 
-	fmt.Printf("==> sum: %d\n", sum)
-	spew.Dump(w.hMap)
+	//fmt.Printf("==> sum: %d\n", sum)
+	//spew.Dump(w.hMap)
 	if hIndex, ok := w.hMap[sum]; ok {
 		// found
-		fmt.Println("match")
+		//fmt.Println("match")
 		return int64(hIndex)
 	}
-	fmt.Println("nomatch")
+	//fmt.Println("nomatch")
 	return HashNotFound
 }
 

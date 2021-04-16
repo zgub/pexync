@@ -61,7 +61,7 @@ func (w *LocalReceiver) Start() error {
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msg("receiver - data received")
+					Msg("==> receiver - data received")
 				data, err := msg.DataDesc.Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
@@ -111,7 +111,7 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 	for _, dstFd := range dstList {
 		dstMap[dstFd.RelPath] = dstFd
 	}
-	diffList := make([]*lfs.FileDesc, 0)
+	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
 	for _, srcFd := range msg.List {
 		path := dstDir + srcFd.RelPath
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
@@ -136,7 +136,9 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 					Msg("receiver DIFF")
 
 				srcFd.State = lfs.Diff
-				diffList = append(diffList, srcFd)
+				dstFd.State = lfs.Diff
+				dstFd.BlockSize = srcFd.BlockSize
+				diffMap[dstFd] = srcFd
 
 				// determine what has changed, if permission and/or modtime only, do not set it to diff
 
@@ -224,15 +226,14 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 
 	// send data to checksum workers
 
-	for i, fd := range diffList {
+	for dstFd := range diffMap {
 		log.Trace().
-			Int("hash reader", i).
-			Str("state", fd.State.String()).
-			Str("file name", fd.Prefix+"/"+fd.FileName).
+			Str("state", dstFd.State.String()).
+			Str("file name", dstFd.Prefix+"/"+dstFd.FileName).
 			Msg("sending to hash reader")
 		hashChan <- &core.Message{
 			Flag:     core.HSH,
-			FileDesc: fd,
+			FileDesc: dstFd,
 		}
 	}
 	for i := 0; i < ccIo; i++ {
@@ -243,6 +244,11 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 	err = g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error caclulation initial check sums")
+	}
+
+	// make sure that we copy the block hashes!!
+	for dstFd, srcFd := range diffMap {
+		srcFd.Weak = dstFd.Weak
 	}
 
 	msg.Flag = core.SUM

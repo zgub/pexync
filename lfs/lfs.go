@@ -3,6 +3,7 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -173,6 +174,7 @@ func (dd *DataDesc) Serialize() ([]byte, error) {
 	header := &Header{
 		FileIndex: dd.fileIndex,
 		Offset:    dd.offset,
+		Seq:       dd.seq,
 		Len:       int64(dd.data.Len()),
 	}
 	buf := new(bytes.Buffer)
@@ -325,6 +327,7 @@ func DummyWriter(b []byte, name string) error {
 		Int64("file-index", header.FileIndex).
 		Int64("offset", header.Offset).
 		Int64("section data length", header.Len).
+		Int64("sequence #", header.Seq).
 		Str("filename", name).
 		Msg("DummyWriter - section global header")
 	for {
@@ -361,6 +364,7 @@ func DummyWriter(b []byte, name string) error {
 					return errors.Wrap(err, "DummyWriter - error reading data")
 				}
 			}
+			fmt.Printf("first data byte: %s\n", string(dataBuf[0]))
 			dataCnt += header.Len
 			/*log.Trace().
 			Int("length", len(dataBuf)).
