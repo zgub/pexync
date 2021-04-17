@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 
@@ -18,7 +19,7 @@ import (
 
 type FileWriter struct {
 	ctx        context.Context
-	inbox      <-chan *core.Message
+	inbox      chan *core.Message
 	senderID   uuid.UUID
 	dstFd      *lfs.FileDesc
 	dataSeq    map[int64]*lfs.DataDesc
@@ -29,7 +30,7 @@ type FileWriter struct {
 	br         *bufio.Reader
 }
 
-func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox <-chan *core.Message) FileWriter {
+func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
 	return FileWriter{
 		ctx:      ctx,
 		dstFd:    fd,
@@ -57,10 +58,10 @@ func (w FileWriter) Start() error {
 		f, err := os.Open(path)
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
-			r := io.ReaderAt(f)
-			w.sr = io.NewSectionReader(r, 0, int64(w.dstFd.FileSize))
-			w.br = bufio.NewReader(w.sr)
 		}
+		r := io.ReaderAt(f)
+		w.sr = io.NewSectionReader(r, 0, int64(w.dstFd.FileSize))
+		w.br = bufio.NewReader(w.sr)
 		defer f.Close()
 	}
 
@@ -116,21 +117,28 @@ func (w *FileWriter) write() error {
 		if header.Flag {
 			// true means data
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
+			fmt.Println("copying data")
 			_, err = io.CopyN(w.bw, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
 		} else {
 			// indexes
+			fmt.Println("copying indexes")
 			hIndex := make([]int64, header.Len)
 			err = binary.Read(br, binary.BigEndian, hIndex)
 			if err != nil {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
+				fmt.Printf("index value: %d\n", v)
+				//spew.Dump(w.dstFd)
+				//spew.Dump(w)
 				w.sr.Seek(v*w.dstFd.BlockSize, io.SeekStart)
 				_, err = io.CopyN(w.bw, w.br, w.dstFd.BlockSize)
-				return errors.Wrap(err, "error writing referenced data")
+				if err != nil {
+					return errors.Wrap(err, "error writing referenced data")
+				}
 			}
 
 		}

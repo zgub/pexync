@@ -29,24 +29,36 @@ type LocalReceiver struct {
 	sender     chan<- *core.Message
 	state      senderState // not sure if needed, or if I ever implement this
 	senderUUID uuid.UUID   // same here
+	srcList    map[int64]*lfs.FileDesc
+	writersMap map[int64]FileWriter
 }
 
 func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
-		ctx:    ctx,
-		inbox:  in,
-		sender: sender,
-		state:  RST,
+		ctx:        ctx,
+		inbox:      in,
+		sender:     sender,
+		state:      RST,
+		srcList:    make(map[int64]*lfs.FileDesc),
+		writersMap: make(map[int64]FileWriter),
 	}
 }
 
 func (w *LocalReceiver) Start() error {
 
-	for {
+	g := new(errgroup.Group)
+	done := false
+	for !done {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("local receiver closing, context done")
-			return nil
+			// send fin to all readers
+			for _, wr := range w.writersMap {
+				wr.inbox <- &core.Message{
+					Flag: core.FIN,
+				}
+			}
+			done = true
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
@@ -57,7 +69,13 @@ func (w *LocalReceiver) Start() error {
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-				return nil
+					// send fin to all readers
+				for _, wr := range w.writersMap {
+					wr.inbox <- &core.Message{
+						Flag: core.FIN,
+					}
+				}
+				done = true
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
@@ -74,20 +92,41 @@ func (w *LocalReceiver) Start() error {
 				// validate ???
 
 				// end
+				// dd is new DataDesc created from serialized msg.DataDesc
+				dd, err := lfs.Deserialize(data)
+				if err != nil {
+					return errors.Wrap(err, "error deserializing data")
+				}
+				fi := dd.FileIndex()
+				if fr, ok := w.writersMap[fi]; ok {
+					fr.inbox <- msg
+				} else {
 
-				lfs.DummyWriter(data, msg.FileDesc.FileName)
+					inbox := make(chan *core.Message)
+					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[fi], inbox)
+					w.writersMap[fi] = fr
+					// send a new message
+					g.Go(func() error { return fr.Start() })
+					fr.inbox <- &core.Message{
+						Flag:     core.WSQ,
+						FileDesc: w.srcList[fi],
+						DataDesc: dd,
+					}
+				}
+
 			default:
 				return errors.New("unknown message received")
 			}
 		}
 	}
+	return g.Wait()
 }
 
 func (w *LocalReceiver) handleIni(msg *core.Message) error {
 	w.senderUUID = msg.UUID
 	log.Debug().
 		Str("sender uuid", w.senderUUID.String()).
-		Msgf("receiver handling src file list, length: %d", len(msg.List))
+		Msgf("receiver handling src file list, length: %d", len(msg.FileList))
 	// stop all writers if any, this is a reset!
 
 	// get local (destination file list)
@@ -112,7 +151,7 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 		dstMap[dstFd.RelPath] = dstFd
 	}
 	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
-	for _, srcFd := range msg.List {
+	for _, srcFd := range msg.FileList {
 		path := dstDir + srcFd.RelPath
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
 			// it does exist on destination
@@ -144,6 +183,8 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 				dstFd.Idx = srcFd.Idx
 				// map both here for block checksum calculation later
 				diffMap[dstFd] = srcFd
+				// store!
+				w.srcList[srcFd.Idx] = srcFd
 
 				// determine what has changed, if permission and/or modtime only, do not set it to diff
 
@@ -210,6 +251,8 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 					continue
 				}
 				srcFd.State = lfs.Missing
+				// store!
+				w.srcList[srcFd.Idx] = srcFd
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
 					Uint64("source file size", srcFd.FileSize).

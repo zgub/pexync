@@ -80,6 +80,10 @@ func (dd *DataDesc) Seq() int64 {
 	return dd.seq
 }
 
+func (dd *DataDesc) FileIndex() int64 {
+	return dd.fileIndex
+}
+
 func (dd *DataDesc) Bytes() []byte {
 	return dd.data.Bytes()
 }
@@ -211,6 +215,7 @@ func Deserialize(p []byte) (*DataDesc, error) {
 	dd := &DataDesc{
 		fileIndex: header.FileIndex,
 		offset:    header.Offset,
+		seq:       header.Seq,
 		len:       header.Len,
 		data:      bytes.NewBuffer(p[HeaderSize:]),
 	}

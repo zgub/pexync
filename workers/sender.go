@@ -47,9 +47,9 @@ func (w *LocalSender) Start() error {
 
 	// prepare a message for the receiver
 	msg := &core.Message{
-		Flag: core.INI,
-		UUID: w.uuid,
-		List: w.srcList,
+		Flag:     core.INI,
+		UUID:     w.uuid,
+		FileList: w.srcList,
 	}
 
 	log.Debug().
@@ -69,7 +69,7 @@ func (w *LocalSender) Start() error {
 	// prepare a slice with the delta
 	diffList := make([]*lfs.FileDesc, 0)
 	missList := make([]*lfs.FileDesc, 0)
-	for _, fd := range msg.List {
+	for _, fd := range msg.FileList {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
@@ -109,8 +109,8 @@ func (w *LocalSender) Start() error {
 			log.Debug().
 				Msgf("starting roll reader: %d", i)
 
-			w := NewRollReader(dCtx, rrInbox, w.receiver)
-			g.Go(func() error { return w.Start() })
+			rr := NewRollReader(dCtx, rrInbox, w.receiver)
+			g.Go(func() error { return rr.Start() })
 		}
 	}
 
@@ -122,8 +122,8 @@ func (w *LocalSender) Start() error {
 		for i := 0; i < ccIo; i++ {
 			log.Debug().
 				Msgf("starting byte reader: %d", i)
-			w := NewBytesReader(dCtx, brInbox, w.receiver, i)
-			g.Go(func() error { return w.Start() })
+			br := NewBytesReader(dCtx, brInbox, w.receiver, i)
+			g.Go(func() error { return br.Start() })
 		}
 	}
 

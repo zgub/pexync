@@ -15,6 +15,7 @@
 - [ ] multicore
 - [ ] remove unnecessary pointers
 - [ ] struct padding adjustment
+- [ ] context.Done should send FIn to all workers
 
 ## Ideas
 
