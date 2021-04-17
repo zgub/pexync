@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"io"
 	"os"
 
@@ -24,6 +25,7 @@ type FileWriter struct {
 	pSeq       int64 //"pointer" to the last sequence writtn
 	rBuf, wBuf []byte
 	bw         *bufio.Writer
+	sr         *io.SectionReader
 	br         *bufio.Reader
 }
 
@@ -56,8 +58,8 @@ func (w FileWriter) Start() error {
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
 			r := io.ReaderAt(f)
-			sr := io.NewSectionReader(r, 0, int64(w.dstFd.FileSize))
-			w.br = bufio.NewReader(sr)
+			w.sr = io.NewSectionReader(r, 0, int64(w.dstFd.FileSize))
+			w.br = bufio.NewReader(w.sr)
 		}
 		defer f.Close()
 	}
@@ -97,15 +99,42 @@ func (w FileWriter) Start() error {
 func (w *FileWriter) write() error {
 	dd := w.dataSeq[w.pSeq]
 
-	/*
-	 * nah, we should call a lfs function to write the data
-	 * give it DataDesc and it will read the description decode it and write
-	 * either data or read nad write referenced data
-	 * but we would hav to give it the reader and writer as well,
-	 * because there will be more dds
-	 */
+	for {
+		header := new(lfs.Header)
+		br := bytes.NewReader(dd.Bytes())
+		err := binary.Read(br, binary.BigEndian, header)
+		if err != nil {
+			if err == io.EOF {
+				// end of transmission
+				break
+			} else {
+				// nah something bad hapenned
+				return errors.Wrap(err, "error reading data header")
+			}
+		}
 
-	header := new(lfs.Header)
-	br := bytes.NewReader(dd.Bytes())
+		if header.Flag {
+			// true means data
+			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
+			_, err = io.CopyN(w.bw, br, header.Len)
+			if err != nil {
+				return errors.Wrap(err, "file write failed")
+			}
+		} else {
+			// indexes
+			hIndex := make([]int64, header.Len)
+			err = binary.Read(br, binary.BigEndian, hIndex)
+			if err != nil {
+				return errors.Wrap(err, "error reading data")
+			}
+			for _, v := range hIndex {
+				w.sr.Seek(v*w.dstFd.BlockSize, io.SeekStart)
+				_, err = io.CopyN(w.bw, w.br, w.dstFd.BlockSize)
+				return errors.Wrap(err, "error writing referenced data")
+			}
+
+		}
+	}
+
 	return nil
 }
