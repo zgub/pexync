@@ -49,8 +49,7 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 func (w *LocalReceiver) Start() error {
 
 	g := new(errgroup.Group)
-	done := false
-	for !done {
+	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().Msg("local receiver closing, context done")
@@ -60,7 +59,6 @@ func (w *LocalReceiver) Start() error {
 					Flag: core.FIN,
 				}
 			}
-			done = true
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
@@ -71,13 +69,10 @@ func (w *LocalReceiver) Start() error {
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-					// send fin to all readers
-				for _, wr := range w.writersMap {
-					wr.inbox <- &core.Message{
-						Flag: core.FIN,
-					}
-				}
-				done = true
+				// send fin to all readers
+				fmt.Println("=============== watinig for writers==================")
+				err := g.Wait()
+				return err
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
@@ -130,7 +125,6 @@ func (w *LocalReceiver) Start() error {
 			}
 		}
 	}
-	return g.Wait()
 }
 
 func (w *LocalReceiver) handleIni(msg *core.Message) error {

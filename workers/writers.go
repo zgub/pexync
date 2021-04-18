@@ -103,17 +103,23 @@ func (w *FileWriter) write() error {
 	br := bytes.NewReader(dd.Bytes())
 
 	for {
+		fmt.Println("+++++++++++++++++ reading header ++++++++++++++++++")
 		header := new(lfs.Header)
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
 				// end of transmission
+				fmt.Println("???????????????????????????? EOF ????????????????????????")
+				spew.Dump(header)
+				spew.Dump(dd)
+				w.bw.Flush()
 				break
 			} else {
 				// nah something bad hapenned
 				return errors.Wrap(err, "error reading data header")
 			}
 		}
+		fmt.Println("+++++++++++++++++ header ++++++++++++++++++")
 		spew.Dump(header)
 		if header.Flag {
 			// true means data
@@ -148,6 +154,6 @@ func (w *FileWriter) write() error {
 
 		}
 	}
-
+	w.pSeq++
 	return nil
 }
