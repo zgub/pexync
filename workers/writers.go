@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
 	"github.com/davecgh/go-spew/spew"
@@ -44,19 +45,18 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox 
 }
 
 func (w FileWriter) Start() error {
-	path := viper.GetString("local_destination") + "/" + w.dstFd.RelPath + "." + w.senderID.String()
-	tmpF, err := os.Create(path)
+	tmpF, err := ioutil.TempFile(viper.GetString("local_destination"), w.dstFd.RelPath+".*."+w.senderID.String())
 	if err != nil {
 		return errors.Wrap(err, "unable to create file")
 	}
-	defer tmpF.Close()
+	//defer tmpF.Close()
+	defer os.Remove(tmpF.Name())
 
 	w.bw = bufio.NewWriter(io.Writer(tmpF))
-
+	oldPath := w.dstFd.Prefix + "/" + w.dstFd.FileName
 	// open a reader as well if we have to reference alredy present blocks
 	if w.dstFd.State == lfs.Diff {
-		path = w.dstFd.Prefix + "/" + w.dstFd.FileName
-		f, err := os.Open(path)
+		f, err := os.Open(oldPath)
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
 		}
@@ -90,6 +90,13 @@ func (w FileWriter) Start() error {
 			case core.FIN:
 				log.Debug().
 					Msg("file writer received FIN")
+				err = os.Rename(oldPath, tmpF.Name())
+				if err != nil {
+					return errors.Wrap(err, "unable to replace file")
+				}
+				if err = tmpF.Close(); err != nil {
+					return errors.Wrap(err, "unable to close file")
+				}
 				return nil
 			default:
 				return errors.New("unknown message received")

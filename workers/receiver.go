@@ -71,6 +71,11 @@ func (w *LocalReceiver) Start() error {
 					Msg("receiver received FIN")
 				// send fin to all readers
 				fmt.Println("=============== watinig for writers==================")
+				for _, writer := range w.writersMap {
+					writer.inbox <- &core.Message{
+						Flag: core.FIN,
+					}
+				}
 				err := g.Wait()
 				return err
 			case core.WSQ:
