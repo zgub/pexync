@@ -29,6 +29,10 @@ const (
 	IndexFlag bool = false
 )
 
+const (
+	HeaderSize = 33
+)
+
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
@@ -47,18 +51,19 @@ const (
 
 // lets talk 64bit only to keep this simple
 type Header struct {
+	Flag      bool  // true - data / false - index
 	FileIndex int64 // global header only
 	Offset    int64 // global header only
 	Seq       int64 // for proper reconstruction
-	Flag      bool  // true - data / false - index
 	Len       int64
 }
 type DataDesc struct {
-	readBuf                *bytes.Buffer // intermediate data buffer
-	iBuff                  []int64       // intermediate index buffer
-	writingData            bool          // true - writing data / false - writing index data
-	data                   *bytes.Buffer
+	writingData            bool // true - writing data / false - writing index data
 	offset, seq, fileIndex int64
+	len                    int64         //is ths really neccessary?
+	iBuff                  []int64       // intermediate index buffer
+	readBuf                *bytes.Buffer // intermediate data buffer
+	data                   *bytes.Buffer
 }
 
 func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
@@ -69,6 +74,18 @@ func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
 		offset:    offset,
 		seq:       sequence,
 	}
+}
+
+func (dd *DataDesc) Seq() int64 {
+	return dd.seq
+}
+
+func (dd *DataDesc) FileIndex() int64 {
+	return dd.fileIndex
+}
+
+func (dd *DataDesc) Bytes() []byte {
+	return dd.data.Bytes()
 }
 
 func (dd *DataDesc) Write(b []byte) (int, error) {
@@ -188,20 +205,37 @@ func (dd *DataDesc) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func Deserialize(p []byte) (*DataDesc, error) {
+	header := new(Header)
+	r := bytes.NewReader(p)
+	err := binary.Read(r, binary.BigEndian, header)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to deserialize data")
+	}
+	dd := &DataDesc{
+		fileIndex: header.FileIndex,
+		offset:    header.Offset,
+		seq:       header.Seq,
+		len:       header.Len,
+		data:      bytes.NewBuffer(p[HeaderSize:]),
+	}
+	return dd, nil
+}
+
 type FileDesc struct {
-	Idx       int64
-	State     State
 	IsDir     bool
+	State     State
+	Uid, Gid  uint32
+	Idx       int64
+	BlockSize int64
+	FileSize  uint64
+	Sha1      []byte
+	Weak      []uint32
 	RelPath   string
 	Prefix    string
 	FileName  string
-	FileSize  uint64
-	BlockSize int64
 	Modified  time.Time
 	Mode      os.FileMode
-	Uid, Gid  uint32
-	Sha1      []byte
-	Weak      []uint32
 }
 
 func (fd *FileDesc) SetBlockSize() {

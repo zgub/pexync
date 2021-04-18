@@ -2,8 +2,10 @@ package workers
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
@@ -12,6 +14,10 @@ import (
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
+	if msg.Flag == core.WSQ {
+		fmt.Println("\n=====================> sending =====================>")
+		spew.Dump(msg.DataDesc)
+	}
 	select {
 	case dst <- msg:
 		return nil
