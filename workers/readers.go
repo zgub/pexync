@@ -218,21 +218,20 @@ func (w *RollReader) handleData(msg *core.Message) error {
 		}
 	}
 	// don't forget the last data OR if the whole thing was tiny
-	if dd.Len() > 0 {
-		nMsg := &core.Message{
-			Flag:     core.WSQ,
-			FileDesc: msg.FileDesc,
-			DataDesc: dd,
-			Offset:   msg.Offset,
-			Limit:    msg.Limit,
-		}
-		log.Trace().
-			Str("filename", msg.FileDesc.FileName).
-			Msg("sending remaining data")
-		err = sendWithTimeout(nMsg, w.receiver)
-		if err != nil {
-			return errors.Wrap(err, "error sending data")
-		}
+	dd.MarkAsLast()
+	nMsg := &core.Message{
+		Flag:     core.WSQ,
+		FileDesc: msg.FileDesc,
+		DataDesc: dd,
+		Offset:   msg.Offset,
+		Limit:    msg.Limit,
+	}
+	log.Trace().
+		Str("filename", msg.FileDesc.FileName).
+		Msg("sending remaining data")
+	err = sendWithTimeout(nMsg, w.receiver)
+	if err != nil {
+		return errors.Wrap(err, "error sending data")
 	}
 	log.Debug().
 		Str("filename", msg.FileDesc.FileName).

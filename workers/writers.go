@@ -89,8 +89,9 @@ func (w FileWriter) Start() error {
 				}
 			case core.FIN:
 				log.Debug().
-					Msg("file writer received FIN")
-				err = os.Rename(oldPath, tmpF.Name())
+					Msg("file writer received FIN, renamin")
+				//err = os.Rename(oldPath, tmpF.Name())
+
 				if err != nil {
 					return errors.Wrap(err, "unable to replace file")
 				}
@@ -128,8 +129,8 @@ func (w *FileWriter) write() error {
 		}
 		fmt.Println("+++++++++++++++++ header ++++++++++++++++++")
 		spew.Dump(header)
-		if header.Flag {
-			// true means data
+		switch header.Flag {
+		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
 			fmt.Println("\n<==================> copying data <==================>")
 			spew.Dump(dd)
@@ -139,7 +140,7 @@ func (w *FileWriter) write() error {
 			}
 			fmt.Printf("copied %d bytes\n", n)
 			w.bw.Flush()
-		} else {
+		case lfs.Index:
 			// indexes
 			fmt.Println("copying indexes")
 			hIndex := make([]int64, header.Len)
@@ -158,7 +159,8 @@ func (w *FileWriter) write() error {
 				}
 				w.bw.Flush()
 			}
-
+		default:
+			return errors.Wrap(err, "invalid header")
 		}
 	}
 	w.pSeq++

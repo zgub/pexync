@@ -18,6 +18,8 @@ import (
 
 type State int
 
+type Flag int
+
 const (
 	Missing State = iota // no file on the receiver side
 	Diff                 // file exists but do not match
@@ -25,8 +27,10 @@ const (
 )
 
 const (
-	DataFlag  bool = true
-	IndexFlag bool = false
+	Desc  Flag = iota // Dataesc header (gloal)
+	Data              // Data header
+	Index             // index header
+	End               // end header
 )
 
 const (
@@ -51,7 +55,7 @@ const (
 
 // lets talk 64bit only to keep this simple
 type Header struct {
-	Flag      bool  // true - data / false - index
+	Flag      Flag  // true - data / false - index
 	FileIndex int64 // global header only
 	Offset    int64 // global header only
 	Seq       int64 // for proper reconstruction
@@ -90,7 +94,7 @@ func (dd *DataDesc) Bytes() []byte {
 
 func (dd *DataDesc) Write(b []byte) (int, error) {
 	header := &Header{
-		Flag: DataFlag,
+		Flag: Data,
 		Len:  int64(len(b)),
 	}
 	err := binary.Write(dd.data, binary.BigEndian, header)
@@ -137,7 +141,7 @@ func (dd *DataDesc) flush() error {
 	if dd.writingData && dd.readBuf.Len() != 0 {
 		// header first
 		header := &Header{
-			Flag: DataFlag,
+			Flag: Data,
 			Len:  int64(dd.readBuf.Len()),
 		}
 		// write header
@@ -154,7 +158,7 @@ func (dd *DataDesc) flush() error {
 	} else if len(dd.iBuff) != 0 {
 		// we were writing indexes, flush them
 		header := &Header{
-			Flag: IndexFlag,
+			Flag: Index,
 			Len:  int64(len(dd.iBuff)),
 		}
 		// write header
@@ -220,6 +224,18 @@ func Deserialize(p []byte) (*DataDesc, error) {
 		data:      bytes.NewBuffer(p[HeaderSize:]),
 	}
 	return dd, nil
+}
+
+func (dd *DataDesc) MarkAsLast() error {
+	dd.flush()
+	header := &Header{
+		Flag: End,
+	}
+	err := binary.Write(dd.data, binary.BigEndian, header)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	return nil
 }
 
 type FileDesc struct {
@@ -365,7 +381,7 @@ func DummyWriter(b []byte, name string) error {
 		Str("filename", name).
 		Msg("DummyWriter - section global header")
 	for {
-		// read data header
+		// read data header global header
 		err = binary.Read(r, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
@@ -377,16 +393,8 @@ func DummyWriter(b []byte, name string) error {
 			}
 		}
 		headerCnt++
-		//spew.Dump(header)
-		//dLen := header.Len
-		//flag := header.Flag
-		// DataFlag = true
-		if header.Flag {
-			// true = data
-			/*log.Trace().
-			Int64("length", dLen).
-			Str("filename", name).
-			Msg("DummyWritter - byte data header")*/
+		switch header.Flag {
+		case Data:
 			dataBuf := make([]byte, header.Len)
 			err = binary.Read(r, binary.BigEndian, dataBuf)
 			if err != nil {
@@ -400,15 +408,7 @@ func DummyWriter(b []byte, name string) error {
 			}
 			fmt.Printf("first data byte: %s\n", string(dataBuf[0]))
 			dataCnt += header.Len
-			/*log.Trace().
-			Int("length", len(dataBuf)).
-			Str("filename", name).
-			Msg("DummyWritter - byte data processed")*/
-		} else {
-			/*log.Trace().
-			Int64("length", dLen).
-			Str("filename", name).
-			Msg("DummyWriter - index data header")*/
+		case Index:
 			indexes := make([]int64, header.Len)
 			err = binary.Read(r, binary.BigEndian, indexes)
 			if err != nil {
@@ -422,11 +422,8 @@ func DummyWriter(b []byte, name string) error {
 
 			}
 			indexCnt += header.Len
-			/*log.Trace().
-			Int("length", len(indexes)).
-			Str("filename", name).
-			Msg("DummyWriter - index data processed")*/
 		}
+
 	}
 	log.Trace().
 		Int64("headers", headerCnt).
