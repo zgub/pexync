@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -99,10 +100,10 @@ func (w FileWriter) Start() error {
 
 func (w *FileWriter) write() error {
 	dd := w.dataSeq[w.pSeq]
+	br := bytes.NewReader(dd.Bytes())
 
 	for {
 		header := new(lfs.Header)
-		br := bytes.NewReader(dd.Bytes())
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
@@ -113,15 +114,18 @@ func (w *FileWriter) write() error {
 				return errors.Wrap(err, "error reading data header")
 			}
 		}
-
+		spew.Dump(header)
 		if header.Flag {
 			// true means data
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			fmt.Println("copying data")
-			_, err = io.CopyN(w.bw, br, header.Len)
+			fmt.Println("\n<==================> copying data <==================>")
+			spew.Dump(dd)
+			n, err := io.CopyN(w.bw, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
+			fmt.Printf("copied %d bytes\n", n)
+			w.bw.Flush()
 		} else {
 			// indexes
 			fmt.Println("copying indexes")
@@ -139,6 +143,7 @@ func (w *FileWriter) write() error {
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
+				w.bw.Flush()
 			}
 
 		}

@@ -2,8 +2,10 @@ package workers
 
 import (
 	"context"
+	"fmt"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -98,10 +100,19 @@ func (w *LocalReceiver) Start() error {
 					return errors.Wrap(err, "error deserializing data")
 				}
 				fi := dd.FileIndex()
+				fmt.Println("\n<=================== received <===================")
+				spew.Dump(dd)
 				if fr, ok := w.writersMap[fi]; ok {
-					fr.inbox <- msg
+					// new message
+					fr.inbox <- &core.Message{
+						Flag:     core.WSQ,
+						FileDesc: w.srcList[fi],
+						DataDesc: dd,
+					}
 				} else {
-
+					log.Debug().
+						Str("filename", w.srcList[fi].FileName).
+						Msg("starting new writter")
 					inbox := make(chan *core.Message)
 					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[fi], inbox)
 					w.writersMap[fi] = fr
