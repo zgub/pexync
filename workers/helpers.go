@@ -2,7 +2,6 @@ package workers
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/spf13/viper"
@@ -12,9 +11,6 @@ import (
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	if msg.Flag == core.WSQ {
-		fmt.Println("\n=====================> sending =====================>")
-	}
 	select {
 	case dst <- msg:
 		return nil

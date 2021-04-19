@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/google/uuid"
@@ -66,10 +65,9 @@ func (w *LocalReceiver) Start() error {
 					return errors.Wrap(err, "failed during sync init")
 				}
 			case core.FIN:
-				log.Debug().
+				log.Trace().
 					Msg("receiver received FIN")
 				// send fin to all readers
-				fmt.Println("=============== watinig for writers==================")
 				for _, writer := range w.writersMap {
 					writer.inbox <- &core.Message{
 						Flag: core.FIN,
@@ -80,7 +78,7 @@ func (w *LocalReceiver) Start() error {
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msg("==> receiver - data received")
+					Msg("receiver - data received")
 				data, err := msg.DataDesc.Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
@@ -99,7 +97,6 @@ func (w *LocalReceiver) Start() error {
 					return errors.Wrap(err, "error deserializing data")
 				}
 				fi := dd.FileIndex()
-				fmt.Println("\n<=================== received <===================")
 				if fr, ok := w.writersMap[fi]; ok {
 					// new message
 					fr.inbox <- &core.Message{

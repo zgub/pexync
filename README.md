@@ -17,6 +17,7 @@
 - [ ] struct padding adjustment
 - [ ] context.Done should send FIn to all workers
 - [ ] proto checksums?
+- [ ] change only meta if only meta was changed
 
 ## Ideas
 

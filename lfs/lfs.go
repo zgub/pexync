@@ -3,7 +3,6 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -183,9 +182,6 @@ func (dd *DataDesc) Len() int64 {
 }
 
 func (dd *DataDesc) Serialize() ([]byte, error) {
-	log.Debug().
-		Int64("length", int64(dd.Len())).
-		Msg("serializing")
 	// flush any remainung data
 	err := dd.flush()
 	if err != nil {
@@ -406,7 +402,6 @@ func DummyWriter(b []byte, name string) error {
 					return errors.Wrap(err, "DummyWriter - error reading data")
 				}
 			}
-			fmt.Printf("first data byte: %s\n", string(dataBuf[0]))
 			dataCnt += header.Len
 		case Index:
 			indexes := make([]int64, header.Len)
