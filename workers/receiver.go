@@ -1,9 +1,13 @@
 package workers
 
 import (
+	"compress/gzip"
 	"context"
+	"net/http"
 	"os"
 
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -333,5 +337,49 @@ func fixMeta(dstDir string, srcFd, dstFd *lfs.FileDesc) error {
 			return errors.Wrapf(err, "%s - unable to modify ownership", path)
 		}
 	}
+	return nil
+}
+
+type HttpReceiver struct {
+	ctx        context.Context
+	inbox      <-chan *core.Message
+	sender     chan<- *core.Message
+	state      senderState // not sure if needed, or if I ever implement this
+	senderUUID uuid.UUID   // same here
+	srcList    map[int64]*lfs.FileDesc
+	writersMap map[int64]FileWriter
+}
+
+func NewHttpReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
+	return &LocalReceiver{
+		ctx:        ctx,
+		inbox:      in,
+		sender:     sender,
+		state:      RST,
+		srcList:    make(map[int64]*lfs.FileDesc),
+		writersMap: make(map[int64]FileWriter),
+	}
+}
+
+func (w *HttpReceiver) Start() error {
+	r := chi.NewRouter()
+	timeoutValue := viper.GetDuration("timeout")
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Compress(gzip.DefaultCompression))
+	r.Use(middleware.Timeout(timeoutValue))
+
+	// RESTy routes for "articles" resource
+	r.Route("/list", func(r chi.Router) {
+
+		r.Post("/", processList)
+	})
+
+	port := viper.Get
+	http.ListenAndServe(":3333", r)
+
 	return nil
 }

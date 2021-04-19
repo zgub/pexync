@@ -56,7 +56,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", "test", "directory to synchronize")
 	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
 
-	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
+	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
+	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
 
 	viper.SetDefault("timeout", 5*time.Second)
 

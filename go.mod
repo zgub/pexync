@@ -3,6 +3,7 @@ module github.com/zgub/pexync
 go 1.16
 
 require (
+	github.com/go-chi/chi v1.5.4
 	github.com/google/uuid v1.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.21.0
