@@ -3,7 +3,6 @@ package workers
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -56,7 +55,7 @@ func (w *RollReader) Start() error {
 					return errors.Wrap(err, "unable to compare files")
 				}
 			case core.FIN:
-				log.Debug().
+				log.Trace().
 					Msg("file comparator received FIN")
 				return nil
 			default:
@@ -104,7 +103,6 @@ func (w *RollReader) handleData(msg *core.Message) error {
 			return nil
 		}
 	}
-	fmt.Printf("buf0: %s\n", string(buf[0]))
 
 	// initialize the roll buffer by writting the first block
 	rh := core.Pour()
@@ -152,7 +150,6 @@ func (w *RollReader) handleData(msg *core.Message) error {
 		}
 
 		buf = buf[:n]
-		fmt.Printf("buf: %s\n", string(buf[0]))
 		// if for the last time we've found a matching block, let's read another whole block
 		if hIndex != HashNotFound {
 			//skipCnt++
@@ -203,7 +200,7 @@ func (w *RollReader) handleData(msg *core.Message) error {
 					Str("filename", msg.FileDesc.FileName).
 					Int64("datadesc len", int64(dd.Len())).
 					Int64("block size", msg.FileDesc.BlockSize).
-					Msg("==> roll reader sending data")
+					Msg("roll reader sending data")
 				err = sendWithTimeout(nMsg, w.receiver)
 				if err != nil {
 					return errors.Wrap(err, "error sending data")
@@ -218,21 +215,20 @@ func (w *RollReader) handleData(msg *core.Message) error {
 		}
 	}
 	// don't forget the last data OR if the whole thing was tiny
-	if dd.Len() > 0 {
-		nMsg := &core.Message{
-			Flag:     core.WSQ,
-			FileDesc: msg.FileDesc,
-			DataDesc: dd,
-			Offset:   msg.Offset,
-			Limit:    msg.Limit,
-		}
-		log.Trace().
-			Str("filename", msg.FileDesc.FileName).
-			Msg("sending remaining data")
-		err = sendWithTimeout(nMsg, w.receiver)
-		if err != nil {
-			return errors.Wrap(err, "error sending data")
-		}
+	dd.MarkAsLast()
+	nMsg := &core.Message{
+		Flag:     core.WSQ,
+		FileDesc: msg.FileDesc,
+		DataDesc: dd,
+		Offset:   msg.Offset,
+		Limit:    msg.Limit,
+	}
+	log.Trace().
+		Str("filename", msg.FileDesc.FileName).
+		Msg("sending remaining data")
+	err = sendWithTimeout(nMsg, w.receiver)
+	if err != nil {
+		return errors.Wrap(err, "error sending data")
 	}
 	log.Debug().
 		Str("filename", msg.FileDesc.FileName).
@@ -262,14 +258,9 @@ func (rr *RollReader) pop() byte {
 
 func (w *RollReader) lookup(sum uint32) int64 {
 
-	//fmt.Printf("==> sum: %d\n", sum)
-	//spew.Dump(w.hMap)
 	if hIndex, ok := w.hMap[sum]; ok {
-		// found
-		//fmt.Println("match")
 		return int64(hIndex)
 	}
-	//fmt.Println("nomatch")
 	return HashNotFound
 }
 
@@ -307,7 +298,7 @@ func (w *BytesReader) Start() error {
 			case core.RSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msgf("%d byte reader received message", w.id)
+					Msgf("reader id %d,  byte reader received message", w.id)
 				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
 				if err != nil {
 					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
@@ -383,7 +374,7 @@ func (w *HashReader) Start() error {
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.FIN:
-				log.Debug().
+				log.Trace().
 					Msg("hash reader received FIN")
 				return nil
 			case core.HSH:

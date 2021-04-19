@@ -106,9 +106,6 @@ func (w *LocalSender) Start() error {
 			Msg("sender spawning roll readers")
 
 		for i := 0; i < ccIo; i++ {
-			log.Debug().
-				Msgf("starting roll reader: %d", i)
-
 			rr := NewRollReader(dCtx, rrInbox, w.receiver)
 			g.Go(func() error { return rr.Start() })
 		}
@@ -177,6 +174,9 @@ func (w *LocalSender) Start() error {
 		Flag: core.FIN,
 		UUID: w.uuid,
 	}
-	sendWithTimeout(msg, w.receiver)
+	err = sendWithTimeout(msg, w.receiver)
+	if err != nil {
+		return errors.Wrap(err, "sender failure")
+	}
 	return nil
 }

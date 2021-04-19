@@ -5,12 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -45,7 +43,8 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox 
 }
 
 func (w FileWriter) Start() error {
-	tmpF, err := ioutil.TempFile(viper.GetString("local_destination"), w.dstFd.RelPath+".*."+w.senderID.String())
+	dstDir := viper.GetString("local_destination")
+	tmpF, err := ioutil.TempFile(dstDir, w.dstFd.RelPath+".*."+w.senderID.String())
 	if err != nil {
 		return errors.Wrap(err, "unable to create file")
 	}
@@ -74,11 +73,13 @@ func (w FileWriter) Start() error {
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.WSQ: // read sequence
-				log.Trace().
-					Str("filename", msg.FileDesc.FileName).
-					Msgf("msg received by file writer")
 				// account for out of order delivery, albeit might be not possible?
 				seq := msg.DataDesc.Seq()
+				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
+					Int64("seq", seq).
+					Int64("pSeq", w.pSeq).
+					Msg("msg received by file writer")
 				w.dataSeq[seq] = msg.DataDesc
 				if seq == w.pSeq {
 					// if we hae data at the current sequence, call writer
@@ -88,9 +89,13 @@ func (w FileWriter) Start() error {
 					}
 				}
 			case core.FIN:
-				log.Debug().
-					Msg("file writer received FIN")
-				err = os.Rename(oldPath, tmpF.Name())
+				log.Trace().
+					Str("orig name", w.dstFd.FileName).
+					Str("temp file path", tmpF.Name()).
+					Str("rename to", dstDir+"/"+w.dstFd.FileName).
+					Msg("file writer received FIN, renaming")
+				err = os.Rename(tmpF.Name(), dstDir+"/"+w.dstFd.FileName)
+
 				if err != nil {
 					return errors.Wrap(err, "unable to replace file")
 				}
@@ -110,15 +115,11 @@ func (w *FileWriter) write() error {
 	br := bytes.NewReader(dd.Bytes())
 
 	for {
-		fmt.Println("+++++++++++++++++ reading header ++++++++++++++++++")
 		header := new(lfs.Header)
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
 				// end of transmission
-				fmt.Println("???????????????????????????? EOF ????????????????????????")
-				spew.Dump(header)
-				spew.Dump(dd)
 				w.bw.Flush()
 				break
 			} else {
@@ -126,31 +127,22 @@ func (w *FileWriter) write() error {
 				return errors.Wrap(err, "error reading data header")
 			}
 		}
-		fmt.Println("+++++++++++++++++ header ++++++++++++++++++")
-		spew.Dump(header)
-		if header.Flag {
-			// true means data
+		switch lfs.Flag(header.Flag) {
+		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			fmt.Println("\n<==================> copying data <==================>")
-			spew.Dump(dd)
-			n, err := io.CopyN(w.bw, br, header.Len)
+			_, err := io.CopyN(w.bw, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
-			fmt.Printf("copied %d bytes\n", n)
 			w.bw.Flush()
-		} else {
+		case lfs.Index:
 			// indexes
-			fmt.Println("copying indexes")
 			hIndex := make([]int64, header.Len)
 			err = binary.Read(br, binary.BigEndian, hIndex)
 			if err != nil {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				fmt.Printf("index value: %d\n", v)
-				//spew.Dump(w.dstFd)
-				//spew.Dump(w)
 				w.sr.Seek(v*w.dstFd.BlockSize, io.SeekStart)
 				_, err = io.CopyN(w.bw, w.br, w.dstFd.BlockSize)
 				if err != nil {
@@ -158,7 +150,8 @@ func (w *FileWriter) write() error {
 				}
 				w.bw.Flush()
 			}
-
+		default:
+			return errors.Wrap(err, "invalid header")
 		}
 	}
 	w.pSeq++
