@@ -5,15 +5,20 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/workers"
 )
 
 func init() {
+	rootCmd.PersistentFlags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "IP address")
+	viper.BindPFlag("bind_address", rootCmd.PersistentFlags().Lookup("bind-address"))
+
 	rootCmd.AddCommand(serverCmd)
 }
 
 var (
+	bindAddr  string
 	serverCmd = &cobra.Command{
 		Use:   "client",
 		Short: "synchronize given directory with remote PeXync server",

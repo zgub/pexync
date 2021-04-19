@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -378,7 +379,7 @@ func (w *HttpReceiver) Start() error {
 		r.Post("/", processList)
 	})
 
-	port := viper.Get
+	port := strconv.Itoa(viper.GetInt("port"))
 	http.ListenAndServe(":3333", r)
 
 	return nil
