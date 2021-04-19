@@ -177,6 +177,9 @@ func (w *LocalSender) Start() error {
 		Flag: core.FIN,
 		UUID: w.uuid,
 	}
-	sendWithTimeout(msg, w.receiver)
+	err = sendWithTimeout(msg, w.receiver)
+	if err != nil {
+		return errors.Wrap(err, "sender failure")
+	}
 	return nil
 }

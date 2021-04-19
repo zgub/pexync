@@ -16,9 +16,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-type State int
+type State int16
 
-type Flag int
+type Flag int16
 
 const (
 	Missing State = iota // no file on the receiver side
@@ -27,14 +27,13 @@ const (
 )
 
 const (
-	Desc  Flag = iota // Dataesc header (gloal)
-	Data              // Data header
+	Data  Flag = iota // Data header
 	Index             // index header
 	End               // end header
 )
 
 const (
-	HeaderSize = 33
+	HeaderSize = 34
 )
 
 var fileStatus = [...]string{
@@ -55,14 +54,15 @@ const (
 
 // lets talk 64bit only to keep this simple
 type Header struct {
-	Flag      Flag  // true - data / false - index
+	Flag      int16 // true - data / false - index
 	FileIndex int64 // global header only
 	Offset    int64 // global header only
 	Seq       int64 // for proper reconstruction
 	Len       int64
 }
+
 type DataDesc struct {
-	writingData            bool // true - writing data / false - writing index data
+	mode                   Flag // true - writing data / false - writing index data
 	offset, seq, fileIndex int64
 	len                    int64         //is ths really neccessary?
 	iBuff                  []int64       // intermediate index buffer
@@ -94,7 +94,7 @@ func (dd *DataDesc) Bytes() []byte {
 
 func (dd *DataDesc) Write(b []byte) (int, error) {
 	header := &Header{
-		Flag: Data,
+		Flag: int16(Data),
 		Len:  int64(len(b)),
 	}
 	err := binary.Write(dd.data, binary.BigEndian, header)
@@ -110,12 +110,12 @@ func (dd *DataDesc) Write(b []byte) (int, error) {
 
 func (dd *DataDesc) WriteByte(b byte) error {
 	// make sure to write the header when it is the first data write and writingata is true
-	if !dd.writingData {
+	if dd.mode == Index {
 		err := dd.flush()
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		dd.writingData = true
+		dd.mode = Data
 	}
 	err := dd.readBuf.WriteByte(b)
 	if err != nil {
@@ -125,12 +125,12 @@ func (dd *DataDesc) WriteByte(b byte) error {
 }
 
 func (dd *DataDesc) WriteIndex(i int64) error {
-	if dd.writingData {
+	if dd.mode == Data {
 		err := dd.flush()
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		dd.writingData = false
+		dd.mode = Index
 	}
 	dd.iBuff = append(dd.iBuff, i)
 	return nil
@@ -138,16 +138,16 @@ func (dd *DataDesc) WriteIndex(i int64) error {
 
 func (dd *DataDesc) flush() error {
 	// we were (probably) witing data, flush them
-	if dd.writingData && dd.readBuf.Len() != 0 {
+	if dd.mode == Data && dd.readBuf.Len() != 0 {
 		// header first
 		header := &Header{
-			Flag: Data,
+			Flag: int16(Data),
 			Len:  int64(dd.readBuf.Len()),
 		}
 		// write header
 		err := binary.Write(dd.data, binary.BigEndian, header)
 		if err != nil {
-			return errors.Wrap(err, "unable to encode data")
+			return errors.Wrap(err, "unable to encode data header")
 		}
 		// flush the intermediate data buffer to main buffer if there is somethign to write
 		_, err = dd.data.Write(dd.readBuf.Bytes())
@@ -155,21 +155,21 @@ func (dd *DataDesc) flush() error {
 			return errors.Wrap(err, "unable to encode data")
 		}
 		dd.readBuf.Reset()
-	} else if len(dd.iBuff) != 0 {
+	} else if dd.mode == Index && len(dd.iBuff) != 0 {
 		// we were writing indexes, flush them
 		header := &Header{
-			Flag: Index,
+			Flag: int16(Index),
 			Len:  int64(len(dd.iBuff)),
 		}
 		// write header
 		err := binary.Write(dd.data, binary.BigEndian, header)
 		if err != nil {
-			return errors.Wrap(err, "unable to encode data")
+			return errors.Wrap(err, "unable to encode index header")
 		}
 		// write data, but only if there is something to write
 		err = binary.Write(dd.data, binary.BigEndian, dd.iBuff)
 		if err != nil {
-			return errors.Wrap(err, "unable to encode data")
+			return errors.Wrap(err, "unable to encode indexes")
 		}
 		dd.iBuff = make([]int64, 0)
 	}
@@ -229,7 +229,7 @@ func Deserialize(p []byte) (*DataDesc, error) {
 func (dd *DataDesc) MarkAsLast() error {
 	dd.flush()
 	header := &Header{
-		Flag: End,
+		Flag: int16(End),
 	}
 	err := binary.Write(dd.data, binary.BigEndian, header)
 	if err != nil {
@@ -393,7 +393,7 @@ func DummyWriter(b []byte, name string) error {
 			}
 		}
 		headerCnt++
-		switch header.Flag {
+		switch Flag(header.Flag) {
 		case Data:
 			dataBuf := make([]byte, header.Len)
 			err = binary.Read(r, binary.BigEndian, dataBuf)

@@ -74,11 +74,13 @@ func (w FileWriter) Start() error {
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.WSQ: // read sequence
-				log.Trace().
-					Str("filename", msg.FileDesc.FileName).
-					Msgf("msg received by file writer")
 				// account for out of order delivery, albeit might be not possible?
 				seq := msg.DataDesc.Seq()
+				log.Trace().
+					Str("filename", msg.FileDesc.FileName).
+					Int64("seq", seq).
+					Int64("pSeq", w.pSeq).
+					Msg("+++++++++++++++++++++++ msg received by file writer")
 				w.dataSeq[seq] = msg.DataDesc
 				if seq == w.pSeq {
 					// if we hae data at the current sequence, call writer
@@ -129,7 +131,7 @@ func (w *FileWriter) write() error {
 		}
 		fmt.Println("+++++++++++++++++ header ++++++++++++++++++")
 		spew.Dump(header)
-		switch header.Flag {
+		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
 			fmt.Println("\n<==================> copying data <==================>")
@@ -150,8 +152,6 @@ func (w *FileWriter) write() error {
 			}
 			for _, v := range hIndex {
 				fmt.Printf("index value: %d\n", v)
-				//spew.Dump(w.dstFd)
-				//spew.Dump(w)
 				w.sr.Seek(v*w.dstFd.BlockSize, io.SeekStart)
 				_, err = io.CopyN(w.bw, w.br, w.dstFd.BlockSize)
 				if err != nil {

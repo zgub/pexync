@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -101,7 +100,6 @@ func (w *LocalReceiver) Start() error {
 				}
 				fi := dd.FileIndex()
 				fmt.Println("\n<=================== received <===================")
-				spew.Dump(dd)
 				if fr, ok := w.writersMap[fi]; ok {
 					// new message
 					fr.inbox <- &core.Message{

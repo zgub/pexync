@@ -261,14 +261,9 @@ func (rr *RollReader) pop() byte {
 
 func (w *RollReader) lookup(sum uint32) int64 {
 
-	//fmt.Printf("==> sum: %d\n", sum)
-	//spew.Dump(w.hMap)
 	if hIndex, ok := w.hMap[sum]; ok {
-		// found
-		//fmt.Println("match")
 		return int64(hIndex)
 	}
-	//fmt.Println("nomatch")
 	return HashNotFound
 }
 
@@ -306,7 +301,7 @@ func (w *BytesReader) Start() error {
 			case core.RSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msgf("%d byte reader received message", w.id)
+					Msgf("reader id %d,  byte reader received message", w.id)
 				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
 				if err != nil {
 					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)

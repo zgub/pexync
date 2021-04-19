@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 )
@@ -16,14 +14,12 @@ func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeout := time.After(timeoutValue)
 	if msg.Flag == core.WSQ {
 		fmt.Println("\n=====================> sending =====================>")
-		spew.Dump(msg.DataDesc)
 	}
 	select {
 	case dst <- msg:
 		return nil
 	case <-timeout:
-		log.Trace().Msg("timeout")
-		return errors.New("timeout while sending data")
+		return errors.New("send timeout")
 	}
 }
 
@@ -37,6 +33,6 @@ func recvWithTimeout(src <-chan *core.Message) (*core.Message, error) {
 	case msg = <-src:
 		return msg, nil
 	case <-timeout:
-		return nil, errors.New("timeout while waiting for data")
+		return nil, errors.New("read timeout")
 	}
 }
