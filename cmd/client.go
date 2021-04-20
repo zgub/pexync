@@ -14,12 +14,16 @@ import (
 
 func init() {
 	rootCmd.AddCommand(clientCmd)
-	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "L", "", "local sync destination")
+	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "L", "", "local destination")
 	viper.BindPFlag("local_destination", clientCmd.Flags().Lookup("local-destination"))
+
+	clientCmd.Flags().StringVarP(&remoteDestination, "remote-destination", "R", "", "remote destination")
+	viper.BindPFlag("remote_destination", clientCmd.Flags().Lookup("remote-destination"))
+
 }
 
 var (
-	localDestination string
+	localDestination, remoteDestination string
 
 	clientCmd = &cobra.Command{
 		Use:   "client",
