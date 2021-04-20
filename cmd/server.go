@@ -20,7 +20,7 @@ func init() {
 var (
 	bindAddr  string
 	serverCmd = &cobra.Command{
-		Use:   "client",
+		Use:   "server",
 		Short: "synchronize given directory with remote PeXync server",
 		Long:  `The client command attempts to connect to a PeXync server and synchronize the directory content in an optimized way.`,
 		Run: func(cmd *cobra.Command, args []string) {
