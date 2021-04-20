@@ -1,11 +1,9 @@
 package workers
 
 import (
-	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -374,37 +372,55 @@ func (w *HttpReceiver) Start() error {
 }
 
 func processList(w http.ResponseWriter, r *http.Request) {
-	//var list []*lfs.FileDesc
 	var (
 		list []*lfs.FileDesc
-		//gz   io.ReadCloser
-		//err  error
 	)
-	gz, err := gzip.NewReader(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	/*
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, gz)
+		buf := new(bytes.Buffer)
+		_, err = io.Copy(buf, gz)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+		}
+		if err = gz.Close(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+		}
+	*/
+
+	buf, err := decompress(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
 			Err(err).
 			Caller().
 			Msg("internal server error")
-	}
-	if err = gz.Close(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("internal server error")
+		return
 	}
 	//spew.Dump(buf.Bytes())
 
 	err = json.NewDecoder(buf).
 		Decode(&list)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error")
+		return
+	}
+	err = respondWithJSON(w, http.StatusOK, list)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().

@@ -1,6 +1,11 @@
 package workers
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -58,4 +63,44 @@ func fixMeta(dstDir string, srcFd, dstFd *lfs.FileDesc) error {
 		}
 	}
 	return nil
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error {
+	response, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(response)
+	return nil
+}
+
+func compress(p []byte) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	gz := gzip.NewWriter(buf)
+	_, err := gz.Write(p)
+	if err != nil {
+		return nil, err
+	}
+	if err = gz.Close(); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+func decompress(r io.Reader) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(buf, gz)
+	if err != nil {
+		return nil, err
+	}
+	if err = gz.Close(); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }

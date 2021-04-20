@@ -1,16 +1,14 @@
 package workers
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -202,7 +200,7 @@ func NewHttpSender(ctx context.Context) *HttpSender {
 }
 
 func (w *HttpSender) Start() error {
-	list, err := lfs.ParseDir(viper.GetString("directory"))
+	srcList, err := lfs.ParseDir(viper.GetString("directory"))
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -211,7 +209,7 @@ func (w *HttpSender) Start() error {
 			Send()
 	}
 
-	for _, fd := range list {
+	for _, fd := range srcList {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().
@@ -222,7 +220,7 @@ func (w *HttpSender) Start() error {
 		}
 	}
 
-	msg, err := json.Marshal(list)
+	msg, err := json.Marshal(srcList)
 
 	// do a simple validation, though not strictly neccessary, http would take care
 	host := viper.GetString("remote_destination")
@@ -260,19 +258,20 @@ func (w *HttpSender) Start() error {
 		Transport: tr,
 	}
 
-	cBuf := new(bytes.Buffer)
+	/*cBuf := new(bytes.Buffer)
 	gz := gzip.NewWriter(cBuf)
 
 	if _, err = gz.Write(msg); err != nil {
 		return errors.Wrap(err, "error compressing data")
-	}
-	if err = gz.Close(); err != nil {
+	}*/
+	buf, err := compress(msg)
+	if err != nil {
 		return errors.Wrap(err, "error compressing data")
 	}
 
 	//spew.Dump(cBuf.Bytes())
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), cBuf)
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -291,8 +290,19 @@ func (w *HttpSender) Start() error {
 
 	fmt.Println("response Status:", resp.Status)
 	fmt.Println("response Headers:", resp.Header)
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
+	//body, _ := ioutil.ReadAll(resp.Body)
+	buf, err = decompress(resp.Body)
+	if err != nil {
+		return errors.Wrap(err, "error reading server response")
+	}
+
+	var dstList []*lfs.FileDesc
+	err = json.Unmarshal(buf.Bytes(), &dstList)
+	if err != nil {
+		return errors.Wrap(err, "error reading server response")
+	}
+
+	spew.Dump(dstList)
 
 	//spew.Dump(string(msg))
 
