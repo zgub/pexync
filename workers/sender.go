@@ -2,6 +2,7 @@ package workers
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -260,11 +260,24 @@ func (w *HttpSender) Start() error {
 		Transport: tr,
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), bytes.NewBuffer(msg))
-	//req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, "https://www.google.com", bytes.NewBuffer(msg))
+	cBuf := new(bytes.Buffer)
+	gz := gzip.NewWriter(cBuf)
+
+	if _, err = gz.Write(msg); err != nil {
+		return errors.Wrap(err, "error compressing data")
+	}
+	if err = gz.Close(); err != nil {
+		return errors.Wrap(err, "error compressing data")
+	}
+
+	//spew.Dump(cBuf.Bytes())
+
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), cBuf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Content-Encoding", "gzip")
 	if err != nil {
 		return errors.Wrap(err, "error creating http request")
 	}
@@ -273,7 +286,7 @@ func (w *HttpSender) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "error connecting server")
 	}
-	fmt.Printf("%+v\n", resp)
+	//fmt.Printf("%+v\n", resp)
 	defer resp.Body.Close()
 
 	fmt.Println("response Status:", resp.Status)
@@ -281,7 +294,7 @@ func (w *HttpSender) Start() error {
 	body, _ := ioutil.ReadAll(resp.Body)
 	fmt.Println("response Body:", string(body))
 
-	spew.Dump(string(msg))
+	//spew.Dump(string(msg))
 
 	return nil
 }
