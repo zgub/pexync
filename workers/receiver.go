@@ -229,7 +229,7 @@ func (w *HttpReceiver) Start() error {
 	r.Use(middleware.Compress(gzip.DefaultCompression))
 	r.Use(middleware.Timeout(timeoutValue))
 
-	// RESTy routes for "articles" resource
+	// routes
 	r.Route("/list", func(r chi.Router) {
 		r.Post("/", processList)
 	})
@@ -246,7 +246,7 @@ func (w *HttpReceiver) Start() error {
 	address = address + ":" + port
 	err := http.ListenAndServe(address, r)
 	if err != nil {
-		return errors.Wrapf(err, "listen failed on %s", address)
+		return errors.Wrapf(err, "unable to listen on %s", address)
 	}
 
 	return nil
