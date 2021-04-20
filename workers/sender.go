@@ -251,25 +251,15 @@ func (w *HttpSender) Start() error {
 		DisableCompression:    false,
 	}
 
-	//spew.Dump(tr)
-
 	client := &http.Client{
 		Timeout:   defaultTimeout,
 		Transport: tr,
 	}
 
-	/*cBuf := new(bytes.Buffer)
-	gz := gzip.NewWriter(cBuf)
-
-	if _, err = gz.Write(msg); err != nil {
-		return errors.Wrap(err, "error compressing data")
-	}*/
 	buf, err := compress(msg)
 	if err != nil {
 		return errors.Wrap(err, "error compressing data")
 	}
-
-	//spew.Dump(cBuf.Bytes())
 
 	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
@@ -280,17 +270,17 @@ func (w *HttpSender) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "error creating http request")
 	}
-	//spew.Dump(req)
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return errors.Wrap(err, "error connecting server")
 	}
-	//fmt.Printf("%+v\n", resp)
+
 	defer resp.Body.Close()
 
 	fmt.Println("response Status:", resp.Status)
 	fmt.Println("response Headers:", resp.Header)
-	//body, _ := ioutil.ReadAll(resp.Body)
+
 	buf, err = decompress(resp.Body)
 	if err != nil {
 		return errors.Wrap(err, "error reading server response")
@@ -303,8 +293,6 @@ func (w *HttpSender) Start() error {
 	}
 
 	spew.Dump(dstList)
-
-	//spew.Dump(string(msg))
 
 	return nil
 }
