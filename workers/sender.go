@@ -200,29 +200,8 @@ func NewHttpSender(ctx context.Context) *HttpSender {
 }
 
 func (w *HttpSender) Start() error {
-	srcList, err := lfs.ParseDir(viper.GetString("directory"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
-	}
 
-	for _, fd := range srcList {
-		if !fd.IsDir {
-			fd.SetBlockSize()
-			log.Trace().
-				Str("file name", fd.FileName).
-				Int64("file size", int64(fd.FileSize)).
-				Int64("block size calculated", fd.BlockSize).
-				Send()
-		}
-	}
-
-	msg, err := json.Marshal(srcList)
-
-	// do a simple validation, though not strictly neccessary, http would take care
+	// first, prepare http client
 	host := viper.GetString("remote_destination")
 	port := viper.GetInt("port")
 
@@ -256,7 +235,36 @@ func (w *HttpSender) Start() error {
 		Transport: tr,
 	}
 
-	buf, err := compress(msg)
+	// perform directory listing
+	srcList, err := lfs.ParseDir(viper.GetString("directory"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Stack().
+			Caller().
+			Send()
+	}
+
+	for _, fd := range srcList {
+		if !fd.IsDir {
+			fd.SetBlockSize()
+			log.Trace().
+				Str("file name", fd.FileName).
+				Int64("file size", int64(fd.FileSize)).
+				Int64("block size calculated", fd.BlockSize).
+				Send()
+		}
+	}
+
+	msg := &core.Message{
+		Flag:     core.INI,
+		UUID:     w.uuid,
+		FileList: srcList,
+	}
+
+	jsonMsg, err := json.Marshal(msg)
+
+	buf, err := compress(jsonMsg)
 	if err != nil {
 		return errors.Wrap(err, "error compressing data")
 	}
@@ -286,13 +294,13 @@ func (w *HttpSender) Start() error {
 		return errors.Wrap(err, "error reading server response")
 	}
 
-	var dstList []*lfs.FileDesc
-	err = json.Unmarshal(buf.Bytes(), &dstList)
+	msg = &core.Message{}
+	err = json.Unmarshal(buf.Bytes(), msg)
 	if err != nil {
 		return errors.Wrap(err, "error reading server response")
 	}
 
-	spew.Dump(dstList)
+	spew.Dump(msg)
 
 	return nil
 }

@@ -372,9 +372,6 @@ func (w *HttpReceiver) Start() error {
 }
 
 func processList(w http.ResponseWriter, r *http.Request) {
-	var (
-		list []*lfs.FileDesc
-	)
 
 	buf, err := decompress(r.Body)
 	if err != nil {
@@ -386,8 +383,9 @@ func processList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	msg := *&core.Message{}
 	err = json.NewDecoder(buf).
-		Decode(&list)
+		Decode(&msg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -396,7 +394,7 @@ func processList(w http.ResponseWriter, r *http.Request) {
 			Msg("internal server error")
 		return
 	}
-	err = respondWithJSON(w, http.StatusOK, list)
+	err = respondWithJSON(w, http.StatusOK, msg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -405,4 +403,5 @@ func processList(w http.ResponseWriter, r *http.Request) {
 			Msg("internal server error")
 		return
 	}
+
 }
