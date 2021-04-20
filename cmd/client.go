@@ -14,7 +14,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(clientCmd)
-	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "", "local sync destination")
+	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "L", "", "local sync destination")
 	viper.BindPFlag("local_destination", clientCmd.Flags().Lookup("local-destination"))
 }
 

@@ -2,7 +2,9 @@ package workers
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -213,5 +215,9 @@ func (w *HttpSender) Start() error {
 				Send()
 		}
 	}
+
+	msg, err := json.Marshal(list)
+	spew.Dump(string(msg))
+
 	return nil
 }

@@ -3,6 +3,6 @@ block_size = 700
 directory = "test"
 io_concurrency = 2
 local_destination = ""
-log_level = 1
+log_level = -1
 port = 3819
 timeout = "10s"
