@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"net/url"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
@@ -222,18 +224,56 @@ func (w *HttpSender) Start() error {
 
 	msg, err := json.Marshal(list)
 
-	url := "http://restapi3.apiary.io/notes"
+	// do a simple validation, though not strictly neccessary, http would take care
+	host := viper.GetString("remote_destination")
+	port := viper.GetInt("port")
 
-	var jsonStr = []byte(`{"title":"Buy cheese and bread for breakfast."}`)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
-	req.Header.Set("X-Custom-Header", "myvalue")
+	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
+	if err != nil {
+		return errors.Wrap(err, "invalid URL")
+	}
+
+	url.Path += "/list"
+
+	defaultTimeout := viper.GetDuration("timeout")
+	ccIo := viper.GetInt("io_concurrency")
+
+	tr := &http.Transport{
+		ResponseHeaderTimeout: defaultTimeout,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			KeepAlive: 0,
+			Timeout:   defaultTimeout,
+		}).DialContext,
+		MaxIdleConns:          ccIo,
+		IdleConnTimeout:       defaultTimeout * 10,
+		TLSHandshakeTimeout:   defaultTimeout,
+		MaxIdleConnsPerHost:   2 * ccIo,
+		ExpectContinueTimeout: defaultTimeout,
+		DisableCompression:    false,
+	}
+
+	//spew.Dump(tr)
+
+	client := &http.Client{
+		Timeout:   defaultTimeout,
+		Transport: tr,
+	}
+
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), bytes.NewBuffer(msg))
+	//req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, "https://www.google.com", bytes.NewBuffer(msg))
+	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
+	req.Header.Set("User-Agent", "PeXync-client-mode")
+	if err != nil {
+		return errors.Wrap(err, "error creating http request")
+	}
+	//spew.Dump(req)
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err, "error connecting server")
 	}
+	fmt.Printf("%+v\n", resp)
 	defer resp.Body.Close()
 
 	fmt.Println("response Status:", resp.Status)

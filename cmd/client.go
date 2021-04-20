@@ -13,13 +13,14 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(clientCmd)
+
 	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "L", "", "local destination")
 	viper.BindPFlag("local_destination", clientCmd.Flags().Lookup("local-destination"))
 
 	clientCmd.Flags().StringVarP(&remoteDestination, "remote-destination", "R", "", "remote destination")
 	viper.BindPFlag("remote_destination", clientCmd.Flags().Lookup("remote-destination"))
 
+	rootCmd.AddCommand(clientCmd)
 }
 
 var (
@@ -37,11 +38,16 @@ var (
 
 func startClient() {
 
-	localDst := viper.GetString("local_destination")
-	if localDst != "" {
+	if localDestination != "" && remoteDestination != "" {
+		log.Error().
+			Msg("specify only local or remote destination")
+		return
+	}
+
+	if localDestination != "" {
 
 		log.Info().
-			Str("local destination set", localDst).
+			Str("local destination set", localDestination).
 			Msg("starting local sync")
 
 		list, err := lfs.ParseDir(viper.GetString("directory"))
@@ -54,7 +60,7 @@ func startClient() {
 		}
 		ctx := context.Background()
 		startLocalSync(ctx, list)
-	} else {
+	} else if remoteDestination != "" {
 		log.Info().
 			Msg("starting remote sync")
 		ctx, cancel := context.WithCancel(context.Background())
@@ -67,6 +73,10 @@ func startClient() {
 				Err(err).
 				Msg("error")
 		}
+	} else {
+		log.Error().
+			Msg("specify local or remote destination")
+		return
 	}
 
 }
