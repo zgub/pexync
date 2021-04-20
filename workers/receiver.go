@@ -3,6 +3,8 @@ package workers
 import (
 	"compress/gzip"
 	"context"
+	"encoding/json"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -317,30 +319,6 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 	return nil
 }
 
-func fixMeta(dstDir string, srcFd, dstFd *lfs.FileDesc) error {
-	path := dstDir + "/" + srcFd.RelPath
-	// check permissions and ownership
-	if srcFd.Modified != dstFd.Modified {
-		err := os.Chtimes(path, srcFd.Modified, srcFd.Modified)
-		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify mtime", path)
-		}
-	}
-	if srcFd.Mode.Perm() != dstFd.Mode.Perm() {
-		err := os.Chmod(path, srcFd.Mode.Perm())
-		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify permissions", path)
-		}
-	}
-	if srcFd.Gid != dstFd.Gid || srcFd.Uid != dstFd.Uid {
-		err := os.Chown(path, int(srcFd.Uid), int(srcFd.Gid))
-		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify ownership", path)
-		}
-	}
-	return nil
-}
-
 type HttpReceiver struct {
 	ctx        context.Context
 	inbox      <-chan *core.Message
@@ -351,8 +329,8 @@ type HttpReceiver struct {
 	writersMap map[int64]FileWriter
 }
 
-func NewHttpReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
-	return &LocalReceiver{
+func NewHttpReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *HttpReceiver {
+	return &HttpReceiver{
 		ctx:        ctx,
 		inbox:      in,
 		sender:     sender,
@@ -379,8 +357,25 @@ func (w *HttpReceiver) Start() error {
 		r.Post("/", processList)
 	})
 
+	address := viper.GetString("bind_address")
+	if net.ParseIP(address) == nil {
+		return errors.New("invalid bind address: " + address)
+	}
 	port := strconv.Itoa(viper.GetInt("port"))
-	http.ListenAndServe(":3333", r)
+	address = address + ":" + port
+	err := http.ListenAndServe(address, r)
+	if err != nil {
+		return errors.Wrapf(err, "listen failed on %s", address)
+	}
 
 	return nil
+}
+
+func processList(w http.ResponseWriter, r *http.Request) {
+	var list []*lfs.FileDesc
+	err := json.NewDecoder(r.Body).Decode(&list)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }

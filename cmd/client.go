@@ -14,7 +14,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(clientCmd)
-	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "./Xync/", "local sync destination")
+	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "", "local sync destination")
 	viper.BindPFlag("local_destination", clientCmd.Flags().Lookup("local-destination"))
 }
 
@@ -32,17 +32,33 @@ var (
 )
 
 func startClient() {
-	log.Info().Msg("initializing PeXync client")
-	list, err := lfs.ParseDir(viper.GetString("directory"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
+
+	if viper.GetString("local_destination") != "" {
+
+		log.Info().Msg("starting local sync")
+
+		list, err := lfs.ParseDir(viper.GetString("directory"))
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Stack().
+				Caller().
+				Send()
+		}
+		ctx := context.Background()
+		startLocalSync(ctx, list)
+	} else {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		httpSender := workers.NewHttpSender(ctx)
+		err := httpSender.Start()
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("error")
+		}
 	}
-	ctx := context.Background()
-	startLocalSync(ctx, list)
 
 }
 

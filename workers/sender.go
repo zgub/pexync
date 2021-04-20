@@ -180,3 +180,33 @@ func (w *LocalSender) Start() error {
 	}
 	return nil
 }
+
+type HttpSender struct {
+	ctx     context.Context
+	srcList []*lfs.FileDesc
+	inbox   <-chan *core.Message
+	uuid    uuid.UUID
+}
+
+func NewHttpSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *HttpSender {
+	return &HttpSender{
+		ctx:     ctx,
+		srcList: fl,
+		inbox:   in,
+		uuid:    uuid.New(),
+	}
+}
+
+func (w *HttpSender) Start() error {
+	for _, fd := range w.srcList {
+		if !fd.IsDir {
+			fd.SetBlockSize()
+			log.Trace().
+				Str("file name", fd.FileName).
+				Int64("file size", int64(fd.FileSize)).
+				Int64("block size calculated", fd.BlockSize).
+				Send()
+		}
+	}
+	return nil
+}
