@@ -182,23 +182,28 @@ func (w *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	ctx     context.Context
-	srcList []*lfs.FileDesc
-	inbox   <-chan *core.Message
-	uuid    uuid.UUID
+	ctx  context.Context
+	uuid uuid.UUID
 }
 
-func NewHttpSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *HttpSender {
+func NewHttpSender(ctx context.Context) *HttpSender {
 	return &HttpSender{
-		ctx:     ctx,
-		srcList: fl,
-		inbox:   in,
-		uuid:    uuid.New(),
+		ctx:  ctx,
+		uuid: uuid.New(),
 	}
 }
 
 func (w *HttpSender) Start() error {
-	for _, fd := range w.srcList {
+	list, err := lfs.ParseDir(viper.GetString("directory"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Stack().
+			Caller().
+			Send()
+	}
+
+	for _, fd := range list {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().

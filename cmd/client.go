@@ -33,9 +33,12 @@ var (
 
 func startClient() {
 
-	if viper.GetString("local_destination") != "" {
+	localDst := viper.GetString("local_destination")
+	if localDst != "" {
 
-		log.Info().Msg("starting local sync")
+		log.Info().
+			Str("local destination set", localDst).
+			Msg("starting local sync")
 
 		list, err := lfs.ParseDir(viper.GetString("directory"))
 		if err != nil {
@@ -48,6 +51,8 @@ func startClient() {
 		ctx := context.Background()
 		startLocalSync(ctx, list)
 	} else {
+		log.Info().
+			Msg("starting remote sync")
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
