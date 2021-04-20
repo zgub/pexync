@@ -231,8 +231,11 @@ func (w *HttpReceiver) Start() error {
 
 	// RESTy routes for "articles" resource
 	r.Route("/list", func(r chi.Router) {
-
 		r.Post("/", processList)
+	})
+
+	r.Route("/data", func(r chi.Router) {
+		r.Post("/", processData)
 	})
 
 	address := viper.GetString("bind_address")
@@ -283,3 +286,5 @@ func processList(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+func processData(w http.ResponseWriter, r *http.Request) {}
