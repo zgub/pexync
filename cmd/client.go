@@ -13,13 +13,18 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(clientCmd)
-	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "./Xync/", "local sync destination")
+
+	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "L", "", "local destination")
 	viper.BindPFlag("local_destination", clientCmd.Flags().Lookup("local-destination"))
+
+	clientCmd.Flags().StringVarP(&remoteDestination, "remote-destination", "R", "", "remote destination")
+	viper.BindPFlag("remote_destination", clientCmd.Flags().Lookup("remote-destination"))
+
+	rootCmd.AddCommand(clientCmd)
 }
 
 var (
-	localDestination string
+	localDestination, remoteDestination string
 
 	clientCmd = &cobra.Command{
 		Use:   "client",
@@ -32,17 +37,47 @@ var (
 )
 
 func startClient() {
-	log.Info().Msg("initializing PeXync client")
-	list, err := lfs.ParseDir(viper.GetString("directory"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
+
+	if localDestination != "" && remoteDestination != "" {
+		log.Error().
+			Msg("specify only local or remote destination")
+		return
 	}
-	ctx := context.Background()
-	startLocalSync(ctx, list)
+
+	if localDestination != "" {
+
+		log.Info().
+			Str("local destination set", localDestination).
+			Msg("starting local sync")
+
+		list, err := lfs.ParseDir(viper.GetString("directory"))
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Stack().
+				Caller().
+				Send()
+		}
+		ctx := context.Background()
+		startLocalSync(ctx, list)
+	} else if remoteDestination != "" {
+		log.Info().
+			Msg("starting remote sync")
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		httpSender := workers.NewHttpSender(ctx)
+		err := httpSender.Start()
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("error")
+		}
+	} else {
+		log.Error().
+			Msg("specify local or remote destination")
+		return
+	}
 
 }
 

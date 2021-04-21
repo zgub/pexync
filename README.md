@@ -11,13 +11,16 @@
 - [ ] receiver should stop all go routines at RST
 - [ ] do not create cfg file automaticaly, add a command **confgen**
 - [ ] permissions / ownership / sha1 receiver comparison
-- [ ] missing file sender
+- [x] missing file sender
 - [ ] multicore
 - [ ] remove unnecessary pointers
 - [ ] struct padding adjustment
-- [ ] context.Done should send FIn to all workers
+- [ ] context.Done should send FIN to all workers
 - [ ] proto checksums?
 - [ ] change only meta if only meta was changed
+- [ ] UUID and AAA
+- [ ] contexts
+- [ ] switch local / remote
 
 ## Ideas
 
