@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"testing"
 	"unicode/utf8"
 )
 
@@ -34,4 +35,8 @@ func createTestFile(blockSize, count int) error {
 	bw.Flush()
 	f.Sync()
 	return nil
+}
+
+func TestMissingLocalSync(t *testing.T) {
+
 }
