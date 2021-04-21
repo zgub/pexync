@@ -43,7 +43,7 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox 
 }
 
 func (w FileWriter) Start() error {
-	dstDir := viper.GetString("local_destination")
+	dstDir := viper.GetString("destination")
 	tmpF, err := ioutil.TempFile(dstDir, w.dstFd.RelPath+".*."+w.senderID.String())
 	if err != nil {
 		return errors.Wrap(err, "unable to create file")
@@ -74,9 +74,11 @@ func (w FileWriter) Start() error {
 			switch msg.Flag {
 			case core.WSQ: // read sequence
 				// account for out of order delivery, albeit might be not possible?
+				//fmt.Println("<================== witer received WSQ message")
+				//spew.Dump(msg)
 				seq := msg.DataDesc.Seq()
 				log.Trace().
-					Str("filename", msg.FileDesc.FileName).
+					//Str("filename", msg.FileDesc.FileName).
 					Int64("seq", seq).
 					Int64("pSeq", w.pSeq).
 					Msg("msg received by file writer")

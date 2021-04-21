@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -236,7 +235,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// perform directory listing
-	srcList, err := lfs.ParseDir(viper.GetString("directory"))
+	srcList, err := lfs.ParseDir(viper.GetString("source"))
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -300,7 +299,7 @@ func (w *HttpSender) Start() error {
 		return errors.Wrap(err, "error reading server response")
 	}
 
-	spew.Dump(msg)
+	//spew.Dump(msg)
 
 	return nil
 }

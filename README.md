@@ -21,6 +21,10 @@
 - [ ] UUID and AAA
 - [ ] contexts
 - [ ] switch local / remote
+- [ ] fail when remote host is not specified
+- [ ] validate inputs
+- [ ] do I need fileindex????? (WHOA) seem not
+- [ ] tests!
 
 ## Ideas
 

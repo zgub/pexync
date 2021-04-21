@@ -283,7 +283,8 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	var idx int64
 
 	// avoid endless recursive deadend
-	dest, err := filepath.Abs(viper.GetString("local_destination"))
+
+	dest, err := filepath.Abs(viper.GetString("destination"))
 	if err != nil {
 		return nil, errors.Wrap(err, absPathError)
 	}
