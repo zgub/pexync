@@ -22,12 +22,12 @@ var (
 
 var (
 	// general
-	useCores int
-	cfgFile  string
-	debug    bool
-	port     int
-	syncDir  string
-	ccIo     int
+	useCores       int
+	cfgFile        string
+	debug          bool
+	port           int
+	srcDir, dstDir string
+	ccIo           int
 
 	// core
 	blockSize int
@@ -53,8 +53,11 @@ func init() {
 
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
-	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", "test", "directory to synchronize")
-	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
+	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "test", "source directory to synchronize")
+	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
+
+	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
+	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
 	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))

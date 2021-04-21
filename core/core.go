@@ -25,6 +25,7 @@ const (
 var messageTypes = [...]string{
 	"NIL",
 	"INI",
+	"HSH",
 	"SUM",
 	"RSQ",
 	"WSQ",

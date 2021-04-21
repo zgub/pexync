@@ -41,11 +41,11 @@ type LocalReceiver struct {
 
 func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
-		ctx:    ctx,
-		inbox:  in,
-		sender: sender,
-		state:  RST,
-		//srcList:    make(map[int64]*lfs.FileDesc),
+		ctx:        ctx,
+		inbox:      in,
+		sender:     sender,
+		state:      RST,
+		srcList:    make(map[int64]*lfs.FileDesc),
 		writersMap: make(map[int64]FileWriter),
 	}
 }
@@ -85,6 +85,7 @@ func (w *LocalReceiver) Start() error {
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
 					Msg("receiver - data received")
+				//spew.Dump(msg)
 				data, err := msg.DataDesc.Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
@@ -103,25 +104,25 @@ func (w *LocalReceiver) Start() error {
 					return errors.Wrap(err, "error deserializing data")
 				}
 				fi := dd.FileIndex()
-				if fr, ok := w.writersMap[fi]; ok {
+				if fileWritter, ok := w.writersMap[fi]; ok {
 					// new message
-					fr.inbox <- &core.Message{
-						Flag:     core.WSQ,
-						FileDesc: w.srcList[fi],
+					fileWritter.inbox <- &core.Message{
+						Flag: core.WSQ,
+						//FileDesc: msg.List[fi],
 						DataDesc: dd,
 					}
 				} else {
 					log.Debug().
-						Str("filename", w.srcList[fi].FileName).
+						Str("filename", msg.FileDesc.FileName).
 						Msg("starting new writter")
 					inbox := make(chan *core.Message)
-					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[fi], inbox)
+					fr := NewFileWriter(w.ctx, w.senderUUID, msg.FileDesc, inbox)
 					w.writersMap[fi] = fr
 					// send a new message
 					g.Go(func() error { return fr.Start() })
 					fr.inbox <- &core.Message{
-						Flag:     core.WSQ,
-						FileDesc: w.srcList[fi],
+						Flag: core.WSQ,
+						//FileDesc: w.srcList[fi],
 						DataDesc: dd,
 					}
 				}
@@ -140,12 +141,18 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 		Msgf("receiver handling src file list, length: %d", len(msg.FileList))
 	// stop all writers if any, this is a reset!
 
-	// get local (destination file list)
-	dstDir := viper.GetString("local_destination")
+	dstDir := viper.GetString("destination")
 
-	/*
-	 *
-	 */
+	// store source filelist for future reference
+	for i, fd := range msg.FileList {
+		w.srcList[fd.Idx] = fd
+		if int64(i) != fd.Idx {
+			log.Warn().
+				Int("slice index", i).
+				Int64("file index", fd.Idx).
+				Msg("WHOA!!!")
+		}
+	}
 
 	diffMap, err := compare(msg.FileList, dstDir)
 	if err != nil {

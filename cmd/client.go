@@ -9,17 +9,7 @@ import (
 	"github.com/zgub/pexync/workers"
 )
 
-func init() {
-
-	clientCmd.Flags().StringVarP(&remoteDestination, "remote-destination", "R", "", "remote destination")
-	viper.BindPFlag("remote_destination", clientCmd.Flags().Lookup("remote-destination"))
-
-	rootCmd.AddCommand(clientCmd)
-}
-
 var (
-	remoteDestination string
-
 	clientCmd = &cobra.Command{
 		Use:   "client",
 		Short: "synchronize given directory with remote PeXync server",
@@ -32,9 +22,11 @@ var (
 
 func startClient() {
 
+	dstDir := viper.GetString("destination")
+
 	log.Info().
-		Str("local destination set", localDestination).
-		Msg("starting local sync")
+		Str("destination set", dstDir).
+		Msg("starting")
 
 	ctx := context.Background()
 	log.Info().

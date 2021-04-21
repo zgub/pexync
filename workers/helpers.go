@@ -117,7 +117,7 @@ func compare(srcList []*lfs.FileDesc, dstDir string) (map[*lfs.FileDesc]*lfs.Fil
 
 	dstList, err := lfs.ParseDir(dstDir)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to list directory")
+		return nil, errors.Wrapf(err, "unable to list directory %s", dstDir)
 	}
 
 	// build a map of local entries for faster lookup
