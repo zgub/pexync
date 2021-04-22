@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"io"
@@ -43,7 +44,6 @@ func createTestFile(dir string, blockSize, blockCount int, t testFileType) (stri
 	path := fmt.Sprintf(dir+"/%dx%d-test-data-%s", blockCount, blockSize, t.String())
 	f, err := os.Create(path)
 	if err != nil {
-		fmt.Printf("huh? %s\n", err.Error())
 		return "", err
 	}
 	defer f.Close()
@@ -121,7 +121,7 @@ func TestMissingLocalSync(t *testing.T) {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[2], err = createTestFile(srcD, 00, 3, AACCEE)
+	testFiles[2], err = createTestFile(srcD, 700, 3, AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
@@ -173,6 +173,7 @@ func TestMissingLocalSync(t *testing.T) {
 
 }
 
+/*
 func TestDiffLocalSync(t *testing.T) {
 	srcF, err := createTestFile(srcD, 700, 5, AABBCC)
 	if err != nil {
@@ -195,4 +196,40 @@ func TestDiffLocalSync(t *testing.T) {
 	viper.Set("destination", dstD)
 
 	startLocalSync()
+}
+*/
+
+func compare(src, dst string) (bool, error) {
+
+	srcF, err := os.Open(src)
+	if err != nil {
+		return false, err
+	}
+	defer srcF.Close()
+
+	dstF, err := os.Open(dst)
+	if err != nil {
+		return false, err
+	}
+	defer dstF.Close()
+
+	h := md5.New()
+	_, err = io.Copy(h, srcF)
+	if err != nil {
+		return false, err
+	}
+
+	s1 := h.Sum(nil)
+	h.Reset()
+
+	_, err = io.Copy(h, dstF)
+	if err != nil {
+		return false, err
+	}
+	s2 := h.Sum(nil)
+
+	if bytes.Equal(s1, s2) {
+		return true, nil
+	}
+	return false, nil
 }
