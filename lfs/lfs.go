@@ -98,9 +98,9 @@ func (dd *DataDesc) Print(comment string) {
 	//fmt.Printf("Lenght: %d\n", dd.len)
 	fmt.Printf("Indexes: %+v\n", dd.iBuff)
 	fmt.Printf("Read buffer: %s\n", dd.readBuf.Bytes())
-	fmt.Printf("Read buffer length: %d\n", dd.readBuf.Len())
-	fmt.Printf("Data: %s\n", dd.data)
-	fmt.Printf("Data buf length: %d\n\n", dd.data.Len())
+	fmt.Printf("Read buffer Len: %d\n", dd.readBuf.Len())
+	fmt.Printf("Data: %s\n", dd.data.Bytes())
+	fmt.Printf("Data buf Len: %d\n\n", dd.data.Len())
 }
 
 func (dd *DataDesc) Seq() int64 {
@@ -202,7 +202,8 @@ func (dd *DataDesc) flush() error {
 func (dd *DataDesc) Len() int64 {
 	// flushed data (bytes) + number of int64 * 8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
-	return int64(dd.data.Len() + (len(dd.iBuff) * 8) + dd.readBuf.Len())
+	//return int64(dd.data.Len() + (len(dd.iBuff) * 8) + dd.readBuf.Len())
+	return int64(dd.readBuf.Len())
 }
 
 func (dd *DataDesc) Serialize() ([]byte, error) {
