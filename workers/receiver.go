@@ -54,6 +54,7 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 func (w *LocalReceiver) Start() error {
 
 	g := new(errgroup.Group)
+LabelsInGo:
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -64,6 +65,7 @@ func (w *LocalReceiver) Start() error {
 					Flag: core.FIN,
 				}
 			}
+			break LabelsInGo
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
@@ -80,8 +82,7 @@ func (w *LocalReceiver) Start() error {
 						Flag: core.FIN,
 					}
 				}
-				err := g.Wait()
-				return err
+				break LabelsInGo
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
@@ -133,6 +134,8 @@ func (w *LocalReceiver) Start() error {
 			}
 		}
 	}
+	err := g.Wait()
+	return err
 }
 
 func (w *LocalReceiver) handleIni(msg *core.Message) error {

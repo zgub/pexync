@@ -19,13 +19,14 @@ const (
 
 // RollReader reads a file, compares the data witha hash table and send either data or indexes
 type RollReader struct {
-	ctx      context.Context
-	receiver chan<- *core.Message
-	inbox    <-chan *core.Message
-	senderID uuid.UUID
-	ring     []byte // ring buffer won't do, nor bytes.Buffer
-	p        int
-	hMap     map[uint32]int
+	ctx                       context.Context
+	receiver                  chan<- *core.Message
+	inbox                     <-chan *core.Message
+	senderID                  uuid.UUID
+	ring                      []byte // ring buffer won't do, nor bytes.Buffer
+	p                         int
+	hMap                      map[uint32]int
+	indexCnt, dataCnt, msgCnt int64
 }
 
 func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
@@ -52,8 +53,13 @@ func (w *RollReader) Start() error {
 					Msgf("file received by comparator worker")
 				err := w.roll(msg)
 				if err != nil {
-					return errors.Wrap(err, "unable to compare files")
+					return errors.Wrap(err, "roll hash reader failed")
 				}
+				log.Debug().
+					Str("file name", msg.FileDesc.FileName).
+					Int64("indexes", w.indexCnt).
+					Int64("data", w.dataCnt).
+					Int64("sum incl last", w.dataCnt+w.indexCnt+w.msgCnt)
 			case core.FIN:
 				log.Trace().
 					Msg("file comparator received FIN")
@@ -66,9 +72,6 @@ func (w *RollReader) Start() error {
 }
 
 func (w *RollReader) roll(msg *core.Message) error {
-	var (
-		skipCnt, dataCnt int64
-	)
 	path := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
 	// this could be possibly optimized in order to save file descriptors
 	f, err := os.Open(path)
@@ -119,7 +122,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 	seq := int64(0)
 	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 	if hIndex != HashNotFound {
-		skipCnt++
+		w.indexCnt++
 		err = dd.WriteIndex(hIndex)
 		if err != nil {
 			return errors.Wrap(err, "roll hash calculation failed")
@@ -162,7 +165,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 			//log.Trace().Msg("read a wrote whole block")
 			hIndex = w.lookup(rh.Sum32())
 			if hIndex != HashNotFound {
-				skipCnt++
+				w.indexCnt++
 				// again matching block, next!
 				err = dd.WriteIndex(hIndex)
 				if err != nil {
@@ -182,7 +185,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 				if err != nil {
 					return errors.Wrap(err, "roll hash calculation failed")
 				}
-				skipCnt++
+				w.indexCnt++
 				continue
 			}
 			// no luck this time
@@ -202,6 +205,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 					Int64("block size", msg.FileDesc.BlockSize).
 					Msg("roll reader sending data")
 				err = sendWithTimeout(nMsg, w.receiver)
+				w.msgCnt++
 				if err != nil {
 					return errors.Wrap(err, "error sending data")
 				}
@@ -211,7 +215,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 			}
 			// then push the new into the ring buffer
 			w.push(b)
-			dataCnt++
+			w.dataCnt++
 		}
 	}
 	// don't forget the last data OR if the whole thing was tiny
@@ -227,13 +231,14 @@ func (w *RollReader) roll(msg *core.Message) error {
 		Str("filename", msg.FileDesc.FileName).
 		Msg("sending remaining data")
 	err = sendWithTimeout(nMsg, w.receiver)
+	w.msgCnt++
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
 	log.Debug().
 		Str("filename", msg.FileDesc.FileName).
-		Int64("indexes", skipCnt).
-		Int64("data", dataCnt).
+		Int64("indexes", w.indexCnt).
+		Int64("data", w.dataCnt).
 		Int("dd len", int(dd.Len())).
 		Msg("roll stats")
 	return nil
