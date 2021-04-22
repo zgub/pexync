@@ -50,7 +50,7 @@ func (w *RollReader) Start() error {
 				log.Debug().
 					Str("filename", msg.FileDesc.FileName).
 					Msgf("file received by comparator worker")
-				err := w.handleData(msg)
+				err := w.roll(msg)
 				if err != nil {
 					return errors.Wrap(err, "unable to compare files")
 				}
@@ -65,7 +65,7 @@ func (w *RollReader) Start() error {
 	}
 }
 
-func (w *RollReader) handleData(msg *core.Message) error {
+func (w *RollReader) roll(msg *core.Message) error {
 	var (
 		skipCnt, dataCnt int64
 	)

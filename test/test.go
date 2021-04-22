@@ -27,9 +27,14 @@ func (t testFileType) String() string {
 	return testFileTypes[t]
 }
 
-func CreateTestFile(dir string, blockSize, blockCount int, t testFileType) (string, error) {
+func CreateTestFile(dir, name string, blockSize, blockCount int, t testFileType) (string, error) {
 
-	path := fmt.Sprintf(dir+"/%dx%d-test-file-%s", blockCount, blockSize, t.String())
+	var path string
+	if name == "" {
+		path = fmt.Sprintf(dir+"/%dx%d-test-file-%s", blockCount, blockSize, t.String())
+	} else {
+		path = dir + "/" + name
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return "", err

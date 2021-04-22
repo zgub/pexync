@@ -21,17 +21,17 @@ func TestMissingLocalSync(t *testing.T) {
 	testFiles := make([]string, 3)
 	var err error
 
-	testFiles[0], err = test.CreateTestFile(srcD, 700, 3, test.AABBCC)
+	testFiles[0], err = test.CreateTestFile(srcD, "", 700, 3, test.AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[1], err = test.CreateTestFile(srcD, 700, 3, test.BBCCDD)
+	testFiles[1], err = test.CreateTestFile(srcD, "", 700, 3, test.BBCCDD)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[2], err = test.CreateTestFile(srcD, 700, 3, test.AACCEE)
+	testFiles[2], err = test.CreateTestFile(srcD, "", 700, 3, test.AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
@@ -58,12 +58,12 @@ func TestMissingLocalSync(t *testing.T) {
 }
 
 func TestDiffLocalSync(t *testing.T) {
-	srcF, err := test.CreateTestFile(srcD, 700, 5, test.AABBCC)
+	srcF, err := test.CreateTestFile(srcD, "", 700, 5, test.AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	dstF, err := test.CreateTestFile(dstD, 700, 3, test.AACCEE)
+	dstF, err := test.CreateTestFile(dstD, "", 700, 3, test.AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}

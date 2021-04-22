@@ -22,7 +22,7 @@ var (
 )
 
 func testTasks() {
-	fn, err := test.CreateTestFile("testfiles/", 700, 7, test.AABBCC)
+	fn, err := test.CreateTestFile("testfiles/", "test-file", 700, 7, test.AABBCC)
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -32,7 +32,7 @@ func testTasks() {
 		Str("file name", fn).
 		Msg("created")
 
-	fn, err = test.CreateTestFile("Xync/", 700, 4, test.AACCEE)
+	fn, err = test.CreateTestFile("Xync/", "test-file", 700, 4, test.AACCEE)
 	if err != nil {
 		log.Fatal().
 			Err(err).
