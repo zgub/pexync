@@ -327,7 +327,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			log.Trace().
 				Str("path", path).
 				Str("destination", dest).
-				Msg("skipping destination")
+				Msg("walkdir - skipping destination")
 			return filepath.SkipDir
 		}
 
@@ -348,7 +348,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			Str("path", path).
 			Str("prefix path", prefix).
 			Bool("is dir", entry.IsDir()).
-			Msg("parsing fs entry")
+			Msg("walkdir - parsing fs entry")
 
 		if relPath != "." {
 			fileDesc := &FileDesc{

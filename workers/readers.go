@@ -312,7 +312,7 @@ func (w *BytesReader) Start() error {
 			case core.RSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msgf("bytes reader %d - message received", w.id)
+					Msgf("bytes reader %d - message received", w.myID)
 				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
 				if err != nil {
 					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
