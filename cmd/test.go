@@ -3,10 +3,11 @@ package cmd
 import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/zgub/pexync/test"
 )
 
 func init() {
-	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(testCmd)
 }
 
 var (
@@ -21,6 +22,23 @@ var (
 )
 
 func testTasks() {
+	fn, err := test.CreateTestFile("testfiles/", 700, 7, test.AABBCC)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("error creating test files")
+	}
 	log.Info().
-		Msgf("PeXync version: %s", Version)
+		Str("file name", fn).
+		Msg("created")
+
+	fn, err = test.CreateTestFile("Xync/", 700, 4, test.AACCEE)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("error creating test files")
+	}
+	log.Info().
+		Str("file name", fn).
+		Msg("created")
 }

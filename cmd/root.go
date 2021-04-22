@@ -53,7 +53,7 @@ func init() {
 
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
-	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "test", "source directory to synchronize")
+	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
 	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
 
 	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")

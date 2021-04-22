@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	srcD = "../test/"
+	srcD = "../testfiles/"
 	dstD = "../Xync/"
 )
 
