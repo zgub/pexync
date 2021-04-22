@@ -110,7 +110,8 @@ func initConfig() {
 
 	if debug {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		log.Debug().Msg("debug mode on")
+		log.Debug().
+			Msg("debug mode on")
 	} else {
 		level := zerolog.Level(viper.GetInt("log_level"))
 		zerolog.SetGlobalLevel(level)

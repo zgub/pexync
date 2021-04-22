@@ -18,7 +18,9 @@ const (
 	HashNotFound int64 = -1
 )
 
-var ID int
+var (
+	rrID, brID int
+)
 
 // RollReader reads a file, compares the data witha hash table and send either data or indexes
 type RollReader struct {
@@ -34,12 +36,12 @@ type RollReader struct {
 }
 
 func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
-	ID++
+	rrID++
 	return &RollReader{
 		ctx:      ctx,
 		inbox:    inbox,
 		receiver: receiver,
-		myID:     ID,
+		myID:     rrID,
 	}
 }
 
@@ -49,7 +51,8 @@ func (w *RollReader) Start() error {
 		// wait for file (or a section)
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msgf("roll reader %d - closing, context done", w.myID)
+			log.Debug().
+				Msgf("roll reader %d - closing, context done", w.myID)
 			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
@@ -94,9 +97,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 
 	// create a hash map for faster lookup
 	w.hMap = make(map[uint32]int)
-	if len(msg.FileDesc.Weak) == 0 {
-		log.Warn().Msg("WTH")
-	}
+
 	for i, h := range msg.FileDesc.Weak {
 		w.hMap[h] = i
 	}
@@ -214,7 +215,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 					Str("filename", msg.FileDesc.FileName).
 					Int64("datadesc len", int64(dd.Len())).
 					Int64("block size", msg.FileDesc.BlockSize).
-					Msg("roll reader sending data")
+					Msg("roll reader - sending data")
 				dd.Print()
 				err = sendWithTimeout(nMsg, w.receiver)
 				w.msgCnt++
@@ -241,7 +242,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 	}
 	log.Trace().
 		Str("filename", msg.FileDesc.FileName).
-		Msg("sending remaining data")
+		Msg("roll reader - sending remaining data")
 	err = sendWithTimeout(nMsg, w.receiver)
 	w.msgCnt++
 	if err != nil {
@@ -282,15 +283,16 @@ type BytesReader struct {
 	receiver chan<- *core.Message
 	inbox    <-chan *core.Message
 	senderID uuid.UUID
-	id       int
+	myID     int
 }
 
-func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message, tempId int) *BytesReader {
+func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *BytesReader {
+	brID++
 	return &BytesReader{
 		ctx:      ctx,
 		receiver: receiver,
 		inbox:    inbox,
-		id:       tempId,
+		myID:     brID,
 	}
 }
 
@@ -299,18 +301,18 @@ func (w *BytesReader) Start() error {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
-				Msg("bytes reader closing, context done")
+				Msgf("bytes reader %d - closing, context done", w.myID)
 			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.FIN:
 				log.Debug().
-					Msgf("%d bytes reader received FIN", w.id)
+					Msgf("bytes reader %d - received FIN", w.myID)
 				return nil
 			case core.RSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
-					Msgf("reader id %d,  byte reader received message", w.id)
+					Msgf("bytes reader %d - message received", w.id)
 				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
 				if err != nil {
 					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
@@ -350,8 +352,7 @@ func (w *BytesReader) Start() error {
 						Int64("block size", int64(msg.FileDesc.BlockSize)).
 						Int64("offset", msg.Offset).
 						Int64("seq", seq).
-						Int("reader id", w.id).
-						Msg("sending pure data")
+						Msgf("bytes reader %d - sending pure data", w.myID)
 					err = sendWithTimeout(nMsg, w.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
@@ -381,13 +382,14 @@ func (w *HashReader) Start() error {
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("hash reader closing, context done")
+			log.Debug().
+				Msg("hash reader - closing, context done")
 			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.FIN:
 				log.Trace().
-					Msg("hash reader received FIN")
+					Msg("hash reader - received FIN")
 				return nil
 			case core.HSH:
 				err := core.AddChecksums(msg.FileDesc)
@@ -395,7 +397,7 @@ func (w *HashReader) Start() error {
 					return errors.Wrap(err, "error calculating initial hash array")
 				}
 			default:
-				return errors.New("HashReader unknown message")
+				return errors.New("hash reader - unknown message")
 			}
 		}
 	}
