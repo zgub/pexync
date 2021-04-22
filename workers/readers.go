@@ -206,6 +206,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 					Int64("datadesc len", int64(dd.Len())).
 					Int64("block size", msg.FileDesc.BlockSize).
 					Msg("roll reader sending data")
+				spew.Dump(dd)
 				err = sendWithTimeout(nMsg, w.receiver)
 				w.msgCnt++
 				if err != nil {

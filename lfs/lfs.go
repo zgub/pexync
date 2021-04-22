@@ -17,22 +17,10 @@ import (
 
 type State int16
 
-type Flag int16
-
 const (
 	Missing State = iota // no file on the receiver side
 	Diff                 // file exists but do not match
 	Skip                 // file exists and matches
-)
-
-const (
-	Data  Flag = iota // Data header
-	Index             // index header
-	End               // end header
-)
-
-const (
-	HeaderSize = 34
 )
 
 var fileStatus = [...]string{
@@ -44,6 +32,28 @@ var fileStatus = [...]string{
 func (s State) String() string {
 	return fileStatus[s]
 }
+
+type Flag int16
+
+const (
+	Data  Flag = iota // Data header
+	Index             // index header
+	End               // end header
+)
+
+var headerFlags = [...]string{
+	"DATA",
+	"INDEX",
+	"END",
+}
+
+func (f Flag) String() string {
+	return headerFlags[f]
+}
+
+const (
+	HeaderSize = 34
+)
 
 // common errors, lazy to type
 const (
