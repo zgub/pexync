@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -220,7 +221,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 		}
 	}
 	// don't forget the last data OR if the whole thing was tiny
-	dd.MarkAsLast()
+	//dd.MarkAsLast()
 	nMsg := &core.Message{
 		Flag:     core.WSQ,
 		FileDesc: msg.FileDesc,
@@ -236,6 +237,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
+	spew.Dump(dd)
 	return nil
 }
 

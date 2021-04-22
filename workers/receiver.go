@@ -76,6 +76,7 @@ LabelsInGo:
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
+					Int64("data sequence", msg.DataDesc.Seq()).
 					Msg("receiver - data received")
 				//spew.Dump(msg)
 				data, err := msg.DataDesc.Serialize()

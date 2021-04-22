@@ -55,6 +55,10 @@ func CreateTestFile(dir, name string, blockSize, blockCount int, t testFileType)
 					return "", err
 				}
 			}
+			_, err = bw.Write([]byte("\n"))
+			if err != nil {
+				return "", err
+			}
 			rn++
 		}
 	case BBCCDD:
