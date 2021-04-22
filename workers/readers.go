@@ -162,8 +162,6 @@ func (w *RollReader) roll(msg *core.Message) error {
 		Msgf("roll reader %d", w.myID)
 	// now continue through the rest of the file secion
 	for {
-		log.Trace().
-			Msgf("roll reader %d - reading new block", w.myID)
 		n, err := io.ReadFull(br, buf)
 		if n == 0 {
 			if err == nil {
@@ -177,8 +175,13 @@ func (w *RollReader) roll(msg *core.Message) error {
 				break
 			}
 		}
-
 		buf = buf[:n]
+		log.Trace().
+			Str("block data", string(buf)).
+			Int("new block length", len(buf)).
+			Int("bytes read", n).
+			Int("dd len", int(dd.Len())).
+			Msgf("roll reader %d - reading new block", w.myID)
 		// if for the last time we've found a matching block, let's read another whole block
 		if hIndex != HashNotFound {
 			// lets read full blocksize, because the last one matched
@@ -219,6 +222,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 				fmt.Printf("\n+ %d\n", w.indexCnt)
 				dd.Print("hash match")
 				w.indexCnt++
+				fmt.Println("")
 				continue
 			}
 			// no luck this time
@@ -232,6 +236,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 					FileDesc: msg.FileDesc,
 					DataDesc: dd,
 				}
+				fmt.Println("")
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
 					Int64("datadesc len", int64(dd.Len())).

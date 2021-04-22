@@ -74,10 +74,10 @@ type Header struct {
 type DataDesc struct {
 	mode                   Flag // true - writing data / false - writing index data
 	offset, seq, fileIndex int64
-	len                    int64         //is ths really neccessary?
 	iBuff                  []int64       // intermediate index buffer
 	readBuf                *bytes.Buffer // intermediate data buffer
 	data                   *bytes.Buffer
+	//len                    int64         //is ths really neccessary?
 }
 
 func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
@@ -95,10 +95,12 @@ func (dd *DataDesc) Print(comment string) {
 	fmt.Printf("Mode: %s\n", dd.mode.String())
 	fmt.Printf("Offset: %d\n", dd.offset)
 	fmt.Printf("Sequence: %d\n", dd.seq)
-	fmt.Printf("Lenght: %d\n", dd.len)
+	//fmt.Printf("Lenght: %d\n", dd.len)
 	fmt.Printf("Indexes: %+v\n", dd.iBuff)
 	fmt.Printf("Read buffer: %s\n", dd.readBuf.Bytes())
-	fmt.Printf("Data: %s\n\n", dd.data)
+	fmt.Printf("Read buffer length: %d\n", dd.readBuf.Len())
+	fmt.Printf("Data: %s\n", dd.data)
+	fmt.Printf("Data buf length: %d\n\n", dd.data.Len())
 }
 
 func (dd *DataDesc) Seq() int64 {
@@ -175,7 +177,7 @@ func (dd *DataDesc) flush() error {
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		dd.readBuf.Reset()
+		dd.iBuff = make([]int64, 0)
 	} else if dd.mode == Index && len(dd.iBuff) != 0 {
 		// we were writing indexes, flush them
 		header := &Header{
@@ -192,7 +194,7 @@ func (dd *DataDesc) flush() error {
 		if err != nil {
 			return errors.Wrap(err, "unable to encode indexes")
 		}
-		dd.iBuff = make([]int64, 0)
+		dd.readBuf.Reset()
 	}
 	return nil
 }
@@ -238,8 +240,8 @@ func Deserialize(p []byte) (*DataDesc, error) {
 		fileIndex: header.FileIndex,
 		offset:    header.Offset,
 		seq:       header.Seq,
-		len:       header.Len,
 		data:      bytes.NewBuffer(p[HeaderSize:]),
+		//len:       header.Len,
 	}
 	return dd, nil
 }
