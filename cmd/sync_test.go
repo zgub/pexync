@@ -31,7 +31,7 @@ var testFileTypes = [...]string{
 
 const (
 	srcD = "../test/"
-	dstD = "../Xync"
+	dstD = "../Xync/"
 )
 
 func (t testFileType) String() string {
@@ -147,9 +147,9 @@ func TestMissingLocalSync(t *testing.T) {
 		f.Close()
 
 		name := filepath.Base(p)
-		f, err = os.Open("../Xync/" + name)
+		f, err = os.Open(dstD + name)
 		if err != nil {
-			t.Fatalf("failed to open file: %s", err.Error())
+			t.Fatalf("failed to open file: %s - %s", dstD+name, err.Error())
 		}
 		if _, err := io.Copy(h, f); err != nil {
 			t.Fatalf("MD5 has read failed: %s", err.Error())
@@ -163,7 +163,7 @@ func TestMissingLocalSync(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unable to remove file: %s", err.Error())
 		}
-		err = os.Remove("../Xync/" + name)
+		err = os.Remove(dstD + name)
 		if err != nil {
 			t.Fatalf("unable to remove file: %s", err.Error())
 		}
@@ -179,15 +179,20 @@ func TestDiffLocalSync(t *testing.T) {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	dstF, err = createTestFile(dstD, 700, 3, AACCEE)
+	dstF, err := createTestFile(dstD, 700, 3, AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	if os.Rename(dstD)
+	srcF = filepath.Base(srcF)
+	dstF = filepath.Base(dstF)
+	t.Logf("old: %s new: %s", dstD+dstF, dstD+srcF)
+	if err = os.Rename(dstD+dstF, dstD+srcF); err != nil {
+		t.Fatalf("failed to rename file %s", err.Error())
+	}
 
-	viper.Set("source", "../test")
-	viper.Set("destination", "../Xync")
+	viper.Set("source", srcD)
+	viper.Set("destination", dstD)
 
 	startLocalSync()
 }
