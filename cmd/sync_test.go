@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/zgub/pexync/test"
 )
 
 const (
@@ -16,25 +17,21 @@ const (
 	dstD = "../Xync/"
 )
 
-func (t testFileType) String() string {
-	return testFileTypes[t]
-}
-
 func TestMissingLocalSync(t *testing.T) {
 	testFiles := make([]string, 3)
 	var err error
 
-	testFiles[0], err = createTestFile(srcD, 700, 3, AABBCC)
+	testFiles[0], err = test.CreateTestFile(srcD, 700, 3, test.AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[1], err = createTestFile(srcD, 700, 3, BBCCDD)
+	testFiles[1], err = test.CreateTestFile(srcD, 700, 3, test.BBCCDD)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[2], err = createTestFile(srcD, 700, 3, AACCEE)
+	testFiles[2], err = test.CreateTestFile(srcD, 700, 3, test.AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
@@ -61,12 +58,12 @@ func TestMissingLocalSync(t *testing.T) {
 }
 
 func TestDiffLocalSync(t *testing.T) {
-	srcF, err := createTestFile(srcD, 700, 5, AABBCC)
+	srcF, err := test.CreateTestFile(srcD, 700, 5, test.AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	dstF, err := createTestFile(dstD, 700, 3, AACCEE)
+	dstF, err := test.CreateTestFile(dstD, 700, 3, test.AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
