@@ -140,13 +140,12 @@ func TestMissingLocalSync(t *testing.T) {
 			t.Fatalf("\n *** %s \n *** %s \n *** not equal", srcD+bfn, dstD+bfn)
 		}
 	}
-	if err = cleanup(testFiles); err != nil {
+	if err = cleanup(testFiles...); err != nil {
 		t.Errorf("unable to remove test files")
 	}
 
 }
 
-/*
 func TestDiffLocalSync(t *testing.T) {
 	srcF, err := createTestFile(srcD, 700, 5, AABBCC)
 	if err != nil {
@@ -169,8 +168,16 @@ func TestDiffLocalSync(t *testing.T) {
 	viper.Set("destination", dstD)
 
 	startLocalSync()
+
+	eq, err := compare(srcD+srcF, dstD+srcF)
+	if err != nil {
+		t.Fatalf("failed to compare files: %s", err.Error())
+	}
+	if !eq {
+		t.Fatalf("\n *** %s \n *** %s \n *** not equal", srcD+srcF, dstD+srcF)
+	}
+	err = cleanup(srcD+srcF, dstD+srcF)
 }
-*/
 
 func compare(src, dst string) (bool, error) {
 
@@ -207,7 +214,7 @@ func compare(src, dst string) (bool, error) {
 	return false, nil
 }
 
-func cleanup(files []string) error {
+func cleanup(files ...string) error {
 	for _, fn := range files {
 		bfn := filepath.Base(fn)
 		if err := os.Remove(fn); err != nil {
