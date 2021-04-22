@@ -3,6 +3,7 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -87,6 +88,16 @@ func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
 		offset:    offset,
 		seq:       sequence,
 	}
+}
+
+func (dd *DataDesc) Print() {
+	fmt.Printf("Mode: %s\n", dd.mode.String())
+	fmt.Printf("Offset: %d\n", dd.offset)
+	fmt.Printf("Sequence: %d\n", dd.seq)
+	fmt.Printf("Lenght: %d\n", dd.len)
+	fmt.Printf("Indexes: %+v\n", dd.iBuff)
+	fmt.Printf("Read buffer: %s\n", dd.readBuf.Bytes())
+	fmt.Printf("Data: %s\n", dd.data)
 }
 
 func (dd *DataDesc) Seq() int64 {
