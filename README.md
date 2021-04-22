@@ -17,7 +17,7 @@
 - [ ] struct padding adjustment
 - [ ] context.Done should send FIN to all workers
 - [ ] proto checksums?
-- [ ] change only meta if only meta was changed
+- [ ] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
 - [ ] contexts
 - [ ] switch local / remote

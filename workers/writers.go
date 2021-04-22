@@ -21,7 +21,7 @@ type FileWriter struct {
 	ctx        context.Context
 	inbox      chan *core.Message
 	senderID   uuid.UUID
-	dstFd      *lfs.FileDesc
+	srcFd      *lfs.FileDesc
 	dataSeq    map[int64]*lfs.DataDesc
 	pSeq       int64 //"pointer" to the last sequence writtn
 	rBuf, wBuf []byte
@@ -33,7 +33,7 @@ type FileWriter struct {
 func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
 	return FileWriter{
 		ctx:      ctx,
-		dstFd:    fd,
+		srcFd:    fd,
 		inbox:    inbox,
 		senderID: uuid,
 		dataSeq:  make(map[int64]*lfs.DataDesc),
@@ -44,23 +44,29 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox 
 
 func (w FileWriter) Start() error {
 	dstDir := viper.GetString("destination")
-	tmpF, err := ioutil.TempFile(dstDir, w.dstFd.RelPath+".*."+w.senderID.String())
+	tmpF, err := ioutil.TempFile(dstDir, w.srcFd.RelPath+".*."+w.senderID.String())
 	if err != nil {
 		return errors.Wrap(err, "unable to create file")
 	}
+	log.Trace().
+		Str("file name", tmpF.Name()).
+		Msg("DIFF opening temporary file")
 	//defer tmpF.Close()
 	defer os.Remove(tmpF.Name())
 
 	w.bw = bufio.NewWriter(io.Writer(tmpF))
-	oldPath := w.dstFd.Prefix + "/" + w.dstFd.FileName
+	oldPath := dstDir + "/" + w.srcFd.FileName
 	// open a reader as well if we have to reference alredy present blocks
-	if w.dstFd.State == lfs.Diff {
+	if w.srcFd.State == lfs.Diff {
+		log.Trace().
+			Str("file name", oldPath).
+			Msg("DIFF opening destination file for reference")
 		f, err := os.Open(oldPath)
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
 		}
 		r := io.ReaderAt(f)
-		w.sr = io.NewSectionReader(r, 0, int64(w.dstFd.FileSize))
+		w.sr = io.NewSectionReader(r, 0, int64(w.srcFd.FileSize))
 		w.br = bufio.NewReader(w.sr)
 		defer f.Close()
 	}
@@ -92,11 +98,11 @@ func (w FileWriter) Start() error {
 				}
 			case core.FIN:
 				log.Trace().
-					Str("orig name", w.dstFd.FileName).
+					Str("orig name", w.srcFd.FileName).
 					Str("temp file path", tmpF.Name()).
-					Str("rename to", dstDir+"/"+w.dstFd.FileName).
+					Str("rename to", dstDir+"/"+w.srcFd.FileName).
 					Msg("file writer received FIN, renaming")
-				err = os.Rename(tmpF.Name(), dstDir+"/"+w.dstFd.FileName)
+				err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
 
 				if err != nil {
 					return errors.Wrap(err, "unable to replace file")
@@ -145,8 +151,8 @@ func (w *FileWriter) write() error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				w.sr.Seek(v*w.dstFd.BlockSize, io.SeekStart)
-				_, err = io.CopyN(w.bw, w.br, w.dstFd.BlockSize)
+				w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
+				_, err = io.CopyN(w.bw, w.br, w.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
