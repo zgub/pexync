@@ -141,7 +141,7 @@ func TestMissingLocalSync(t *testing.T) {
 		}
 	}
 	if err = cleanup(testFiles); err != nil {
-		t.Fatalf("unable to remove test files")
+		t.Errorf("unable to remove test files")
 	}
 
 }
@@ -209,7 +209,11 @@ func compare(src, dst string) (bool, error) {
 
 func cleanup(files []string) error {
 	for _, fn := range files {
+		bfn := filepath.Base(fn)
 		if err := os.Remove(fn); err != nil {
+			return err
+		}
+		if err := os.Remove(dstD + bfn); err != nil {
 			return err
 		}
 	}
