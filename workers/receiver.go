@@ -60,11 +60,6 @@ LabelsInGo:
 		case <-w.ctx.Done():
 			log.Debug().Msg("local receiver closing, context done")
 			// send fin to all readers
-			for _, wr := range w.writersMap {
-				wr.inbox <- &core.Message{
-					Flag: core.FIN,
-				}
-			}
 			break LabelsInGo
 		case msg := <-w.inbox:
 			switch msg.Flag {
@@ -77,11 +72,6 @@ LabelsInGo:
 				log.Trace().
 					Msg("receiver received FIN")
 				// send fin to all readers
-				for _, writer := range w.writersMap {
-					writer.inbox <- &core.Message{
-						Flag: core.FIN,
-					}
-				}
 				break LabelsInGo
 			case core.WSQ:
 				log.Trace().
@@ -93,13 +83,8 @@ LabelsInGo:
 					return errors.Wrap(err, "error serializing data")
 				}
 
-				// spawn filewriters
-
-				// wait for the transfer to finish
-
 				// validate ???
 
-				// end
 				// dd is new DataDesc created from serialized msg.DataDesc
 				dd, err := lfs.Deserialize(data)
 				if err != nil {
@@ -134,7 +119,13 @@ LabelsInGo:
 			}
 		}
 	}
+	for _, wr := range w.writersMap {
+		wr.inbox <- &core.Message{
+			Flag: core.FIN,
+		}
+	}
 	err := g.Wait()
+
 	return err
 }
 

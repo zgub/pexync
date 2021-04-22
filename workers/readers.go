@@ -59,7 +59,7 @@ func (w *RollReader) Start() error {
 					Str("file name", msg.FileDesc.FileName).
 					Int64("indexes", w.indexCnt).
 					Int64("data", w.dataCnt).
-					Int64("sum incl last", w.dataCnt+w.indexCnt+w.msgCnt).
+					Int64("messages", w.msgCnt).
 					Msg("roll stats")
 			case core.FIN:
 				log.Trace().
