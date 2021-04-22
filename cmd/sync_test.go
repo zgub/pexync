@@ -126,8 +126,8 @@ func TestMissingLocalSync(t *testing.T) {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	viper.Set("source", "../test")
-	viper.Set("destination", "../Xync")
+	viper.Set("source", srcD)
+	viper.Set("destination", dstD)
 
 	startLocalSync()
 
@@ -174,15 +174,17 @@ func TestMissingLocalSync(t *testing.T) {
 }
 
 func TestDiffLocalSync(t *testing.T) {
-	_, err := createTestFile(srcD, 700, 5, AABBCC)
+	srcF, err := createTestFile(srcD, 700, 5, AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	_, err = createTestFile(dstD, 700, 3, AACCEE)
+	dstF, err = createTestFile(dstD, 700, 3, AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
+
+	if os.Rename(dstD)
 
 	viper.Set("source", "../test")
 	viper.Set("destination", "../Xync")
