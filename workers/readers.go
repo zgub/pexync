@@ -3,10 +3,10 @@ package workers
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -18,6 +18,8 @@ const (
 	HashNotFound int64 = -1
 )
 
+var ID int
+
 // RollReader reads a file, compares the data witha hash table and send either data or indexes
 type RollReader struct {
 	ctx                       context.Context
@@ -28,13 +30,16 @@ type RollReader struct {
 	p                         int
 	hMap                      map[uint32]int
 	indexCnt, dataCnt, msgCnt int64
+	myID                      int
 }
 
 func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
+	ID++
 	return &RollReader{
 		ctx:      ctx,
 		inbox:    inbox,
 		receiver: receiver,
+		myID:     ID,
 	}
 }
 
@@ -44,14 +49,14 @@ func (w *RollReader) Start() error {
 		// wait for file (or a section)
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("roll reader closing, context done")
+			log.Debug().Msgf("roll reader %d - closing, context done", w.myID)
 			return nil
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.RSQ: // read sequence
 				log.Debug().
 					Str("filename", msg.FileDesc.FileName).
-					Msgf("file received by comparator worker")
+					Msgf("roll reader %d - file received", w.myID)
 				err := w.roll(msg)
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
@@ -61,13 +66,14 @@ func (w *RollReader) Start() error {
 					Int64("indexes", w.indexCnt).
 					Int64("data", w.dataCnt).
 					Int64("messages", w.msgCnt).
-					Msg("roll stats")
+					Msgf("roll reader %d - stats", w.myID)
 			case core.FIN:
 				log.Trace().
-					Msg("file comparator received FIN")
+					Msgf("roll reader %d - received FIN", w.myID)
 				return nil
 			default:
-				return errors.New("unknown message received")
+				s := fmt.Sprintf("roll reader %d - unknown message received", w.myID)
+				return errors.New(s)
 			}
 		}
 	}
@@ -125,10 +131,12 @@ func (w *RollReader) roll(msg *core.Message) error {
 	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 	if hIndex != HashNotFound {
 		w.indexCnt++
+		fmt.Println("*** first hash match ***")
 		err = dd.WriteIndex(hIndex)
 		if err != nil {
 			return errors.Wrap(err, "roll hash calculation failed")
 		}
+		dd.Print()
 	}
 	// store the old buf
 	w.ring = buf
@@ -157,7 +165,6 @@ func (w *RollReader) roll(msg *core.Message) error {
 		buf = buf[:n]
 		// if for the last time we've found a matching block, let's read another whole block
 		if hIndex != HashNotFound {
-			//skipCnt++
 			// lets read full blocksize, because the lat one matched
 			rh.Reset()
 			_, err := rh.Write(buf)
@@ -176,6 +183,8 @@ func (w *RollReader) roll(msg *core.Message) error {
 				continue
 			}
 		}
+		fmt.Println("*** no luck this time ***")
+		dd.Print()
 		// last buffer was no luck, go byte by byte
 		for _, b := range buf {
 			rh.Roll(b)
@@ -206,7 +215,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 					Int64("datadesc len", int64(dd.Len())).
 					Int64("block size", msg.FileDesc.BlockSize).
 					Msg("roll reader sending data")
-				spew.Dump(dd)
+				dd.Print()
 				err = sendWithTimeout(nMsg, w.receiver)
 				w.msgCnt++
 				if err != nil {
@@ -238,7 +247,7 @@ func (w *RollReader) roll(msg *core.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
-	spew.Dump(dd)
+	dd.Print()
 	return nil
 }
 

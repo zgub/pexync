@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/zgub/pexync/test"
@@ -22,6 +24,13 @@ var (
 )
 
 func testTasks() {
+	if err := os.Remove("testfiles/test-file"); err != nil {
+		log.Warn().Msgf("no file to delete: %s", err.Error())
+	}
+
+	if err := os.Remove("Xync/test-file"); err != nil {
+		log.Warn().Msgf("no file to delete: %s", err.Error())
+	}
 	fn, err := test.CreateTestFile("testfiles/", "test-file", 700, 7, test.AABBCC)
 	if err != nil {
 		log.Fatal().
