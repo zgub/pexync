@@ -59,7 +59,8 @@ func (w *RollReader) Start() error {
 					Str("file name", msg.FileDesc.FileName).
 					Int64("indexes", w.indexCnt).
 					Int64("data", w.dataCnt).
-					Int64("sum incl last", w.dataCnt+w.indexCnt+w.msgCnt)
+					Int64("sum incl last", w.dataCnt+w.indexCnt+w.msgCnt).
+					Msg("roll stats")
 			case core.FIN:
 				log.Trace().
 					Msg("file comparator received FIN")
@@ -235,12 +236,6 @@ func (w *RollReader) roll(msg *core.Message) error {
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
-	log.Debug().
-		Str("filename", msg.FileDesc.FileName).
-		Int64("indexes", w.indexCnt).
-		Int64("data", w.dataCnt).
-		Int("dd len", int(dd.Len())).
-		Msg("roll stats")
 	return nil
 }
 
