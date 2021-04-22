@@ -2,25 +2,14 @@ package cmd
 
 import (
 	"context"
-	"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/zgub/pexync/core"
-	"github.com/zgub/pexync/lfs"
 	"github.com/zgub/pexync/workers"
 )
 
-func init() {
-	rootCmd.AddCommand(clientCmd)
-	clientCmd.Flags().StringVarP(&localSource, "local-source", "L", ".", "local sync source")
-	clientCmd.Flags().StringVarP(&localDestination, "local-destination", "R", "PeXync/", "local sync destination")
-}
-
 var (
-	localSource, localDestination string
-
 	clientCmd = &cobra.Command{
 		Use:   "client",
 		Short: "synchronize given directory with remote PeXync server",
@@ -32,35 +21,25 @@ var (
 )
 
 func startClient() {
-	log.Info().Msg("initializing PeXync client")
-	list, err := lfs.GetList(viper.GetString("directory"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
-	}
+
+	dstDir := viper.GetString("destination")
+
+	log.Info().
+		Str("destination set", dstDir).
+		Msg("starting")
+
 	ctx := context.Background()
+	log.Info().
+		Msg("starting remote sync")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	startLocalSync(ctx, list)
+	httpSender := workers.NewHttpSender(ctx)
+	err := httpSender.Start()
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("error")
+	}
 
-}
-
-func startLocalSync(ctx context.Context, list []*lfs.FileDesc) {
-
-	var wg sync.WaitGroup
-	// spawn local Sender
-	local := make(chan []*core.Message)
-	remote := make(chan []*core.Message)
-	sender := workers.NewLocalSender(ctx, &wg, list, local, remote)
-
-	go sender.Start()
-	wg.Add(1)
-
-	receiver := workers.NewLocalReceiver(ctx, &wg, remote, local)
-	go receiver.Start()
-	wg.Add(1)
-
-	wg.Wait()
 }

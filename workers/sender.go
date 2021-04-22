@@ -2,73 +2,304 @@ package workers
 
 import (
 	"context"
-	"sync"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
+	"golang.org/x/sync/errgroup"
 )
 
 // LocalSender represents blah balh
 type LocalSender struct {
 	ctx      context.Context
-	wg       *sync.WaitGroup
-	list     []*lfs.FileDesc
-	inbox    <-chan []*core.Message
-	receiver chan<- []*core.Message
+	srcList  []*lfs.FileDesc
+	inbox    <-chan *core.Message
+	receiver chan<- *core.Message
 	uuid     uuid.UUID
 }
 
-func NewLocalSender(ctx context.Context, wg *sync.WaitGroup, fl []*lfs.FileDesc, in <-chan []*core.Message, receiver chan<- []*core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
 		ctx:      ctx,
-		wg:       wg,
-		list:     fl,
+		srcList:  fl,
 		inbox:    in,
 		receiver: receiver,
 		uuid:     uuid.New(),
 	}
 }
 
-func (w *LocalSender) Start() {
-	defer w.wg.Done()
+func (w *LocalSender) Start() error {
 
-	// send the filelist to the receiver
-	// q := []int{2, 3, 5, 7, 11, 13}
-	pkt := []*core.Message{
-		{
-			Flag: core.RST,
-			UUID: w.uuid,
-			List: w.list,
-		},
+	// calculate block sizes
+	for _, fd := range w.srcList {
+		if !fd.IsDir {
+			fd.SetBlockSize()
+			log.Trace().
+				Str("file name", fd.FileName).
+				Int64("file size", int64(fd.FileSize)).
+				Int64("block size calculated", fd.BlockSize).
+				Send()
+		}
 	}
 
-	log.Trace().
-		Msgf("sender list length: %d", len(w.list))
+	// prepare a message for the receiver
+	msg := &core.Message{
+		Flag:     core.INI,
+		UUID:     w.uuid,
+		FileList: w.srcList,
+	}
 
-	err := sendWithTimeout(pkt, w.receiver)
-	err.Handle()
+	log.Debug().
+		Msgf("sending source file list, length: %d", len(w.srcList))
+
+	err := sendWithTimeout(msg, w.receiver)
+	if err != nil {
+		return err
+	}
 
 	// receive the filelist with checksums
-	pkt, err = recvWithTimeout(w.inbox)
-	err.Handle()
-	w.list = pkt[0].List
-	//spew.Dump(w.list)
-	// spawn filereaders
+	msg, err = recvWithTimeout(w.inbox)
+	if err != nil {
+		return errors.Wrap(err, "local sender")
+	}
 
-	// wait for the transfer to finish
+	// prepare a slice with the delta
+	diffList := make([]*lfs.FileDesc, 0)
+	missList := make([]*lfs.FileDesc, 0)
+	for _, fd := range msg.FileList {
+		if fd.State == lfs.Missing && !fd.IsDir {
+			// new file
+			log.Debug().
+				Int64("block size", fd.BlockSize).
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msgf("sender %s", fd.State.String())
+			missList = append(missList, fd)
+		} else if fd.State == lfs.Diff {
+			// diff file
+			log.Debug().
+				Int64("block size", fd.BlockSize).
+				Int("hashes count", len(fd.Weak)).
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msgf("sender %s", fd.State.String())
+			diffList = append(diffList, fd)
 
+		} else {
+			// skipped file
+			log.Debug().
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msg(fd.State.String())
+		}
+	}
+
+	rrInbox := make(chan *core.Message)
+	brInbox := make(chan *core.Message)
+	ccIo := viper.GetInt("io_concurrency")
+	g := new(errgroup.Group)
+	dCtx := context.Context(w.ctx)
+
+	// spawn readers if we have diff files
+	if len(diffList) > 0 {
+		log.Debug().
+			Msg("sender spawning roll readers")
+
+		for i := 0; i < ccIo; i++ {
+			rr := NewRollReader(dCtx, rrInbox, w.receiver)
+			g.Go(func() error { return rr.Start() })
+		}
+	}
+
+	// spawn missing file senders if we have missing files
+	if len(missList) > 0 {
+		log.Debug().
+			Msg("sender spawning bytes readers")
+
+		for i := 0; i < ccIo; i++ {
+			log.Debug().
+				Msgf("starting byte reader: %d", i)
+			br := NewBytesReader(dCtx, brInbox, w.receiver, i)
+			g.Go(func() error { return br.Start() })
+		}
+	}
+
+	// send data - diff first
+	for _, fd := range diffList {
+
+		rrInbox <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+	// new files next
+	for _, fd := range missList {
+
+		brInbox <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+	// all data sent, stop zee workerz
+	if len(diffList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			rrInbox <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
+	if len(missList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			brInbox <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
 	// validate ???
 
 	// end
+	err = g.Wait()
+	if err != nil {
+		return errors.Wrap(err, "file reader error")
+	}
 	log.Trace().
 		Msg("local sender finished, sending FIN to receciver")
-	pkt = []*core.Message{
-		{
-			Flag: core.FIN,
-			UUID: w.uuid,
-		},
+	msg = &core.Message{
+		Flag: core.FIN,
+		UUID: w.uuid,
 	}
-	sendWithTimeout(pkt, w.receiver)
+	err = sendWithTimeout(msg, w.receiver)
+	if err != nil {
+		return errors.Wrap(err, "sender failure")
+	}
+	return nil
+}
+
+type HttpSender struct {
+	ctx  context.Context
+	uuid uuid.UUID
+}
+
+func NewHttpSender(ctx context.Context) *HttpSender {
+	return &HttpSender{
+		ctx:  ctx,
+		uuid: uuid.New(),
+	}
+}
+
+func (w *HttpSender) Start() error {
+
+	// first, prepare http client
+	host := viper.GetString("remote_destination")
+	port := viper.GetInt("port")
+
+	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
+	if err != nil {
+		return errors.Wrap(err, "invalid URL")
+	}
+
+	url.Path += "/list"
+
+	defaultTimeout := viper.GetDuration("timeout")
+	ccIo := viper.GetInt("io_concurrency")
+
+	tr := &http.Transport{
+		ResponseHeaderTimeout: defaultTimeout,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			KeepAlive: 0,
+			Timeout:   defaultTimeout,
+		}).DialContext,
+		MaxIdleConns:          ccIo,
+		IdleConnTimeout:       defaultTimeout * 10,
+		TLSHandshakeTimeout:   defaultTimeout,
+		MaxIdleConnsPerHost:   2 * ccIo,
+		ExpectContinueTimeout: defaultTimeout,
+		DisableCompression:    false,
+	}
+
+	client := &http.Client{
+		Timeout:   defaultTimeout,
+		Transport: tr,
+	}
+
+	// perform directory listing
+	srcList, err := lfs.ParseDir(viper.GetString("source"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Stack().
+			Caller().
+			Send()
+	}
+
+	for _, fd := range srcList {
+		if !fd.IsDir {
+			fd.SetBlockSize()
+			log.Trace().
+				Str("file name", fd.FileName).
+				Int64("file size", int64(fd.FileSize)).
+				Int64("block size calculated", fd.BlockSize).
+				Send()
+		}
+	}
+
+	msg := &core.Message{
+		Flag:     core.INI,
+		UUID:     w.uuid,
+		FileList: srcList,
+	}
+
+	jsonMsg, err := json.Marshal(msg)
+
+	buf, err := compress(jsonMsg)
+	if err != nil {
+		return errors.Wrap(err, "error compressing data")
+	}
+
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
+	//req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "PeXync-client-mode")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Content-Encoding", "gzip")
+	if err != nil {
+		return errors.Wrap(err, "error creating http request")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "error connecting server")
+	}
+
+	defer resp.Body.Close()
+
+	fmt.Println("response Status:", resp.Status)
+	fmt.Println("response Headers:", resp.Header)
+
+	buf, err = decompress(resp.Body)
+	if err != nil {
+		return errors.Wrap(err, "error reading server response")
+	}
+
+	msg = &core.Message{}
+	err = json.Unmarshal(buf.Bytes(), msg)
+	if err != nil {
+		return errors.Wrap(err, "error reading server response")
+	}
+
+	//spew.Dump(msg)
+
+	return nil
 }

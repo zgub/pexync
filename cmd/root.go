@@ -22,11 +22,12 @@ var (
 
 var (
 	// general
-	useCores int
-	cfgFile  string
-	debug    bool
-	port     int
-	syncDir  string
+	useCores       int
+	cfgFile        string
+	debug          bool
+	port           int
+	srcDir, dstDir string
+	ccIo           int
 
 	// core
 	blockSize int
@@ -52,12 +53,20 @@ func init() {
 
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
-	rootCmd.PersistentFlags().StringVarP(&syncDir, "directory", "d", ".", "directory to synchronize")
-	viper.BindPFlag("directory", rootCmd.PersistentFlags().Lookup("directory"))
+	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "test", "source directory to synchronize")
+	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
 
-	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "http API port")
+	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
+	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+
+	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
+	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
 
 	viper.SetDefault("timeout", 5*time.Second)
+
+	rootCmd.PersistentFlags().IntVarP(&ccIo, "io-concurrency", "i", 2, "concurent io operations")
+	viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
+
 }
 
 // Execute executes the root command.

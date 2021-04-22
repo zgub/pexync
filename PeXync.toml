@@ -1,4 +1,8 @@
+bind_address = "127.0.0.1"
 block_size = 700
-directory = "."
+destination = "Xync"
+io_concurrency = 2
 log_level = -1
+port = 3819
+source = "test"
 timeout = "5s"
