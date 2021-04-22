@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"unicode/utf8"
 
@@ -131,44 +130,15 @@ func TestMissingLocalSync(t *testing.T) {
 
 	startLocalSync()
 
-	h := md5.New()
-	for _, p := range testFiles {
-
-		f, err := os.Open(p)
+	for _, fn := range testFiles {
+		bfn := filepath.Base(fn)
+		eq, err := compare(srcD+bfn, dstD+bfn)
 		if err != nil {
-			t.Fatalf("failed to open file: %s", err.Error())
+			t.Fatalf("unable to comapre files: %s", err.Error())
 		}
-		if _, err := io.Copy(h, f); err != nil {
-			t.Fatalf("MD5 has read failed: %s", err.Error())
+		if !eq {
+			t.Fatalf("\n *** %s \n *** %s \n *** not equal", srcD+bfn, dstD+bfn)
 		}
-
-		srcSum := h.Sum(nil)
-		h.Reset()
-		f.Close()
-
-		name := filepath.Base(p)
-		f, err = os.Open(dstD + name)
-		if err != nil {
-			t.Fatalf("failed to open file: %s - %s", dstD+name, err.Error())
-		}
-		if _, err := io.Copy(h, f); err != nil {
-			t.Fatalf("MD5 has read failed: %s", err.Error())
-		}
-		dstSum := h.Sum(nil)
-
-		if !reflect.DeepEqual(srcSum, dstSum) {
-			t.Fatalf("File content does not math %s : %s", p, "../Xync/"+name)
-		}
-		err = os.Remove(p)
-		if err != nil {
-			t.Fatalf("unable to remove file: %s", err.Error())
-		}
-		err = os.Remove(dstD + name)
-		if err != nil {
-			t.Fatalf("unable to remove file: %s", err.Error())
-		}
-		h.Reset()
-		f.Close()
 	}
 
 }
