@@ -43,7 +43,7 @@ func TestBytesWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write failed %s\n", err.Error())
 	}
-	t.Logf("Selializing - index: %d, offset: %d, seq: %d, len: %d\n", dd1.fileIndex, dd1.offset, dd1.seq, dd1.len)
+	t.Logf("Selializing - index: %d, offset: %d, seq: %d\n", dd1.fileIndex, dd1.offset, dd1.seq)
 	s, err := dd1.Serialize()
 	if err != nil {
 		t.Fatalf("serialize failed %s\n", err.Error())
@@ -53,7 +53,7 @@ func TestBytesWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deserialize failed %s\n", err.Error())
 	}
-	t.Logf("Deserialized - index: %d, offset: %d, seq: %d, len: %d\n", dd2.fileIndex, dd2.offset, dd2.seq, dd2.len)
+	t.Logf("Deserialized - index: %d, offset: %d, seq: %d\n", dd2.fileIndex, dd2.offset, dd2.seq)
 	t.Logf("Deserialized data:\n %+v\n", dd2.data)
 	h := new(Header)
 	r := bytes.NewReader(dd2.Bytes())

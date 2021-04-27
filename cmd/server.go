@@ -30,7 +30,8 @@ var (
 )
 
 func startServer() {
-	log.Info().Msg("initializing PeXync server")
+	log.Info().
+		Msg("initializing PeXync server")
 	ctx := context.Background()
 
 	ctx, cancel := context.WithCancel(ctx)

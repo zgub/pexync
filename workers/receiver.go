@@ -54,20 +54,18 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 func (w *LocalReceiver) Start() error {
 
 	g := new(errgroup.Group)
+LabelsInGo:
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("local receiver closing, context done")
+			log.Debug().
+				Msg("receiver - closing, context done")
 			// send fin to all readers
-			for _, wr := range w.writersMap {
-				wr.inbox <- &core.Message{
-					Flag: core.FIN,
-				}
-			}
+			break LabelsInGo
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
-				err := w.handleIni(msg)
+				err := w.parseSenderList(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
@@ -75,16 +73,11 @@ func (w *LocalReceiver) Start() error {
 				log.Trace().
 					Msg("receiver received FIN")
 				// send fin to all readers
-				for _, writer := range w.writersMap {
-					writer.inbox <- &core.Message{
-						Flag: core.FIN,
-					}
-				}
-				err := g.Wait()
-				return err
+				break LabelsInGo
 			case core.WSQ:
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
+					Int64("data sequence", msg.DataDesc.Seq()).
 					Msg("receiver - data received")
 				//spew.Dump(msg)
 				data, err := msg.DataDesc.Serialize()
@@ -92,13 +85,8 @@ func (w *LocalReceiver) Start() error {
 					return errors.Wrap(err, "error serializing data")
 				}
 
-				// spawn filewriters
-
-				// wait for the transfer to finish
-
 				// validate ???
 
-				// end
 				// dd is new DataDesc created from serialized msg.DataDesc
 				dd, err := lfs.Deserialize(data)
 				if err != nil {
@@ -115,7 +103,7 @@ func (w *LocalReceiver) Start() error {
 				} else {
 					log.Debug().
 						Str("filename", msg.FileDesc.FileName).
-						Msg("starting new writter")
+						Msg("receiver - starting new writter")
 					inbox := make(chan *core.Message)
 					fr := NewFileWriter(w.ctx, w.senderUUID, msg.FileDesc, inbox)
 					w.writersMap[fi] = fr
@@ -133,13 +121,21 @@ func (w *LocalReceiver) Start() error {
 			}
 		}
 	}
+	for _, wr := range w.writersMap {
+		wr.inbox <- &core.Message{
+			Flag: core.FIN,
+		}
+	}
+	err := g.Wait()
+
+	return err
 }
 
-func (w *LocalReceiver) handleIni(msg *core.Message) error {
+func (w *LocalReceiver) parseSenderList(msg *core.Message) error {
 	w.senderUUID = msg.UUID
 	log.Debug().
 		Str("sender uuid", w.senderUUID.String()).
-		Msgf("receiver handling src file list, length: %d", len(msg.FileList))
+		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
 	// stop all writers if any, this is a reset!
 
 	// store source filelist for future reference
@@ -175,7 +171,7 @@ func (w *LocalReceiver) handleIni(msg *core.Message) error {
 		log.Trace().
 			Str("state", dstFd.State.String()).
 			Str("file name", dstFd.Prefix+"/"+dstFd.FileName).
-			Msg("sending to hash reader")
+			Msg("receiver list parser - sending to hash reader")
 		hashChan <- &core.Message{
 			Flag:     core.HSH,
 			FileDesc: dstFd,
@@ -324,7 +320,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 		log.Trace().
 			Str("source filename relatinve path", srcFd.RelPath).
 			Str("constructed remote path", path).
-			Msg("searching")
+			Msg("receiver comparing - searching")
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
 			// it does exist on destination
 			if srcFd.FileSize == dstFd.FileSize && srcFd.Modified == dstFd.Modified {
@@ -336,7 +332,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				srcFd.State = lfs.Skip
 				log.Debug().
 					Str("path", path).
-					Msg("receiver updating metadata")
+					Msg("receiver comparing -  updating metadata")
 			} else {
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
@@ -370,7 +366,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					if srcFd.FileSize == 0 {
 						log.Trace().
 							Str("path", path).
-							Msg("empty file")
+							Msg("receiver comparing - empty file")
 
 						// file creted, modify meta if required and set as done
 						err = fixMeta(dstDir, srcFd, dstFd)
@@ -382,7 +378,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				} else {
 					log.Trace().
 						Str("path", path).
-						Msg("receiver fixing dir meta")
+						Msg("receiver comparing - fixing dir meta")
 					// directory that exists, check meta only
 					err = fixMeta(dstDir, srcFd, dstFd)
 					if err != nil {
@@ -398,7 +394,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// create directory
 				log.Debug().
 					Str("path", path).
-					Msg("creating directory")
+					Msg("receiver comparing - creating directory")
 				if _, err := os.Stat(path); os.IsNotExist(err) {
 					// create one
 					os.Mkdir(path, os.ModeDir)
@@ -411,7 +407,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				if srcFd.FileSize == 0 {
 					log.Trace().
 						Str("path", path).
-						Msg("empty file")
+						Msg("receiver comparing - empty file")
 					file, err := os.Create(path)
 					if err != nil {
 						return nil, errors.Wrapf(err, "%s - unable to create file", path)
