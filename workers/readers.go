@@ -329,8 +329,8 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 	}
 
 	// read the firts block to initialize the roll window
-	n, err = io.Copy(w.buf, br)
-	if n == 0 {
+	m, err := io.Copy(w.buf, br)
+	if m == 0 {
 		if err == nil {
 			return errors.Wrapf(err, "roll reader - 0 bytes read from file: %s", msg.FileDesc.FileName)
 		}
@@ -341,11 +341,11 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 		}
 	}
 
-	buf = buf[:n]
+	//buf = buf[:n]
 
 	// initialize the rolling Adler hash
 	rh := core.Pour(msg.FileDesc.BlockSize)
-	_, err = rh.Write(buf)
+	_, err = rh.Write(w.buf.Bytes())
 	if err != nil {
 		return errors.Wrapf(err, "roll reader %d, unable to initialize the roll hash window", w.myID)
 	}
@@ -382,29 +382,8 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 		}
 	}
 
-	return nil
+	//return nil
 }
-
-/*
-// write value to the circular buffer
-func (rr *RollReader) push(b byte) {
-	// (over)write
-	rr.ring[rr.p] = b
-	// increment
-	rr.p++
-	// reset if overflow
-	if rr.p == len(rr.ring) {
-		rr.p = 0
-	}
-}
-
-
-// read the oldest value
-func (rr *RollReader) pop() byte {
-	return rr.ring[rr.p]
-}
-
-*/
 
 func (w *RollReader) lookup(sum uint32) int64 {
 
