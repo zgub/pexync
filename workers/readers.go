@@ -169,8 +169,10 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 			// just make sure that buffer contains only blocksize of data
 			// it might hold some old data from a byte by byte roll run
 			if int64(buf.Len()) < msg.FileDesc.BlockSize {
+				// reset the buffer this time, to avoid appending
 				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize-int64(buf.Len()))
 			} else {
+				buf.Reset()
 				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize)
 			}
 			if n == 0 {
