@@ -5,15 +5,21 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/test"
 )
 
 func init() {
+
+	testCmd.Flags().StringVarP(&scenario, "screnario", "s", "C", "test help scenarion")
+	viper.BindPFlag("scenario", rootCmd.PersistentFlags().Lookup("scenario"))
+
 	rootCmd.AddCommand(testCmd)
 }
 
 var (
-	testCmd = &cobra.Command{
+	scenario string
+	testCmd  = &cobra.Command{
 		Use:   "test",
 		Short: "run some test tasks",
 		Long:  `mostly generates some test files for sync tests`,
@@ -24,6 +30,18 @@ var (
 )
 
 func testTasks() {
+	switch scenario {
+	case "C":
+		createTestFiles()
+	case "B":
+		test.ReadBenchmark()
+	default:
+		log.Fatal().
+			Msg("unknown scenario")
+	}
+}
+
+func createTestFiles() {
 	if err := os.Remove("testfiles/test-file"); err != nil {
 		log.Warn().
 			Msgf("no file to delete: %s", err.Error())
