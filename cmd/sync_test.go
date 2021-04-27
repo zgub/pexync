@@ -1,126 +1,37 @@
 package cmd
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/md5"
-	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/spf13/viper"
+	"github.com/zgub/pexync/test"
 )
 
-type testFileType int
-
 const (
-	AABBCC testFileType = iota
-	BBCCDD
-	AACCEE
-)
-
-var testFileTypes = [...]string{
-	"AABBCC",
-	"BBCCDD",
-	"AACCEE",
-}
-
-const (
-	srcD = "../test/"
+	srcD = "../testfiles/"
 	dstD = "../Xync/"
 )
-
-func (t testFileType) String() string {
-	return testFileTypes[t]
-}
-
-func createTestFile(dir string, blockSize, blockCount int, t testFileType) (string, error) {
-
-	path := fmt.Sprintf(dir+"/%dx%d-test-data-%s", blockCount, blockSize, t.String())
-	f, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	bw := bufio.NewWriter(io.Writer(f))
-	switch t {
-	case AABBCC:
-		rn := rune('a')
-		buf := make([]byte, utf8.UTFMax)
-		for block := 0; block < blockCount; block++ {
-			for byte := 0; byte < blockSize; byte++ {
-				n := utf8.EncodeRune(buf, rn)
-				buf = buf[:n]
-				_, err = bw.Write(buf)
-				if err != nil {
-					return "", err
-				}
-			}
-			rn++
-		}
-	case BBCCDD:
-		rn := rune('b')
-		buf := make([]byte, utf8.UTFMax)
-		for block := 0; block < blockCount; block++ {
-			for byte := 0; byte < blockSize; byte++ {
-				n := utf8.EncodeRune(buf, rn)
-				buf = buf[:n]
-				_, err = bw.Write(buf)
-				if err != nil {
-					return "", err
-				}
-			}
-			rn++
-		}
-	case AACCEE:
-		rn := rune('a')
-		buf := make([]byte, utf8.UTFMax)
-		for block := 0; block < blockCount; block++ {
-			for byte := 0; byte < blockSize; byte++ {
-				n := utf8.EncodeRune(buf, rn)
-				buf = buf[:n]
-				_, err = bw.Write(buf)
-				if err != nil {
-					return "", err
-				}
-			}
-			rn++
-			rn++
-		}
-	}
-
-	for i := 0; i < rand.Intn(10); i++ {
-		_, err = bw.Write([]byte("END"))
-		if err != nil {
-			return "", err
-		}
-	}
-
-	bw.Flush()
-	f.Sync()
-	return path, nil
-}
 
 func TestMissingLocalSync(t *testing.T) {
 	testFiles := make([]string, 3)
 	var err error
 
-	testFiles[0], err = createTestFile(srcD, 700, 3, AABBCC)
+	testFiles[0], err = test.CreateTestFile(srcD, "", 700, 3, test.AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[1], err = createTestFile(srcD, 700, 3, BBCCDD)
+	testFiles[1], err = test.CreateTestFile(srcD, "", 700, 3, test.BBCCDD)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	testFiles[2], err = createTestFile(srcD, 700, 3, AACCEE)
+	testFiles[2], err = test.CreateTestFile(srcD, "", 700, 3, test.AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
@@ -147,12 +58,12 @@ func TestMissingLocalSync(t *testing.T) {
 }
 
 func TestDiffLocalSync(t *testing.T) {
-	srcF, err := createTestFile(srcD, 700, 5, AABBCC)
+	srcF, err := test.CreateTestFile(srcD, "", 700, 5, test.AABBCC)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}
 
-	dstF, err := createTestFile(dstD, 700, 3, AACCEE)
+	dstF, err := test.CreateTestFile(dstD, "", 700, 3, test.AACCEE)
 	if err != nil {
 		t.Fatalf("failed to create a test file %s", err.Error())
 	}

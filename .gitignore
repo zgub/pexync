@@ -7,8 +7,8 @@
 
 # Test binary, built with `go test -c`
 *.test
-test
-test/*
+testfiles
+testfiles/*
 pexync
 PeXync
 Xync/*

@@ -4,5 +4,5 @@ destination = "Xync"
 io_concurrency = 2
 log_level = -1
 port = 3819
-source = "test"
+source = "testfiles"
 timeout = "5s"

@@ -3,6 +3,7 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -17,22 +18,10 @@ import (
 
 type State int16
 
-type Flag int16
-
 const (
 	Missing State = iota // no file on the receiver side
 	Diff                 // file exists but do not match
 	Skip                 // file exists and matches
-)
-
-const (
-	Data  Flag = iota // Data header
-	Index             // index header
-	End               // end header
-)
-
-const (
-	HeaderSize = 34
 )
 
 var fileStatus = [...]string{
@@ -44,6 +33,28 @@ var fileStatus = [...]string{
 func (s State) String() string {
 	return fileStatus[s]
 }
+
+type Flag int16
+
+const (
+	Data  Flag = iota // Data header
+	Index             // index header
+	End               // end header
+)
+
+var headerFlags = [...]string{
+	"DATA",
+	"INDEX",
+	"END",
+}
+
+func (f Flag) String() string {
+	return headerFlags[f]
+}
+
+const (
+	HeaderSize = 34
+)
 
 // common errors, lazy to type
 const (
@@ -63,10 +74,10 @@ type Header struct {
 type DataDesc struct {
 	mode                   Flag // true - writing data / false - writing index data
 	offset, seq, fileIndex int64
-	len                    int64         //is ths really neccessary?
 	iBuff                  []int64       // intermediate index buffer
 	readBuf                *bytes.Buffer // intermediate data buffer
 	data                   *bytes.Buffer
+	//len                    int64         //is ths really neccessary?
 }
 
 func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
@@ -77,6 +88,19 @@ func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
 		offset:    offset,
 		seq:       sequence,
 	}
+}
+
+func (dd *DataDesc) Print(comment string) {
+	fmt.Printf("\nAnnotation: %s\n", comment)
+	fmt.Printf("Mode: %s\n", dd.mode.String())
+	fmt.Printf("Offset: %d\n", dd.offset)
+	fmt.Printf("Sequence: %d\n", dd.seq)
+	//fmt.Printf("Lenght: %d\n", dd.len)
+	fmt.Printf("Indexes: %+v\n", dd.iBuff)
+	fmt.Printf("Read buffer: %s\n", dd.readBuf.Bytes())
+	fmt.Printf("Read buffer Len: %d\n", dd.readBuf.Len())
+	fmt.Printf("Data: %s\n", dd.data.Bytes())
+	fmt.Printf("Data buf Len: %d\n\n", dd.data.Len())
 }
 
 func (dd *DataDesc) Seq() int64 {
@@ -153,7 +177,7 @@ func (dd *DataDesc) flush() error {
 		if err != nil {
 			return errors.Wrap(err, "unable to encode data")
 		}
-		dd.readBuf.Reset()
+		dd.iBuff = make([]int64, 0)
 	} else if dd.mode == Index && len(dd.iBuff) != 0 {
 		// we were writing indexes, flush them
 		header := &Header{
@@ -170,7 +194,7 @@ func (dd *DataDesc) flush() error {
 		if err != nil {
 			return errors.Wrap(err, "unable to encode indexes")
 		}
-		dd.iBuff = make([]int64, 0)
+		dd.readBuf.Reset()
 	}
 	return nil
 }
@@ -178,7 +202,8 @@ func (dd *DataDesc) flush() error {
 func (dd *DataDesc) Len() int64 {
 	// flushed data (bytes) + number of int64 * 8 ("bytes") + intermediate data (bytes)
 	// not exact propably, if binary optimizes
-	return int64(dd.data.Len() + (len(dd.iBuff) * 8) + dd.readBuf.Len())
+	//return int64(dd.data.Len() + (len(dd.iBuff) * 8) + dd.readBuf.Len())
+	return int64(dd.readBuf.Len())
 }
 
 func (dd *DataDesc) Serialize() ([]byte, error) {
@@ -216,8 +241,8 @@ func Deserialize(p []byte) (*DataDesc, error) {
 		fileIndex: header.FileIndex,
 		offset:    header.Offset,
 		seq:       header.Seq,
-		len:       header.Len,
 		data:      bytes.NewBuffer(p[HeaderSize:]),
+		//len:       header.Len,
 	}
 	return dd, nil
 }
@@ -306,7 +331,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			log.Trace().
 				Str("path", path).
 				Str("destination", dest).
-				Msg("skipping destination")
+				Msg("walkdir - skipping destination")
 			return filepath.SkipDir
 		}
 
@@ -327,7 +352,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			Str("path", path).
 			Str("prefix path", prefix).
 			Bool("is dir", entry.IsDir()).
-			Msg("parsing fs entry")
+			Msg("walkdir - parsing fs entry")
 
 		if relPath != "." {
 			fileDesc := &FileDesc{

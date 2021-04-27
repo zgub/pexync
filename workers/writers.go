@@ -50,9 +50,7 @@ func (w FileWriter) Start() error {
 	}
 	log.Trace().
 		Str("file name", tmpF.Name()).
-		Msg("DIFF opening temporary file")
-	//defer tmpF.Close()
-	defer os.Remove(tmpF.Name())
+		Msg("file writer - DIFF opening temporary file")
 
 	w.bw = bufio.NewWriter(io.Writer(tmpF))
 	oldPath := dstDir + "/" + w.srcFd.FileName
@@ -60,7 +58,7 @@ func (w FileWriter) Start() error {
 	if w.srcFd.State == lfs.Diff {
 		log.Trace().
 			Str("file name", oldPath).
-			Msg("DIFF opening destination file for reference")
+			Msg("file writer - DIFF opening destination file for reference")
 		f, err := os.Open(oldPath)
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
@@ -71,11 +69,13 @@ func (w FileWriter) Start() error {
 		defer f.Close()
 	}
 
+AnotherLabel:
 	for {
 		select {
 		case <-w.ctx.Done():
-			log.Debug().Msg("file writer closing, context done")
-			return nil
+			log.Debug().
+				Msg("file writer - closing, context done")
+			break AnotherLabel
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.WSQ: // read sequence
@@ -87,7 +87,7 @@ func (w FileWriter) Start() error {
 					//Str("filename", msg.FileDesc.FileName).
 					Int64("seq", seq).
 					Int64("pSeq", w.pSeq).
-					Msg("msg received by file writer")
+					Msg("file writer -  msg received")
 				w.dataSeq[seq] = msg.DataDesc
 				if seq == w.pSeq {
 					// if we hae data at the current sequence, call writer
@@ -101,21 +101,26 @@ func (w FileWriter) Start() error {
 					Str("orig name", w.srcFd.FileName).
 					Str("temp file path", tmpF.Name()).
 					Str("rename to", dstDir+"/"+w.srcFd.FileName).
-					Msg("file writer received FIN, renaming")
-				err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
+					Msg("file writer - sreceived FIN, renaming")
 
-				if err != nil {
-					return errors.Wrap(err, "unable to replace file")
-				}
+				// first close
 				if err = tmpF.Close(); err != nil {
 					return errors.Wrap(err, "unable to close file")
 				}
-				return nil
+
+				// now rename
+				err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
+				if err != nil {
+					return errors.Wrap(err, "unable to replace file")
+				}
+
+				break AnotherLabel
 			default:
 				return errors.New("unknown message received")
 			}
 		}
 	}
+	return nil
 }
 
 func (w *FileWriter) write() error {

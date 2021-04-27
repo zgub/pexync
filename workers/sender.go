@@ -46,7 +46,7 @@ func (w *LocalSender) Start() error {
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
 				Int64("block size calculated", fd.BlockSize).
-				Send()
+				Msg("local sender")
 		}
 	}
 
@@ -58,7 +58,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	log.Debug().
-		Msgf("sending source file list, length: %d", len(w.srcList))
+		Msgf("local sender - source file list, length: %d", len(w.srcList))
 
 	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
@@ -80,7 +80,7 @@ func (w *LocalSender) Start() error {
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("sender %s", fd.State.String())
+				Msgf("local sender %s", fd.State.String())
 			missList = append(missList, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
@@ -88,14 +88,14 @@ func (w *LocalSender) Start() error {
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("sender %s", fd.State.String())
+				Msgf("local sender %s", fd.State.String())
 			diffList = append(diffList, fd)
 
 		} else {
 			// skipped file
 			log.Debug().
 				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msg(fd.State.String())
+				Msgf("local sender %s", fd.State.String())
 		}
 	}
 
@@ -108,7 +108,7 @@ func (w *LocalSender) Start() error {
 	// spawn readers if we have diff files
 	if len(diffList) > 0 {
 		log.Debug().
-			Msg("sender spawning roll readers")
+			Msg("local sender - spawning roll readers")
 
 		for i := 0; i < ccIo; i++ {
 			rr := NewRollReader(dCtx, rrInbox, w.receiver)
@@ -119,12 +119,12 @@ func (w *LocalSender) Start() error {
 	// spawn missing file senders if we have missing files
 	if len(missList) > 0 {
 		log.Debug().
-			Msg("sender spawning bytes readers")
+			Msg("local sender - spawning bytes readers")
 
 		for i := 0; i < ccIo; i++ {
 			log.Debug().
-				Msgf("starting byte reader: %d", i)
-			br := NewBytesReader(dCtx, brInbox, w.receiver, i)
+				Msgf("local sender - starting byte reader: %d", i)
+			br := NewBytesReader(dCtx, brInbox, w.receiver)
 			g.Go(func() error { return br.Start() })
 		}
 	}
@@ -174,7 +174,7 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "file reader error")
 	}
 	log.Trace().
-		Msg("local sender finished, sending FIN to receciver")
+		Msg("local sender - finished, sending FIN to receciver")
 	msg = &core.Message{
 		Flag: core.FIN,
 		UUID: w.uuid,

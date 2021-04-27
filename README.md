@@ -30,11 +30,11 @@
 
 1. destination reader moze pouzit **SectionReader** na rychlejsie paralelne vyratanie adler32 suctov ak bude __sectionSize nasobok blockSize__
 1. source reader **zda sa** nemoze pouzivat section reader, lebo robime rolling checksum a ~~neviem ako vyriesit hranice sekcii~~, jedine ze by sme recyklovali sekcie, **sectionSize musi byt tiez nasobok blockSize**
-1 pouzivanie sekcii nema zmysel pri malych suboroch, tie nema asi zmysel ani robit diff, menej ako stovky bajtov
+1. pouzivanie sekcii nema zmysel pri malych suboroch, tie nema asi zmysel ani robit diff, menej ako stovky bajtov
 1. mime/multipart?
 1. send blocks as they come
 1. ctx, cancel = context.WithTimeout(context.Background(), timeout)
-1. worker management? (in case one fails?)
+1. ~~worker management? (in case one fails?)~~ not in first version
 1. Sha1 comparisson auto || on demand? (will require Sha1 hash calculation at first GetList call)
 
 ## Design concepts
