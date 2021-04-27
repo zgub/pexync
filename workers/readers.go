@@ -79,11 +79,11 @@ func (w *RollReader) Start() error {
 }
 
 func (w *RollReader) rollV2(msg *core.Message) error {
-	log.Trace().
-		Msgf("roll reader %d - starting", w.myID)
 
 	// open the file to roll
 	srcFilePath := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
+	log.Trace().
+		Msgf("roll reader %d - start reading: %s", w.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
 	if err != nil {
 		return errors.Wrapf(err, "roll reader %d - unable to open file for reading: %s", w.myID, srcFilePath)
@@ -114,6 +114,8 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 		w.hMap[h] = i
 	}
 
+	log.Trace().
+		Msgf("roll reader %d - initializing rolling hash", w.myID)
 	// initialize the rolling Adler hash
 	rh := core.Pour(msg.FileDesc.BlockSize)
 	_, err = rh.Write(buf.Bytes())
@@ -157,6 +159,7 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 
 		if hIndex, ok := w.hMap[sum]; ok {
 			// MATCH !!!
+
 			err := dd.WriteIndex(int64(hIndex))
 			if err != nil {
 				return errors.Wrapf(err, "roll reader %d - failed to write index data description", w.myID)
@@ -165,7 +168,11 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 			// we need to load more data for the next round
 			// just make sure that buffer contains only blocksize of data
 			// it might hold some old data from a byte by byte roll run
-			n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize-int64(buf.Len()))
+			if int64(buf.Len()) < msg.FileDesc.BlockSize {
+				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize-int64(buf.Len()))
+			} else {
+				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize)
+			}
 			if n == 0 {
 				if err == io.EOF {
 					break
@@ -214,6 +221,28 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 				return errors.Wrapf(err, "roll reader %d - failed to write bytes into data description", w.myID)
 			}
 		}
+	}
+
+	if dd.Len() > 0 {
+		dMsg := &core.Message{
+			Flag:     core.WSQ,
+			FileDesc: msg.FileDesc, // maybe strip the useless data
+			DataDesc: dd,
+		}
+
+		log.Trace().
+			Str("filename", msg.FileDesc.FileName).
+			Int64("datadesc len", int64(dd.Len())).
+			Int64("block size", msg.FileDesc.BlockSize).
+			Msgf("roll reader %d - sending remaining data", w.myID)
+
+		err = sendWithTimeout(dMsg, w.receiver)
+		w.msgCnt++
+		if err != nil {
+			return errors.Wrap(err, "error sending data")
+		}
+		seq++
+		dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 	}
 
 	return nil
