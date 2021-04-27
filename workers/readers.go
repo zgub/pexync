@@ -300,6 +300,7 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 	log.Trace().
 		Msgf("roll reader %d - starting", w.myID)
 
+	// open the file to roll
 	srcFilePath := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
 	f, err := os.Open(srcFilePath)
 	if err != nil {
