@@ -19,7 +19,7 @@ const (
 	WSQ             // write sequence
 	ERR             // error
 	FIN             // done, disconnect
-
+	ACK             // just ACK
 )
 
 var messageTypes = [...]string{
@@ -31,6 +31,7 @@ var messageTypes = [...]string{
 	"WSQ",
 	"ERR",
 	"FIN",
+	"ACK",
 }
 
 func (f Flag) String() string {

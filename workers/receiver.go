@@ -290,7 +290,33 @@ func processList(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func processData(w http.ResponseWriter, r *http.Request) {}
+func processData(w http.ResponseWriter, r *http.Request) {
+	buf, err := decompress(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error")
+		return
+	}
+
+	log.Info().
+		Msgf("http receiver - received %d bytes of data", buf.Len())
+
+	msg := *&core.Message{
+		Flag: core.ACK,
+	}
+	err = respondWithJSON(w, http.StatusOK, msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error")
+		return
+	}
+}
 
 func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
