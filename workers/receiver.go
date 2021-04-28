@@ -302,7 +302,7 @@ func processData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info().
-		Msgf("http receiver - received %d bytes of data", buf.Len())
+		Msgf("http  receiver - received %d bytes of data", buf.Len())
 
 	msg := *&core.Message{
 		Flag: core.ACK,

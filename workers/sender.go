@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -62,7 +61,7 @@ func (w *LocalSender) Start() error {
 
 	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "local sender")
 	}
 
 	// receive the filelist with checksums
@@ -187,29 +186,12 @@ func (w *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	ctx  context.Context
-	uuid uuid.UUID
+	ctx    context.Context
+	uuid   uuid.UUID
+	client *http.Client
 }
 
 func NewHttpSender(ctx context.Context) *HttpSender {
-	return &HttpSender{
-		ctx:  ctx,
-		uuid: uuid.New(),
-	}
-}
-
-func (w *HttpSender) Start() error {
-
-	// first, prepare http client
-	host := viper.GetString("remote_destination")
-	port := viper.GetInt("port")
-
-	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
-	if err != nil {
-		return errors.Wrap(err, "invalid URL")
-	}
-
-	url.Path += "/list"
 
 	defaultTimeout := viper.GetDuration("timeout")
 	ccIo := viper.GetInt("io_concurrency")
@@ -229,74 +211,59 @@ func (w *HttpSender) Start() error {
 		DisableCompression:    false,
 	}
 
-	client := &http.Client{
+	c := &http.Client{
 		Timeout:   defaultTimeout,
 		Transport: tr,
 	}
 
+	return &HttpSender{
+		ctx:    ctx,
+		uuid:   uuid.New(),
+		client: c,
+	}
+}
+
+func (w *HttpSender) Start() error {
+
+	// first, prepare http client
+	host := viper.GetString("remote_destination")
+	port := viper.GetInt("port")
+
+	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
+	if err != nil {
+		return errors.Wrap(err, "http sender - invalid URL")
+	}
+	url.Path += "/list"
+
 	// perform directory listing
 	srcList, err := lfs.ParseDir(viper.GetString("source"))
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
+		return errors.Wrap(err, "http sender - directory parsing failed")
 	}
 
+	// calculate blocksizes for each file
 	for _, fd := range srcList {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
-				Int64("block size calculated", fd.BlockSize).
-				Send()
+				Int64("calculated block size", fd.BlockSize).
+				Msg("http sender")
 		}
 	}
 
+	// create a new message for the other side
 	msg := &core.Message{
 		Flag:     core.INI,
 		UUID:     w.uuid,
 		FileList: srcList,
 	}
 
-	jsonMsg, err := json.Marshal(msg)
-
-	buf, err := compress(jsonMsg)
+	// send
+	msg, err = w.send(url, msg)
 	if err != nil {
-		return errors.Wrap(err, "error compressing data")
-	}
-
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
-	//req.Header.Set("X-Custom-Header", "myvalue")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "PeXync-client-mode")
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("Content-Encoding", "gzip")
-	if err != nil {
-		return errors.Wrap(err, "error creating http request")
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "error connecting server")
-	}
-
-	defer resp.Body.Close()
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-
-	buf, err = decompress(resp.Body)
-	if err != nil {
-		return errors.Wrap(err, "error reading server response")
-	}
-
-	msg = &core.Message{}
-	err = json.Unmarshal(buf.Bytes(), msg)
-	if err != nil {
-		return errors.Wrap(err, "error reading server response")
+		errors.Wrap(err, "http sender - send failed")
 	}
 
 	//spew.Dump(msg)

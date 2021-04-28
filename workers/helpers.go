@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
@@ -103,4 +106,52 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 		return nil, err
 	}
 	return buf, nil
+}
+
+func (w *HttpSender) send(url *url.URL, msg *core.Message) (*core.Message, error) {
+	j, err := json.Marshal(msg)
+	if err != nil {
+		return nil, errors.Wrap(err, "json marshal failed")
+	}
+
+	buf, err := compress(j)
+	if err != nil {
+		return nil, errors.Wrap(err, "error compressing data")
+	}
+
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
+	//req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "PeXync-client-mode")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Content-Encoding", "gzip")
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating http request")
+	}
+
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "error connecting server")
+	}
+	defer resp.Body.Close()
+
+	headers := resp.Header
+	fmt.Printf("===> http reposnse headers:\n %+v \n", headers)
+
+	log.Trace().
+		Str("status:", resp.Status).
+		Msg("http response")
+
+	buf, err = decompress(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading server response")
+	}
+
+	msg = &core.Message{}
+	err = json.Unmarshal(buf.Bytes(), msg)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading server response")
+	}
+
+	return msg, nil
 }
