@@ -98,6 +98,7 @@ func (w *LocalSender) Start() error {
 		}
 	}
 
+	// prepare for transfer
 	rrInbox := make(chan *core.Message)
 	brInbox := make(chan *core.Message)
 	ccIo := viper.GetInt("io_concurrency")
