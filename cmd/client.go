@@ -22,7 +22,7 @@ var (
 )
 
 func init() {
-	clientCmd.PersistentFlags().StringVarP(&dstHost, "remote-host", "h", "127.0.0.1", "remote sync destination host")
+	clientCmd.PersistentFlags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
 	viper.BindPFlag("remote_host", clientCmd.PersistentFlags().Lookup("remote-host"))
 	rootCmd.AddCommand(clientCmd)
 }
