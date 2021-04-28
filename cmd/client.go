@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	dstHost   string
 	clientCmd = &cobra.Command{
 		Use:   "client",
 		Short: "synchronize given directory with remote PeXync server",
@@ -21,17 +22,12 @@ var (
 )
 
 func init() {
-
+	clientCmd.PersistentFlags().StringVarP(&dstHost, "remote-host", "h", "127.0.0.1", "remote sync destination host")
+	viper.BindPFlag("remote_host", clientCmd.PersistentFlags().Lookup("remote-host"))
 	rootCmd.AddCommand(clientCmd)
 }
 
 func startClient() {
-
-	dstDir := viper.GetString("destination")
-
-	log.Info().
-		Str("destination set", dstDir).
-		Msg("starting")
 
 	ctx := context.Background()
 	log.Info().

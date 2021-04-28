@@ -34,6 +34,7 @@ var (
 
 func startLocalSync() {
 
+	// silly but it can be changed by viper.Set and it's used like this in tests
 	dstDir := viper.GetString("destination")
 
 	if dstDir == "/" {
