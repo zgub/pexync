@@ -34,12 +34,17 @@ func startClient() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	httpSender := workers.NewHttpSender(ctx)
-	err := httpSender.Start()
+	httpSender, err := workers.NewHttpSender(ctx)
 	if err != nil {
 		log.Error().
 			Err(err).
-			Msg("error")
+			Msg("unable to create http sender")
+	}
+	err = httpSender.Start()
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("unable to start http sender")
 	}
 
 }
