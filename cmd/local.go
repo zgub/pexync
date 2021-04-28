@@ -13,6 +13,10 @@ import (
 )
 
 func init() {
+
+	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
+	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+
 	rootCmd.AddCommand(localCmd)
 }
 

@@ -20,6 +20,11 @@ var (
 	}
 )
 
+func init() {
+
+	rootCmd.AddCommand(clientCmd)
+}
+
 func startClient() {
 
 	dstDir := viper.GetString("destination")

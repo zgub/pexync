@@ -56,9 +56,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
 	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
 
-	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
-	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
-
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
 	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
 
