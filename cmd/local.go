@@ -34,7 +34,7 @@ var (
 
 func startLocalSync() {
 
-	//dstDir := viper.GetString("destination")
+	dstDir := viper.GetString("destination")
 
 	if dstDir == "/" {
 		log.Fatal().
