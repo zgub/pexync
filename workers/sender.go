@@ -195,13 +195,18 @@ type HttpSender struct {
 func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 
 	// first, prepare http client
-	host := viper.GetString("destination")
+	host := viper.GetString("remote_host")
 	port := viper.GetInt("port")
 
 	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
 	if err != nil {
 		return nil, errors.Wrap(err, "http sender - invalid URL")
 	}
+
+	log.Debug().
+		Str("remote host", host).
+		Int("port", port).
+		Msg("destiantion set")
 
 	defaultTimeout := viper.GetDuration("timeout")
 	ccIo := viper.GetInt("io_concurrency")
