@@ -22,12 +22,12 @@ var (
 
 var (
 	// general
-	useCores       int
-	cfgFile        string
-	debug          bool
-	port           int
-	srcDir, dstDir string
-	ccIo           int
+	useCores int
+	cfgFile  string
+	debug    bool
+	port     int
+	srcDir   string
+	ccIo     int
 
 	// core
 	blockSize int

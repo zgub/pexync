@@ -14,13 +14,14 @@ import (
 
 func init() {
 
-	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
-	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+	localCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
+	viper.BindPFlag("destination", localCmd.PersistentFlags().Lookup("destination"))
 
 	rootCmd.AddCommand(localCmd)
 }
 
 var (
+	dstDir   string
 	localCmd = &cobra.Command{
 		Use:   "local",
 		Short: "synchronize given directory with another local directory",
@@ -33,7 +34,7 @@ var (
 
 func startLocalSync() {
 
-	dstDir := viper.GetString("destination")
+	//dstDir := viper.GetString("destination")
 
 	if dstDir == "/" {
 		log.Fatal().
