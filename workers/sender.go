@@ -195,7 +195,7 @@ type HttpSender struct {
 func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 
 	// first, prepare http client
-	host := viper.GetString("remote_destination")
+	host := viper.GetString("destination")
 	port := viper.GetInt("port")
 
 	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
