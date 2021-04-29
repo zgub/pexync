@@ -14,18 +14,11 @@ import (
 
 func init() {
 
-	localCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
-	viper.BindPFlag("source", localCmd.PersistentFlags().Lookup("source"))
-
-	localCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
-	viper.BindPFlag("destination", localCmd.PersistentFlags().Lookup("destination"))
-
 	rootCmd.AddCommand(localCmd)
 }
 
 var (
-	srcDir, dstDir string
-	localCmd       = &cobra.Command{
+	localCmd = &cobra.Command{
 		Use:   "local",
 		Short: "synchronize given directory with another local directory",
 		Long:  `The local command will synchronize two direcotries on the local host.`,

@@ -22,10 +22,11 @@ var (
 
 var (
 	// general
-	useCores int
-	cfgFile  string
-	debug    bool
-	ccIo     int
+	useCores       int
+	cfgFile        string
+	debug          bool
+	ccIo           int
+	srcDir, dstDir string
 
 	// core
 	blockSize int
@@ -55,6 +56,12 @@ func init() {
 
 	rootCmd.PersistentFlags().IntVarP(&ccIo, "io-concurrency", "i", 2, "concurent io operations")
 	viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
+
+	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
+	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
+
+	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
+	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
 
 }
 
