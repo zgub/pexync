@@ -174,6 +174,14 @@ func (w *HttpSender) runClient() error {
 			if err != nil {
 				return errors.Wrap(err, "failed to send data")
 			}
+			switch resp.Flag {
+			case core.ACK:
+				log.Trace().
+					Msg("http client worker - received ack")
+			default:
+				log.Error().
+					Msgf("http client worker - receives %s", resp.Flag.String())
+			}
 			spew.Dump(resp)
 
 		}

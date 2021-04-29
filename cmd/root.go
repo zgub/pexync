@@ -26,7 +26,6 @@ var (
 	cfgFile  string
 	debug    bool
 	port     int
-	srcDir   string
 	ccIo     int
 
 	// core
@@ -52,9 +51,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "enable debug")
 
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
-
-	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
-	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
 	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))

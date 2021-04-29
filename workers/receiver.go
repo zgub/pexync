@@ -307,6 +307,7 @@ func processData(w http.ResponseWriter, r *http.Request) {
 	msg := *&core.Message{
 		Flag: core.ACK,
 	}
+
 	err = respondWithJSON(w, http.StatusOK, msg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
