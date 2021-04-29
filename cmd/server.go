@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -24,7 +23,6 @@ var (
 )
 
 func init() {
-	fmt.Println("dot")
 
 	serverCmd.Flags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "ip address")
 	viper.BindPFlag("bind_address", serverCmd.Flags().Lookup("bind-address"))
@@ -32,7 +30,6 @@ func init() {
 
 	rootCmd.AddCommand(serverCmd)
 
-	fmt.Println("dot1")
 }
 
 func startServer() {
@@ -46,7 +43,6 @@ func startServer() {
 	var (
 		remote, local chan *core.Message
 	)
-	fmt.Println("dot2")
 	receiver := workers.NewHttpReceiver(ctx, remote, local)
 	err := receiver.Start()
 
