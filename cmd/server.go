@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -9,13 +10,6 @@ import (
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/workers"
 )
-
-func init() {
-	rootCmd.PersistentFlags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "IP address")
-	viper.BindPFlag("bind_address", rootCmd.PersistentFlags().Lookup("bind-address"))
-
-	rootCmd.AddCommand(serverCmd)
-}
 
 var (
 	bindAddr  string
@@ -29,6 +23,18 @@ var (
 	}
 )
 
+func init() {
+	fmt.Println("dot")
+
+	//servercmd.flags().stringvarp(&bindaddr, "bind-address", "b", "127.0.0.1", "ip address")
+	//viper.bindpflag("bind_address", servercmd.flags().lookup("bind-address"))
+	viper.SetDefault("bind_address", "127.0.0.1")
+
+	rootCmd.AddCommand(serverCmd)
+
+	fmt.Println("dot1")
+}
+
 func startServer() {
 	log.Info().
 		Msg("initializing PeXync server")
@@ -40,6 +46,7 @@ func startServer() {
 	var (
 		remote, local chan *core.Message
 	)
+	fmt.Println("dot2")
 	receiver := workers.NewHttpReceiver(ctx, remote, local)
 	err := receiver.Start()
 

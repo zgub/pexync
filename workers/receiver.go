@@ -247,6 +247,8 @@ func (w *HttpReceiver) Start() error {
 	}
 	port := strconv.Itoa(viper.GetInt("port"))
 	address = address + ":" + port
+	log.Debug().
+		Msgf("listening on: %s", address)
 	err := http.ListenAndServe(address, r)
 	if err != nil {
 		return errors.Wrapf(err, "unable to listen on %s", address)
@@ -307,6 +309,7 @@ func processData(w http.ResponseWriter, r *http.Request) {
 	msg := *&core.Message{
 		Flag: core.ACK,
 	}
+
 	err = respondWithJSON(w, http.StatusOK, msg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -28,7 +28,6 @@ type RollReader struct {
 	hMap                      map[uint32]int
 	indexCnt, dataCnt, msgCnt int64
 	myID                      int
-	r                         *bytes.Reader
 }
 
 func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {

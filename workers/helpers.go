@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 
@@ -108,7 +107,7 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func (w *HttpSender) send(url *url.URL, msg *core.Message) (*core.Message, error) {
+func (w *HttpSender) send(url string, msg *core.Message) (*core.Message, error) {
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
@@ -119,7 +118,7 @@ func (w *HttpSender) send(url *url.URL, msg *core.Message) (*core.Message, error
 		return nil, errors.Wrap(err, "error compressing data")
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -154,4 +153,36 @@ func (w *HttpSender) send(url *url.URL, msg *core.Message) (*core.Message, error
 	}
 
 	return msg, nil
+}
+
+// this is not optimal, well... I would refactor the whole worker / sender / receiver design for possible next release
+func (w *HttpSender) runClient() error {
+	for {
+		select {
+		case <-w.ctx.Done():
+			log.Debug().
+				Msgf("http client worker - closing, context done")
+		case msg := <-w.sendChan:
+			// if FIN was send, don't send it to the standalone process
+			// but stop
+			if msg.Flag == core.FIN {
+				return nil
+			}
+			url := w.url.String() + "/data"
+			resp, err := w.send(url, msg)
+			if err != nil {
+				return errors.Wrap(err, "failed to send data")
+			}
+			switch resp.Flag {
+			case core.ACK:
+				log.Trace().
+					Msg("http client worker - received ack")
+			default:
+				log.Error().
+					Msgf("http client worker - receives %s", resp.Flag.String())
+			}
+			//spew.Dump(resp)
+
+		}
+	}
 }

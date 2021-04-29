@@ -4,7 +4,7 @@
 
 - [x] fetch blockSize from viper and overwrite calculated size
 - [x] blocksize to be calculated
-- [ ] study the rolling adler32
+- [x] study the rolling adler32
 - [x] test the checksums
 - [x] test various readers with paralelism
 - [ ] decide when use single file send, single goroutine send, multiple goroutine send
@@ -20,11 +20,12 @@
 - [ ] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
 - [ ] contexts
-- [ ] switch local / remote
+- [x] switch local / remote
 - [ ] fail when remote host is not specified
 - [ ] validate inputs
 - [ ] do I need fileindex????? (WHOA) seem not
 - [ ] tests!
+- [ ] validation at transfer end
 
 ## Ideas
 
