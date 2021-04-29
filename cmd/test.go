@@ -5,14 +5,12 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/zgub/pexync/test"
 )
 
 func init() {
 
-	testCmd.Flags().StringVarP(&scenario, "screnario", "s", "C", "test help scenarion")
-	viper.BindPFlag("scenario", testCmd.Flags().Lookup("scenario"))
+	testCmd.Flags().StringVarP(&scenario, "scenario", "s", "C", "test help scenarion")
 
 	rootCmd.AddCommand(testCmd)
 }
