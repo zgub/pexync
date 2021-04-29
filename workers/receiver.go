@@ -467,9 +467,10 @@ func (w *HttpReceiver) Start() error {
 	port := strconv.Itoa(viper.GetInt("port"))
 	address = address + ":" + port
 	dstDir := viper.GetString("destination")
-	log.Debug().
+	log.Info().
 		Str("destination directory", dstDir).
-		Msgf("listening on: %s", address)
+		Str("listening", address).
+		Msg("READY")
 	err := http.ListenAndServe(address, r)
 	if err != nil {
 		return errors.Wrapf(err, "unable to listen on %s", address)
