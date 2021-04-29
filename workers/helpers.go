@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -133,9 +132,6 @@ func (w *HttpSender) send(url string, msg *core.Message) (*core.Message, error) 
 		return nil, errors.Wrap(err, "error connecting server")
 	}
 	defer resp.Body.Close()
-
-	headers := resp.Header
-	fmt.Printf("===> http reposnse headers:\n %+v \n", headers)
 
 	log.Trace().
 		Str("status:", resp.Status).

@@ -470,7 +470,7 @@ func (w *HttpReceiver) Start() error {
 	log.Info().
 		Str("destination directory", dstDir).
 		Str("listening", address).
-		Msg("READY")
+		Msg("RDY")
 	err := http.ListenAndServe(address, r)
 	if err != nil {
 		return errors.Wrapf(err, "unable to listen on %s", address)

@@ -102,7 +102,7 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		log.Info().
 			Str("Using config file:", viper.ConfigFileUsed()).
-			Msg("CONFIG")
+			Msg("CFG")
 	}
 
 	if debug {
@@ -114,6 +114,6 @@ func initConfig() {
 		zerolog.SetGlobalLevel(level)
 		log.Info().
 			Str("log level", level.String()).
-			Send()
+			Msg("LOG")
 	}
 }
