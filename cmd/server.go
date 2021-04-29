@@ -26,7 +26,7 @@ var (
 func init() {
 	fmt.Println("dot")
 
-	serverCmd.Flags().StringVarP(&bindAddr, "bind-address", "b", "127.0.0.1", "ip address")
+	serverCmd.Flags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "ip address")
 	viper.BindPFlag("bind_address", serverCmd.Flags().Lookup("bind-address"))
 	//viper.SetDefault("bind_address", "127.0.0.1")
 
