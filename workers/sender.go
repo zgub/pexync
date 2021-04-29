@@ -46,66 +46,7 @@ func (s *sender) getSrcList() error {
 	return nil
 }
 
-// LocalSender represents blah balh
-type LocalSender struct {
-	inbox    <-chan *core.Message
-	receiver chan<- *core.Message
-	sender
-}
-
-func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
-	return &LocalSender{
-		sender: sender{
-			ctx:     ctx,
-			srcList: fl,
-			uuid:    uuid.New(),
-		},
-		inbox:    in,
-		receiver: receiver,
-	}
-}
-
-func (w *LocalSender) Start() error {
-
-	/*
-		// calculate block sizes
-		for _, fd := range w.srcList {
-			if !fd.IsDir {
-				fd.SetBlockSize()
-				log.Trace().
-					Str("file name", fd.FileName).
-					Int64("file size", int64(fd.FileSize)).
-					Int64("block size calculated", fd.BlockSize).
-					Msg("local sender")
-			}
-		}
-	*/
-
-	if err := w.getSrcList(); err != nil {
-		return err
-	}
-
-	// prepare a message for the receiver
-	msg := &core.Message{
-		Flag:     core.INI,
-		UUID:     w.uuid,
-		FileList: w.srcList,
-	}
-
-	log.Debug().
-		Msgf("local sender - source file list, length: %d", len(w.srcList))
-
-	err := sendWithTimeout(msg, w.receiver)
-	if err != nil {
-		return errors.Wrap(err, "local sender")
-	}
-
-	// receive the filelist with checksums
-	msg, err = recvWithTimeout(w.inbox)
-	if err != nil {
-		return errors.Wrap(err, "local sender")
-	}
-
+func (s *sender) parseRemoteList(msg *core.Message) ([]*lfs.FileDesc, []*lfs.FileDesc) {
 	// prepare a slice with the delta
 	diffList := make([]*lfs.FileDesc, 0)
 	missList := make([]*lfs.FileDesc, 0)
@@ -133,6 +74,56 @@ func (w *LocalSender) Start() error {
 				Msgf("local sender %s", fd.State.String())
 		}
 	}
+	return diffList, missList
+}
+
+// LocalSender represents blah balh
+type LocalSender struct {
+	inbox    <-chan *core.Message
+	receiver chan<- *core.Message
+	sender
+}
+
+func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
+	return &LocalSender{
+		sender: sender{
+			ctx:     ctx,
+			srcList: fl,
+			uuid:    uuid.New(),
+		},
+		inbox:    in,
+		receiver: receiver,
+	}
+}
+
+func (w *LocalSender) Start() error {
+
+	if err := w.getSrcList(); err != nil {
+		return err
+	}
+
+	// prepare a message for the receiver
+	msg := &core.Message{
+		Flag:     core.INI,
+		UUID:     w.uuid,
+		FileList: w.srcList,
+	}
+
+	log.Debug().
+		Msgf("local sender - source file list, length: %d", len(w.srcList))
+
+	err := sendWithTimeout(msg, w.receiver)
+	if err != nil {
+		return errors.Wrap(err, "local sender")
+	}
+
+	// receive the filelist with checksums
+	msg, err = recvWithTimeout(w.inbox)
+	if err != nil {
+		return errors.Wrap(err, "local sender")
+	}
+
+	diffList, missList := w.parseRemoteList(msg)
 
 	// prepare for transfer
 	rrInbox := make(chan *core.Message)
@@ -299,33 +290,7 @@ func (w *HttpSender) Start() error {
 		errors.Wrap(err, "http sender - send failed")
 	}
 
-	// prepare a slice with the delta
-	diffList := make([]*lfs.FileDesc, 0)
-	missList := make([]*lfs.FileDesc, 0)
-	for _, fd := range msg.FileList {
-		if fd.State == lfs.Missing && !fd.IsDir {
-			// new file
-			log.Debug().
-				Int64("block size", fd.BlockSize).
-				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("local sender %s", fd.State.String())
-			missList = append(missList, fd)
-		} else if fd.State == lfs.Diff {
-			// diff file
-			log.Debug().
-				Int64("block size", fd.BlockSize).
-				Int("hashes count", len(fd.Weak)).
-				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("local sender %s", fd.State.String())
-			diffList = append(diffList, fd)
-
-		} else {
-			// skipped file
-			log.Debug().
-				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("local sender %s", fd.State.String())
-		}
-	}
+	diffList, missList := w.parseRemoteList(msg)
 
 	// prepare for transfer
 	rrInbox := make(chan *core.Message)
