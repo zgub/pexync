@@ -5,7 +5,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/zgub/pexync/workers"
 )
 
@@ -22,8 +21,8 @@ var (
 )
 
 func init() {
-	clientCmd.Flags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
-	viper.BindPFlag("remote_host", clientCmd.Flags().Lookup("remote-host"))
+	//clientCmd.Flags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
+	//viper.BindPFlag("remote_host", clientCmd.Flags().Lookup("remote-host"))
 
 	rootCmd.AddCommand(clientCmd)
 }

@@ -12,7 +12,7 @@ import (
 func init() {
 
 	testCmd.Flags().StringVarP(&scenario, "screnario", "s", "C", "test help scenarion")
-	viper.BindPFlag("scenario", rootCmd.PersistentFlags().Lookup("scenario"))
+	viper.BindPFlag("scenario", testCmd.Flags().Lookup("scenario"))
 
 	rootCmd.AddCommand(testCmd)
 }
