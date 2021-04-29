@@ -103,14 +103,6 @@ func initConfig() {
 		log.Info().
 			Str("Using config file:", viper.ConfigFileUsed()).
 			Msg("CONFIG")
-	} else {
-		viper.SetConfigType("toml")
-		err := viper.SafeWriteConfig()
-		if err != nil {
-			log.Error().
-				Str("Error", err.Error()).
-				Msg("unable to write config")
-		}
 	}
 
 	if debug {
