@@ -10,7 +10,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -182,7 +181,7 @@ func (w *HttpSender) runClient() error {
 				log.Error().
 					Msgf("http client worker - receives %s", resp.Flag.String())
 			}
-			spew.Dump(resp)
+			//spew.Dump(resp)
 
 		}
 	}

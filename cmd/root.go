@@ -27,6 +27,7 @@ var (
 	debug          bool
 	ccIo           int
 	srcDir, dstDir string
+	port           int
 
 	// core
 	blockSize int
@@ -62,6 +63,9 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
 	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+
+	rootCmd.Flags().IntVarP(&port, "port", "p", 3819, "http API port")
+	viper.BindPFlag("port", rootCmd.Flags().Lookup("port"))
 
 }
 

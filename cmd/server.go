@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -11,13 +12,13 @@ import (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "IP address")
-	viper.BindPFlag("bind_address", rootCmd.PersistentFlags().Lookup("bind-address"))
+	fmt.Println("dot")
 
-	serverCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
-	viper.BindPFlag("port", serverCmd.PersistentFlags().Lookup("port"))
+	serverCmd.Flags().StringVarP(&bindAddr, "bind-address", "B", "0.0.0.0", "IP address")
+	viper.BindPFlag("bind_address", serverCmd.Flags().Lookup("bind-address"))
 
 	rootCmd.AddCommand(serverCmd)
+	fmt.Println("dot1")
 }
 
 var (
@@ -43,6 +44,7 @@ func startServer() {
 	var (
 		remote, local chan *core.Message
 	)
+	fmt.Println("dot2")
 	receiver := workers.NewHttpReceiver(ctx, remote, local)
 	err := receiver.Start()
 
