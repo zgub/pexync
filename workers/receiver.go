@@ -65,9 +65,15 @@ LabelsInGo:
 		case msg := <-w.inbox:
 			switch msg.Flag {
 			case core.INI:
+				// update msg with local direcotory state(s)
 				err := w.parseSenderList(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
+				}
+				msg.Flag = core.SUM
+				err = sendWithTimeout(msg, w.sender)
+				if err != nil {
+					return errors.Wrap(err, "failed to respond to sender")
 				}
 			case core.FIN:
 				log.Trace().
@@ -138,7 +144,7 @@ func (w *LocalReceiver) parseSenderList(msg *core.Message) error {
 		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
 	// stop all writers if any, this is a reset!
 
-	// store source filelist for future reference
+	// store source filelist for future!!!
 	for i, fd := range msg.FileList {
 		w.srcList[fd.Idx] = fd
 		if int64(i) != fd.Idx {
@@ -192,11 +198,6 @@ func (w *LocalReceiver) parseSenderList(msg *core.Message) error {
 		srcFd.Weak = dstFd.Weak
 	}
 
-	msg.Flag = core.SUM
-	err = sendWithTimeout(msg, w.sender)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -280,6 +281,12 @@ func processList(w http.ResponseWriter, r *http.Request) {
 			Msg("internal server error")
 		return
 	}
+
+	switch msg.Flag {
+	case core.INI:
+
+	}
+
 	err = respondWithJSON(w, http.StatusOK, msg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
