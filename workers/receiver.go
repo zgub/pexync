@@ -35,6 +35,7 @@ type receiver struct {
 	senderUUID uuid.UUID   // same here
 	srcList    map[int64]*lfs.FileDesc
 	writersMap map[int64]FileWriter
+	g          *errgroup.Group
 }
 
 func (rc receiver) parseSenderList(msg *core.Message) error {
@@ -287,6 +288,12 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error - unknown message")
 	}
 }
 
@@ -304,11 +311,45 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 	log.Info().
 		Msgf("http  receiver - received %d bytes of data", buf.Len())
 
-	msg := *&core.Message{
+	msg := &core.Message{}
+	err = json.NewDecoder(buf).
+		Decode(&msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("http receiver - internal server error - unable to decode json")
+		return
+	}
+
+	switch msg.Flag {
+	case core.WSQ:
+		/*
+			if err := rc.writeData(msg); err != nil {
+				err = errors.Wrap(err, "failed to write data")
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				log.Error().
+					Err(err).
+					Caller().
+					Msg("http receiver - internal server error - write failed")
+				return
+			}
+		*/
+	default:
+		http.Error(w, "unknown message type", http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("http receiver - internal server error - unknown messae type")
+		return
+	}
+
+	resp := &core.Message{
 		Flag: core.ACK,
 	}
 
-	err = respondWithJSON(w, http.StatusOK, msg)
+	err = respondWithJSON(w, http.StatusOK, resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -317,6 +358,43 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 			Msg("internal server error")
 		return
 	}
+}
+
+func (rc receiver) writeData(data []byte) error {
+
+	// dd is new DataDesc created from serialized msg.DataDesc
+	dd, err := lfs.Deserialize(data)
+	if err != nil {
+		return errors.Wrap(err, "error deserializing data")
+	}
+	log.Trace().
+		Str("filename", rc.srcList[dd.FileIndex()].FileName).
+		Int64("data sequence", dd.Seq()).
+		Msg("receiver - data received")
+	fi := dd.FileIndex()
+	if fileWritter, ok := rc.writersMap[fi]; ok {
+		// new message
+		fileWritter.inbox <- &core.Message{
+			Flag: core.WSQ,
+			//FileDesc: msg.List[fi],
+			DataDesc: dd,
+		}
+	} else {
+		log.Debug().
+			Str("filename", rc.srcList[dd.FileIndex()].FileName).
+			Msg("receiver - starting new writter")
+		inbox := make(chan *core.Message)
+		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
+		rc.writersMap[fi] = fr
+		// send a new message
+		rc.g.Go(fr.Start)
+		fr.inbox <- &core.Message{
+			Flag: core.WSQ,
+			//FileDesc: w.srcList[fi],
+			DataDesc: dd,
+		}
+	}
+	return nil
 }
 
 // LocalSender represents blah balh
@@ -341,7 +419,7 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-	g := new(errgroup.Group)
+	w.g = new(errgroup.Group)
 LabelsInGo:
 	for {
 		select {
@@ -366,48 +444,14 @@ LabelsInGo:
 			case core.FIN:
 				log.Trace().
 					Msg("receiver received FIN")
-				// send fin to all readers
 				break LabelsInGo
 			case core.WSQ:
-				log.Trace().
-					Str("filename", msg.FileDesc.FileName).
-					Int64("data sequence", msg.DataDesc.Seq()).
-					Msg("receiver - data received")
-				//spew.Dump(msg)
 				data, err := msg.DataDesc.Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
-
-				// validate ???
-
-				// dd is new DataDesc created from serialized msg.DataDesc
-				dd, err := lfs.Deserialize(data)
-				if err != nil {
-					return errors.Wrap(err, "error deserializing data")
-				}
-				fi := dd.FileIndex()
-				if fileWritter, ok := w.writersMap[fi]; ok {
-					// new message
-					fileWritter.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: msg.List[fi],
-						DataDesc: dd,
-					}
-				} else {
-					log.Debug().
-						Str("filename", msg.FileDesc.FileName).
-						Msg("receiver - starting new writter")
-					inbox := make(chan *core.Message)
-					fr := NewFileWriter(w.ctx, w.senderUUID, msg.FileDesc, inbox)
-					w.writersMap[fi] = fr
-					// send a new message
-					g.Go(func() error { return fr.Start() })
-					fr.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: w.srcList[fi],
-						DataDesc: dd,
-					}
+				if err := w.writeData(data); err != nil {
+					return errors.Wrap(err, "error writing data")
 				}
 
 			default:
@@ -420,7 +464,7 @@ LabelsInGo:
 			Flag: core.FIN,
 		}
 	}
-	err := g.Wait()
+	err := w.g.Wait()
 
 	return err
 }

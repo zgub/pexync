@@ -164,6 +164,7 @@ func (w *HttpSender) runClient() error {
 			if msg.Flag == core.FIN {
 				return nil
 			}
+			//spew.Dump(msg)
 			url := w.url.String() + "/data"
 			resp, err := w.send(url, msg)
 			if err != nil {
