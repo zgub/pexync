@@ -49,27 +49,27 @@ func init() {
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
 	// common flags
-	//rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default <700b; 131kB>")
-	//viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
-	viper.SetDefault("block_size", 700)
+	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default <700b; 131kB>")
+	viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
+	//viper.SetDefault("block_size", 700)
 
 	viper.SetDefault("timeout", 5*time.Second)
 
-	//rootCmd.PersistentFlags().IntVarP(&ccIo, "io-concurrency", "i", 2, "concurent io operations")
-	//viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
-	viper.SetDefault("io_concurrency", 2)
+	rootCmd.PersistentFlags().IntVarP(&ccIo, "io-concurrency", "i", 2, "concurent io operations")
+	viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
+	//viper.SetDefault("io_concurrency", 2)
 
-	//rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
-	//viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
-	viper.SetDefault("source", "testfiles/")
+	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
+	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
+	//viper.SetDefault("source", "testfiles/")
 
-	//rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
-	//viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
-	viper.SetDefault("destination", "/")
+	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
+	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+	//viper.SetDefault("destination", "/")
 
-	//rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
-	//viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
-	viper.SetDefault("port", 3819)
+	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
+	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
+	//viper.SetDefault("port", 3819)
 
 	cobra.OnInitialize(initConfig)
 }
@@ -103,14 +103,6 @@ func initConfig() {
 		log.Info().
 			Str("Using config file:", viper.ConfigFileUsed()).
 			Msg("CONFIG")
-	} else {
-		viper.SetConfigType("toml")
-		err := viper.SafeWriteConfig()
-		if err != nil {
-			log.Error().
-				Str("Error", err.Error()).
-				Msg("unable to write config")
-		}
 	}
 
 	if debug {
