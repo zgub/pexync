@@ -158,7 +158,7 @@ func (w *HttpSender) runClient() error {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msgf("http client worker - closing, context done")
-		case msg := <-w.sendChan:
+		case msg := <-w.receiver:
 			// if FIN was send, don't send it to the standalone process
 			// but stop
 			if msg.Flag == core.FIN {
