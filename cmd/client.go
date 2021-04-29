@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	port      int
 	dstHost   string
 	clientCmd = &cobra.Command{
 		Use:   "client",
@@ -24,6 +25,10 @@ var (
 func init() {
 	clientCmd.PersistentFlags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
 	viper.BindPFlag("remote_host", clientCmd.PersistentFlags().Lookup("remote-host"))
+
+	clientCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
+	viper.BindPFlag("port", clientCmd.PersistentFlags().Lookup("port"))
+
 	rootCmd.AddCommand(clientCmd)
 }
 

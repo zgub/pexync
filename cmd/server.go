@@ -14,6 +14,9 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "IP address")
 	viper.BindPFlag("bind_address", rootCmd.PersistentFlags().Lookup("bind-address"))
 
+	serverCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
+	viper.BindPFlag("port", serverCmd.PersistentFlags().Lookup("port"))
+
 	rootCmd.AddCommand(serverCmd)
 }
 

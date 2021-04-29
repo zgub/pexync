@@ -25,7 +25,6 @@ var (
 	useCores int
 	cfgFile  string
 	debug    bool
-	port     int
 	ccIo     int
 
 	// core
@@ -42,18 +41,15 @@ var (
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	// common flags
-	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default <700b; 131kB>")
-	viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
-
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file")
 
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "D", false, "enable debug")
 
 	viper.SetDefault("log_level", int(zerolog.InfoLevel))
 
-	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
-	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
+	// common flags
+	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default <700b; 131kB>")
+	viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
 
 	viper.SetDefault("timeout", 5*time.Second)
 
