@@ -131,7 +131,25 @@ func (s *sender) sendData() {
 			Limit:    int64(fd.FileSize),
 		}
 	}
+}
 
+func (s *sender) stopReaders() {
+	ccIo := viper.GetInt("io_concurrency")
+	// all data sent, stop zee workerz
+	if len(s.diffList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			s.rrCh <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
+	if len(s.missList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			s.brCh <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
 }
 
 // LocalSender represents blah balh
@@ -184,28 +202,14 @@ func (w *LocalSender) Start() error {
 	// prepare for transfer
 	w.rrCh = make(chan *core.Message)
 	w.brCh = make(chan *core.Message)
-	ccIo := viper.GetInt("io_concurrency")
 	w.g = new(errgroup.Group)
 
 	w.spawnReaders()
 
 	w.sendData()
 
-	// all data sent, stop zee workerz
-	if len(w.diffList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			w.rrCh <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	}
-	if len(w.missList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			w.brCh <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	}
+	w.stopReaders()
+
 	// validate ???
 
 	// end
@@ -323,21 +327,7 @@ func (w *HttpSender) Start() error {
 
 	w.sendData()
 
-	// all data sent, stop zee workerz
-	if len(w.diffList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			w.rrCh <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	}
-	if len(w.missList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			w.brCh <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	}
+	w.stopReaders()
 
 	// don't forget zee http senderz
 	for i := 0; i < 2*ccIo; i++ {
