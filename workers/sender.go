@@ -17,9 +17,10 @@ import (
 )
 
 type sender struct {
-	ctx     context.Context
-	srcList []*lfs.FileDesc
-	uuid    uuid.UUID
+	ctx                context.Context
+	srcList            []*lfs.FileDesc
+	uuid               uuid.UUID
+	diffList, missList []*lfs.FileDesc
 }
 
 func (s *sender) getSrcList() error {
@@ -46,10 +47,10 @@ func (s *sender) getSrcList() error {
 	return nil
 }
 
-func (s *sender) parseRemoteList(msg *core.Message) ([]*lfs.FileDesc, []*lfs.FileDesc) {
+func (s *sender) parseRemoteList(msg *core.Message) {
 	// prepare a slice with the delta
-	diffList := make([]*lfs.FileDesc, 0)
-	missList := make([]*lfs.FileDesc, 0)
+	diff := make([]*lfs.FileDesc, 0)
+	miss := make([]*lfs.FileDesc, 0)
 	for _, fd := range msg.FileList {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
@@ -57,7 +58,7 @@ func (s *sender) parseRemoteList(msg *core.Message) ([]*lfs.FileDesc, []*lfs.Fil
 				Int64("block size", fd.BlockSize).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("local sender %s", fd.State.String())
-			missList = append(missList, fd)
+			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff {
 			// diff file
 			log.Debug().
@@ -65,7 +66,7 @@ func (s *sender) parseRemoteList(msg *core.Message) ([]*lfs.FileDesc, []*lfs.Fil
 				Int("hashes count", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("local sender %s", fd.State.String())
-			diffList = append(diffList, fd)
+			diff = append(diff, fd)
 
 		} else {
 			// skipped file
@@ -74,7 +75,12 @@ func (s *sender) parseRemoteList(msg *core.Message) ([]*lfs.FileDesc, []*lfs.Fil
 				Msgf("local sender %s", fd.State.String())
 		}
 	}
-	return diffList, missList
+	s.diffList = diff
+	s.missList = miss
+}
+
+func (s *sender) spawnreaders() {
+
 }
 
 // LocalSender represents blah balh
@@ -123,7 +129,7 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	diffList, missList := w.parseRemoteList(msg)
+	w.parseRemoteList(msg)
 
 	// prepare for transfer
 	rrInbox := make(chan *core.Message)
@@ -133,7 +139,7 @@ func (w *LocalSender) Start() error {
 	dCtx := context.Context(w.ctx)
 
 	// spawn readers if we have diff files
-	if len(diffList) > 0 {
+	if len(w.diffList) > 0 {
 		log.Debug().
 			Msg("local sender - spawning roll readers")
 
@@ -144,7 +150,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	// spawn missing file senders if we have missing files
-	if len(missList) > 0 {
+	if len(w.missList) > 0 {
 		log.Debug().
 			Msg("local sender - spawning bytes readers")
 
@@ -155,7 +161,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	// send data - diff first
-	for _, fd := range diffList {
+	for _, fd := range w.diffList {
 
 		rrInbox <- &core.Message{
 			FileDesc: fd,
@@ -166,7 +172,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	// new files next
-	for _, fd := range missList {
+	for _, fd := range w.missList {
 
 		brInbox <- &core.Message{
 			FileDesc: fd,
@@ -177,14 +183,14 @@ func (w *LocalSender) Start() error {
 	}
 
 	// all data sent, stop zee workerz
-	if len(diffList) > 0 {
+	if len(w.diffList) > 0 {
 		for i := 0; i < ccIo; i++ {
 			rrInbox <- &core.Message{
 				Flag: core.FIN,
 			}
 		}
 	}
-	if len(missList) > 0 {
+	if len(w.missList) > 0 {
 		for i := 0; i < ccIo; i++ {
 			brInbox <- &core.Message{
 				Flag: core.FIN,
@@ -290,7 +296,7 @@ func (w *HttpSender) Start() error {
 		errors.Wrap(err, "http sender - send failed")
 	}
 
-	diffList, missList := w.parseRemoteList(msg)
+	w.parseRemoteList(msg)
 
 	// prepare for transfer
 	rrInbox := make(chan *core.Message)
@@ -307,7 +313,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// spawn roll readers if there are diff files
-	if len(diffList) > 0 {
+	if len(w.diffList) > 0 {
 		log.Debug().
 			Msg("https sender - spawning roll readers")
 		for i := 0; i < ccIo; i++ {
@@ -317,7 +323,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// spawn missing file senders (readers) if there are new (missing) files
-	if len(missList) > 0 {
+	if len(w.missList) > 0 {
 		log.Debug().
 			Msg("http sender - spawning bytes readers")
 
@@ -328,7 +334,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// send data - diff first
-	for _, fd := range diffList {
+	for _, fd := range w.diffList {
 
 		rrInbox <- &core.Message{
 			FileDesc: fd,
@@ -339,7 +345,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// new files next
-	for _, fd := range missList {
+	for _, fd := range w.missList {
 
 		brInbox <- &core.Message{
 			FileDesc: fd,
@@ -350,14 +356,14 @@ func (w *HttpSender) Start() error {
 	}
 
 	// all data sent, stop zee workerz
-	if len(diffList) > 0 {
+	if len(w.diffList) > 0 {
 		for i := 0; i < ccIo; i++ {
 			rrInbox <- &core.Message{
 				Flag: core.FIN,
 			}
 		}
 	}
-	if len(missList) > 0 {
+	if len(w.missList) > 0 {
 		for i := 0; i < ccIo; i++ {
 			brInbox <- &core.Message{
 				Flag: core.FIN,
