@@ -6,7 +6,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/workers"
 )
 
@@ -40,10 +39,7 @@ func startServer() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var (
-		remote, local chan *core.Message
-	)
-	receiver := workers.NewHttpReceiver(ctx, remote, local)
+	receiver := workers.NewHttpReceiver(ctx)
 	err := receiver.Start()
 
 	if err == nil {
