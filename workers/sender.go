@@ -22,6 +22,30 @@ type sender struct {
 	uuid    uuid.UUID
 }
 
+func (s *sender) getSrcList() error {
+	// perform directory listing
+	list, err := lfs.ParseDir(viper.GetString("source"))
+	if err != nil {
+		return errors.Wrap(err, "http sender - directory parsing failed")
+	}
+
+	// calculate blocksizes for each file
+	for _, fd := range list {
+		if !fd.IsDir {
+			fd.SetBlockSize()
+			log.Trace().
+				Str("file name", fd.FileName).
+				Int64("file size", int64(fd.FileSize)).
+				Int64("calculated block size", fd.BlockSize).
+				Msg("http sender")
+		}
+	}
+
+	s.srcList = list
+
+	return nil
+}
+
 // LocalSender represents blah balh
 type LocalSender struct {
 	inbox    <-chan *core.Message
@@ -43,16 +67,22 @@ func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Mes
 
 func (w *LocalSender) Start() error {
 
-	// calculate block sizes
-	for _, fd := range w.srcList {
-		if !fd.IsDir {
-			fd.SetBlockSize()
-			log.Trace().
-				Str("file name", fd.FileName).
-				Int64("file size", int64(fd.FileSize)).
-				Int64("block size calculated", fd.BlockSize).
-				Msg("local sender")
+	/*
+		// calculate block sizes
+		for _, fd := range w.srcList {
+			if !fd.IsDir {
+				fd.SetBlockSize()
+				log.Trace().
+					Str("file name", fd.FileName).
+					Int64("file size", int64(fd.FileSize)).
+					Int64("block size calculated", fd.BlockSize).
+					Msg("local sender")
+			}
 		}
+	*/
+
+	if err := w.getSrcList(); err != nil {
+		return err
 	}
 
 	// prepare a message for the receiver
@@ -251,34 +281,20 @@ func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 
 func (w *HttpSender) Start() error {
 
-	// perform directory listing
-	srcList, err := lfs.ParseDir(viper.GetString("source"))
-	if err != nil {
-		return errors.Wrap(err, "http sender - directory parsing failed")
-	}
-
-	// calculate blocksizes for each file
-	for _, fd := range srcList {
-		if !fd.IsDir {
-			fd.SetBlockSize()
-			log.Trace().
-				Str("file name", fd.FileName).
-				Int64("file size", int64(fd.FileSize)).
-				Int64("calculated block size", fd.BlockSize).
-				Msg("http sender")
-		}
+	if err := w.getSrcList(); err != nil {
+		return err
 	}
 
 	// create a new message for the other side
 	msg := &core.Message{
 		Flag:     core.INI,
 		UUID:     w.uuid,
-		FileList: srcList,
+		FileList: w.srcList,
 	}
 
 	// send
 	url := w.url.String() + "/list"
-	msg, err = w.send(url, msg)
+	msg, err := w.send(url, msg)
 	if err != nil {
 		errors.Wrap(err, "http sender - send failed")
 	}
