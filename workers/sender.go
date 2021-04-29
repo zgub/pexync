@@ -108,6 +108,32 @@ func (s *sender) spawnReaders() {
 	}
 }
 
+func (s *sender) sendData() {
+
+	// send data - diff first
+	for _, fd := range s.diffList {
+
+		s.rrCh <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+	// new files next
+	for _, fd := range s.missList {
+
+		s.brCh <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+}
+
 // LocalSender represents blah balh
 type LocalSender struct {
 	inbox <-chan *core.Message
@@ -163,27 +189,7 @@ func (w *LocalSender) Start() error {
 
 	w.spawnReaders()
 
-	// send data - diff first
-	for _, fd := range w.diffList {
-
-		w.rrCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
-		}
-	}
-
-	// new files next
-	for _, fd := range w.missList {
-
-		w.brCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
-		}
-	}
+	w.sendData()
 
 	// all data sent, stop zee workerz
 	if len(w.diffList) > 0 {
@@ -315,27 +321,7 @@ func (w *HttpSender) Start() error {
 
 	w.spawnReaders()
 
-	// send data - diff first
-	for _, fd := range w.diffList {
-
-		w.rrCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
-		}
-	}
-
-	// new files next
-	for _, fd := range w.missList {
-
-		w.brCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
-		}
-	}
+	w.sendData()
 
 	// all data sent, stop zee workerz
 	if len(w.diffList) > 0 {
