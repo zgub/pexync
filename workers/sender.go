@@ -16,22 +16,28 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type sender struct {
+	ctx     context.Context
+	srcList []*lfs.FileDesc
+	uuid    uuid.UUID
+}
+
 // LocalSender represents blah balh
 type LocalSender struct {
-	ctx      context.Context
-	srcList  []*lfs.FileDesc
 	inbox    <-chan *core.Message
 	receiver chan<- *core.Message
-	uuid     uuid.UUID
+	sender
 }
 
 func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
 	return &LocalSender{
-		ctx:      ctx,
-		srcList:  fl,
+		sender: sender{
+			ctx:     ctx,
+			srcList: fl,
+			uuid:    uuid.New(),
+		},
 		inbox:    in,
 		receiver: receiver,
-		uuid:     uuid.New(),
 	}
 }
 
@@ -186,10 +192,9 @@ func (w *LocalSender) Start() error {
 
 type HttpSender struct {
 	url      *url.URL
-	ctx      context.Context
-	uuid     uuid.UUID
 	client   *http.Client
 	sendChan chan *core.Message
+	sender
 }
 
 func NewHttpSender(ctx context.Context) (*HttpSender, error) {
@@ -233,10 +238,12 @@ func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 
 	s := &HttpSender{
 		url:      url,
-		ctx:      ctx,
-		uuid:     uuid.New(),
 		client:   c,
 		sendChan: make(chan *core.Message),
+		sender: sender{
+			ctx:  ctx,
+			uuid: uuid.New(),
+		},
 	}
 
 	return s, nil
