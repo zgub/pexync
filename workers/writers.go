@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -95,6 +96,11 @@ AnotherLabel:
 					if err != nil {
 						return errors.Wrap(err, "unable to compare files")
 					}
+				} else {
+					log.Warn().
+						Int64("got", seq).
+						Int64("expecting", w.pSeq).
+						Msg("out of order")
 				}
 			case core.FIN:
 				log.Trace().
@@ -124,25 +130,29 @@ AnotherLabel:
 }
 
 func (w *FileWriter) write() error {
+	fmt.Printf("==========> write() - sequence %d, write() start \n", w.pSeq)
 	dd := w.dataSeq[w.pSeq]
 	br := bytes.NewReader(dd.Bytes())
 
-	for {
+	for z := 0; ; z++ {
 		header := new(lfs.Header)
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
+				fmt.Printf("========> c: %d writing sequence %d, EOF \n", z, w.pSeq)
 				// end of transmission
 				w.bw.Flush()
 				break
 			} else {
 				// nah something bad hapenned
+				fmt.Printf("========> c: %d writing sequence %d, error \n", z, w.pSeq)
 				return errors.Wrap(err, "error reading data header")
 			}
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
+			fmt.Printf("========> c: %d writing sequence %d, writing data \n", z, w.pSeq)
 			_, err := io.CopyN(w.bw, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
@@ -150,12 +160,14 @@ func (w *FileWriter) write() error {
 			w.bw.Flush()
 		case lfs.Index:
 			// indexes
+			fmt.Printf("========> c: %d writing sequence %d, writting index \n", z, w.pSeq)
 			hIndex := make([]int64, header.Len)
 			err = binary.Read(br, binary.BigEndian, hIndex)
 			if err != nil {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
+				fmt.Printf("========> c: %d writing sequence %d, writting index %d \n", z, w.pSeq, v)
 				w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
 				_, err = io.CopyN(w.bw, w.br, w.srcFd.BlockSize)
 				if err != nil {
@@ -164,6 +176,7 @@ func (w *FileWriter) write() error {
 				w.bw.Flush()
 			}
 		default:
+			fmt.Printf("========> c: %d writing sequence %d, invalid header \n", z, w.pSeq)
 			return errors.Wrap(err, "invalid header")
 		}
 	}

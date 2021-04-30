@@ -18,8 +18,9 @@ const (
 	RSQ             // read sequence
 	WSQ             // write sequence
 	ERR             // error
-	FIN             // done, disconnect
+	FIN             // tels the woker to stop
 	ACK             // just ACK
+	END             // end of data transmission
 )
 
 var messageTypes = [...]string{
@@ -32,6 +33,7 @@ var messageTypes = [...]string{
 	"ERR",
 	"FIN",
 	"ACK",
+	"END",
 }
 
 func (f Flag) String() string {

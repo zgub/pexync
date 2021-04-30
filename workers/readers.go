@@ -142,6 +142,7 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 				Str("filename", msg.FileDesc.FileName).
 				Int64("datadesc len", int64(dd.Len())).
 				Int64("block size", msg.FileDesc.BlockSize).
+				Int64("seq", dd.Seq()).
 				Msgf("roll reader %d - sending data", w.myID)
 
 			err = sendWithTimeout(dMsg, w.receiver)
