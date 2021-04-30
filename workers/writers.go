@@ -94,7 +94,7 @@ AnotherLabel:
 					// if we hae data at the current sequence, call writer
 					err = w.write()
 					if err != nil {
-						return errors.Wrap(err, "unable to compare files")
+						return errors.Wrap(err, "unable to write file")
 					}
 				} else {
 					log.Warn().
@@ -177,7 +177,7 @@ func (w *FileWriter) write() error {
 			}
 		default:
 			fmt.Printf("========> c: %d writing sequence %d, invalid header \n", z, w.pSeq)
-			return errors.Wrap(err, "invalid header")
+			return errors.New("file writer - invalid header")
 		}
 	}
 	w.pSeq++

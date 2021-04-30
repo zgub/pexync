@@ -35,7 +35,7 @@ type receiver struct {
 	senderUUID uuid.UUID   // same here
 	srcList    map[int64]*lfs.FileDesc
 	writersMap map[int64]FileWriter
-	g          *errgroup.Group
+	weg        *errgroup.Group // writters error group
 }
 
 func (rc receiver) parseSenderList(msg *core.Message) error {
@@ -311,7 +311,6 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 	log.Info().
 		Msgf("http  receiver - received %d bytes of data", buf.Len())
 
-	rc.g = new(errgroup.Group)
 	err = rc.writeData(buf.Bytes())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -349,6 +348,7 @@ func (rc receiver) writeData(data []byte) error {
 		Int64("data sequence", dd.Seq()).
 		Msg("receiver - data received")
 	fi := dd.FileIndex()
+	// check whether we have a
 	if fileWritter, ok := rc.writersMap[fi]; ok {
 		// new message
 		fileWritter.inbox <- &core.Message{
@@ -364,7 +364,7 @@ func (rc receiver) writeData(data []byte) error {
 		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
 		rc.writersMap[fi] = fr
 		// send a new message
-		rc.g.Go(fr.Start)
+		rc.weg.Go(fr.Start)
 		fr.inbox <- &core.Message{
 			Flag: core.WSQ,
 			//FileDesc: w.srcList[fi],
@@ -388,6 +388,7 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 			state:      RST,
 			srcList:    make(map[int64]*lfs.FileDesc),
 			writersMap: make(map[int64]FileWriter),
+			weg:        new(errgroup.Group),
 		},
 		inbox:  in,
 		sender: sender,
@@ -396,7 +397,6 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-	w.g = new(errgroup.Group)
 LabelsInGo:
 	for {
 		select {
@@ -419,7 +419,7 @@ LabelsInGo:
 					return errors.Wrap(err, "failed to respond to sender")
 				}
 			case core.FIN:
-				log.Trace().
+				log.Debug().
 					Msg("receiver received FIN")
 				break LabelsInGo
 			case core.WSQ:
@@ -440,7 +440,7 @@ LabelsInGo:
 			Flag: core.FIN,
 		}
 	}
-	err := w.g.Wait()
+	err := w.weg.Wait()
 
 	return err
 }
@@ -456,6 +456,7 @@ func NewHttpReceiver(ctx context.Context) *HttpReceiver {
 			state:      RST,
 			srcList:    make(map[int64]*lfs.FileDesc),
 			writersMap: make(map[int64]FileWriter),
+			weg:        new(errgroup.Group),
 		},
 	}
 }
@@ -496,5 +497,6 @@ func (w *HttpReceiver) Start() error {
 		return errors.Wrapf(err, "unable to listen on %s", address)
 	}
 
-	return nil
+	err = w.weg.Wait()
+	return err
 }

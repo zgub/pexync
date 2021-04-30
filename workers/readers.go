@@ -307,6 +307,17 @@ func (w *BytesReader) Start() error {
 						}
 						if err == io.EOF {
 							// end of transmission
+							dd.MarkAsLast()
+							nMsg := &core.Message{
+								Flag:     core.WSQ,
+								FileDesc: msg.FileDesc,
+								DataDesc: dd,
+							}
+							fmt.Println("8888888888888888888888888888888888888888888")
+							err = sendWithTimeout(nMsg, w.receiver)
+							if err != nil {
+								return errors.Wrap(err, "error sending data")
+							}
 							break
 						}
 					}
