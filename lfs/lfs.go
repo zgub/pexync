@@ -25,6 +25,8 @@ const (
 	Skip                 // file exists and matches
 )
 
+var ErrEOF = errors.New("end of file transmission")
+
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",

@@ -78,58 +78,56 @@ AnotherLabel:
 				Msg("file writer - closing, context done")
 			break AnotherLabel
 		case msg := <-w.inbox:
-			switch msg.Flag {
-			case core.WSQ: // read sequence
-				// account for out of order delivery, albeit might be not possible?
-				//fmt.Println("<================== witer received WSQ message")
-				//spew.Dump(msg)
-				seq := msg.DataDesc.Seq()
-				log.Trace().
-					//Str("filename", msg.FileDesc.FileName).
-					Int64("seq", seq).
-					Int64("pSeq", w.pSeq).
-					Msg("file writer -  msg received")
-				w.dataSeq[seq] = msg.DataDesc
-				if seq == w.pSeq {
-					// if we hae data at the current sequence, call writer
-					err = w.write()
-					if err != nil {
-						return errors.Wrap(err, "unable to write file")
-					}
-				} else {
-					log.Warn().
-						Int64("got", seq).
-						Int64("expecting", w.pSeq).
-						Msg("out of order")
-				}
-			case core.FIN:
-				log.Trace().
-					Str("orig name", w.srcFd.FileName).
-					Str("temp file path", tmpF.Name()).
-					Str("rename to", dstDir+"/"+w.srcFd.FileName).
-					Msg("file writer - sreceived FIN, renaming")
-
-				// first close
-				if err = tmpF.Close(); err != nil {
-					return errors.Wrap(err, "unable to close file")
-				}
-
-				// now rename
-				err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
+			if msg.Flag != core.WSQ {
+				return errors.New("file writer - invalide message type")
+			}
+			seq := msg.DataDesc.Seq()
+			log.Trace().
+				//Str("filename", msg.FileDesc.FileName).
+				Int64("seq", seq).
+				Int64("pSeq", w.pSeq).
+				Msg("file writer -  msg received")
+			w.dataSeq[seq] = msg.DataDesc
+			if seq == w.pSeq {
+				// if we hae data at the current sequence, call writer
+				err = w.writeToFile()
 				if err != nil {
-					return errors.Wrap(err, "unable to replace file")
+					if err == lfs.ErrEOF {
+						fmt.Println("ErrEOF")
+						break AnotherLabel
+					}
+					return errors.Wrap(err, "unable to write file")
 				}
-
-				break AnotherLabel
-			default:
-				return errors.New("unknown message received")
+			} else {
+				log.Warn().
+					Int64("got", seq).
+					Int64("expecting", w.pSeq).
+					Msg("out of order")
 			}
 		}
+	}
+
+	log.Trace().
+		Str("orig name", w.srcFd.FileName).
+		Str("temp file path", tmpF.Name()).
+		Str("rename to", dstDir+"/"+w.srcFd.FileName).
+		Msg("file writer - finished, renaming")
+
+	// first close
+	if err = tmpF.Close(); err != nil {
+		return errors.Wrap(err, "unable to close file")
+	}
+
+	// now rename
+	err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
+	if err != nil {
+		return errors.Wrap(err, "unable to replace file")
 	}
 	return nil
 }
 
-func (w *FileWriter) write() error {
+// writeToFile reades a data stream and reconstructs a file based on headders
+func (w *FileWriter) writeToFile() error {
 	fmt.Printf("==========> write() - sequence %d, write() start \n", w.pSeq)
 	dd := w.dataSeq[w.pSeq]
 	br := bytes.NewReader(dd.Bytes())
@@ -175,6 +173,8 @@ func (w *FileWriter) write() error {
 				}
 				w.bw.Flush()
 			}
+		case lfs.End:
+			return lfs.ErrEOF
 		default:
 			fmt.Printf("========> c: %d writing sequence %d, invalid header \n", z, w.pSeq)
 			return errors.New("file writer - invalid header")

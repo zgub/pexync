@@ -30,12 +30,12 @@ const (
 )
 
 type receiver struct {
-	ctx        context.Context
-	state      senderState // not sure if needed, or if I ever implement this
-	senderUUID uuid.UUID   // same here
-	srcList    map[int64]*lfs.FileDesc
-	writersMap map[int64]FileWriter
-	weg        *errgroup.Group // writters error group
+	ctx         context.Context
+	state       senderState // not sure if needed, or if I ever implement this
+	senderUUID  uuid.UUID   // same here
+	srcList     map[int64]*lfs.FileDesc
+	writersMap  map[int64]FileWriter
+	fileWriters *errgroup.Group // writters error group
 }
 
 func (rc receiver) parseSenderList(msg *core.Message) error {
@@ -63,13 +63,13 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	}
 
 	// starting checksums workers
-	g := new(errgroup.Group)
+	hashReaders := new(errgroup.Group)
 	ccIo := viper.GetInt("io_concurrency")
 	hashChan := make(chan *core.Message)
 	for i := 0; i < ccIo; i++ {
 		dCtx := context.Context(rc.ctx)
 		w := NewHashreader(dCtx, hashChan)
-		g.Go(w.Start)
+		hashReaders.Go(w.Start)
 	}
 
 	// send data to checksum workers
@@ -89,7 +89,7 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 			Flag: core.FIN,
 		}
 	}
-	err = g.Wait()
+	err = hashReaders.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error caclulation initial check sums")
 	}
@@ -297,7 +297,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
+func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 	buf, err := decompress(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -311,7 +311,8 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 	log.Info().
 		Msgf("http  receiver - received %d bytes of data", buf.Len())
 
-	err = rc.writeData(buf.Bytes())
+	// write
+	//err = rc.(buf.Bytes())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -336,44 +337,6 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rc receiver) writeData(data []byte) error {
-
-	// dd is new DataDesc created from serialized msg.DataDesc
-	dd, err := lfs.Deserialize(data)
-	if err != nil {
-		return errors.Wrap(err, "error deserializing data")
-	}
-	log.Trace().
-		Str("filename", rc.srcList[dd.FileIndex()].FileName).
-		Int64("data sequence", dd.Seq()).
-		Msg("receiver - data received")
-	fi := dd.FileIndex()
-	// check whether we have a
-	if fileWritter, ok := rc.writersMap[fi]; ok {
-		// new message
-		fileWritter.inbox <- &core.Message{
-			Flag: core.WSQ,
-			//FileDesc: msg.List[fi],
-			DataDesc: dd,
-		}
-	} else {
-		log.Debug().
-			Str("filename", rc.srcList[dd.FileIndex()].FileName).
-			Msg("receiver - starting new writter")
-		inbox := make(chan *core.Message)
-		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
-		rc.writersMap[fi] = fr
-		// send a new message
-		rc.weg.Go(fr.Start)
-		fr.inbox <- &core.Message{
-			Flag: core.WSQ,
-			//FileDesc: w.srcList[fi],
-			DataDesc: dd,
-		}
-	}
-	return nil
-}
-
 // LocalSender represents blah balh
 type LocalReceiver struct {
 	inbox  <-chan *core.Message
@@ -384,11 +347,11 @@ type LocalReceiver struct {
 func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		receiver: receiver{
-			ctx:        ctx,
-			state:      RST,
-			srcList:    make(map[int64]*lfs.FileDesc),
-			writersMap: make(map[int64]FileWriter),
-			weg:        new(errgroup.Group),
+			ctx:         ctx,
+			state:       RST,
+			srcList:     make(map[int64]*lfs.FileDesc),
+			writersMap:  make(map[int64]FileWriter),
+			fileWriters: new(errgroup.Group),
 		},
 		inbox:  in,
 		sender: sender,
@@ -418,29 +381,59 @@ LabelsInGo:
 				if err != nil {
 					return errors.Wrap(err, "failed to respond to sender")
 				}
+			case core.WSQ:
+				//data, err := msg.DataDesc.Serialize()
+				//if err != nil {
+				//	return errors.Wrap(err, "error serializing data")
+				//}
+				dd := msg.DataDesc
+				log.Trace().
+					Str("filename", w.srcList[dd.FileIndex()].FileName).
+					Int64("data sequence", dd.Seq()).
+					Msg("receiver - data received")
+				fi := dd.FileIndex()
+				if fileWritter, ok := w.writersMap[fi]; ok {
+					// new message, already existing writer
+					fileWritter.inbox <- &core.Message{
+						Flag: core.WSQ,
+						//FileDesc: msg.List[fi],
+						DataDesc: dd,
+					}
+				} else {
+					// new file, new writer
+					log.Debug().
+						Str("filename", w.srcList[dd.FileIndex()].FileName).
+						Msg("receiver - starting new writter")
+					inbox := make(chan *core.Message)
+					// create new file writer worker
+					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[dd.FileIndex()], inbox)
+					// add it to the lookup map
+					w.writersMap[fi] = fr
+					// send a new message
+					w.fileWriters.Go(fr.Start)
+					fr.inbox <- &core.Message{
+						Flag: core.WSQ,
+						//FileDesc: w.srcList[fi],
+						DataDesc: dd,
+					}
+				}
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
 				break LabelsInGo
-			case core.WSQ:
-				data, err := msg.DataDesc.Serialize()
-				if err != nil {
-					return errors.Wrap(err, "error serializing data")
-				}
-				if err := w.writeData(data); err != nil {
-					return errors.Wrap(err, "error writing data")
-				}
 			default:
 				return errors.New("unknown message received")
 			}
 		}
 	}
-	for _, wr := range w.writersMap {
-		wr.inbox <- &core.Message{
-			Flag: core.FIN,
+	/*
+		for _, wr := range w.writersMap {
+			wr.inbox <- &core.Message{
+				Flag: core.FIN,
+			}
 		}
-	}
-	err := w.weg.Wait()
+	*/
+	err := w.fileWriters.Wait()
 
 	return err
 }
@@ -452,11 +445,11 @@ type HttpReceiver struct {
 func NewHttpReceiver(ctx context.Context) *HttpReceiver {
 	return &HttpReceiver{
 		receiver: receiver{
-			ctx:        ctx,
-			state:      RST,
-			srcList:    make(map[int64]*lfs.FileDesc),
-			writersMap: make(map[int64]FileWriter),
-			weg:        new(errgroup.Group),
+			ctx:         ctx,
+			state:       RST,
+			srcList:     make(map[int64]*lfs.FileDesc),
+			writersMap:  make(map[int64]FileWriter),
+			fileWriters: new(errgroup.Group),
 		},
 	}
 }
@@ -478,7 +471,7 @@ func (w *HttpReceiver) Start() error {
 	})
 
 	r.Route("/data", func(r chi.Router) {
-		r.Post("/", w.processData)
+		r.Post("/", w.processRemoteData)
 	})
 
 	address := viper.GetString("bind_address")
@@ -497,6 +490,6 @@ func (w *HttpReceiver) Start() error {
 		return errors.Wrapf(err, "unable to listen on %s", address)
 	}
 
-	err = w.weg.Wait()
+	err = w.fileWriters.Wait()
 	return err
 }
