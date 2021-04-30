@@ -17,6 +17,7 @@ const (
 	SUM             // checksum data from receiver
 	RSQ             // read sequence
 	WSQ             // write sequence
+	LSQ             // last sequence
 	ERR             // error
 	FIN             // tels the woker to stop
 	ACK             // just ACK
@@ -30,10 +31,10 @@ var messageTypes = [...]string{
 	"SUM",
 	"RSQ",
 	"WSQ",
+	"LSQ",
 	"ERR",
 	"FIN",
 	"ACK",
-	"END",
 }
 
 func (f Flag) String() string {
