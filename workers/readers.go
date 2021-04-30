@@ -306,6 +306,7 @@ func (w *BytesReader) Start() error {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
+							// end of transmission
 							break
 						}
 					}

@@ -430,7 +430,6 @@ LabelsInGo:
 				if err := w.writeData(data); err != nil {
 					return errors.Wrap(err, "error writing data")
 				}
-
 			default:
 				return errors.New("unknown message received")
 			}
