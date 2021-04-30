@@ -486,6 +486,7 @@ linters:
     - thelper
     - unparam
     - wastedassign
+    - dupl
   disable:
     - maligned
     - prealloc
