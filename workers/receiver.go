@@ -69,7 +69,7 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	for i := 0; i < ccIo; i++ {
 		dCtx := context.Context(rc.ctx)
 		w := NewHashreader(dCtx, hashChan)
-		g.Go(func() error { return w.Start() })
+		g.Go(w.Start)
 	}
 
 	// send data to checksum workers
@@ -304,44 +304,21 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 		log.Error().
 			Err(err).
 			Caller().
-			Msg("internal server error")
+			Msg("internal server error - decompression failed")
 		return
 	}
 
 	log.Info().
 		Msgf("http  receiver - received %d bytes of data", buf.Len())
 
-	msg := &core.Message{}
-	err = json.NewDecoder(buf).
-		Decode(&msg)
+	rc.g = new(errgroup.Group)
+	err = rc.writeData(buf.Bytes())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
 			Err(err).
 			Caller().
-			Msg("http receiver - internal server error - unable to decode json")
-		return
-	}
-
-	switch msg.Flag {
-	case core.WSQ:
-		/*
-			if err := rc.writeData(msg); err != nil {
-				err = errors.Wrap(err, "failed to write data")
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				log.Error().
-					Err(err).
-					Caller().
-					Msg("http receiver - internal server error - write failed")
-				return
-			}
-		*/
-	default:
-		http.Error(w, "unknown message type", http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("http receiver - internal server error - unknown messae type")
+			Msg("internal server error - write data failed")
 		return
 	}
 

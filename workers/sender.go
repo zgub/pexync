@@ -303,7 +303,7 @@ func (w *HttpSender) Start() error {
 
 	// send
 	url := w.url.String() + "/list"
-	msg, err := w.send(url, msg)
+	msg, err := w.sendJson(url, msg)
 	if err != nil {
 		errors.Wrap(err, "http sender - send failed")
 	}
@@ -320,7 +320,7 @@ func (w *HttpSender) Start() error {
 	for i := 0; i < 2*ccIo; i++ {
 		log.Trace().
 			Msg("http sender - starting http client worker")
-		w.g.Go(w.runClient)
+		w.g.Go(w.dataSender)
 	}
 
 	w.spawnReaders()

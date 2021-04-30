@@ -1,8 +1,16 @@
 # PeXync
 
+## Functionality
+
+- paralel read and writes - configurable
+- gzip compression
+- local sync
+- json + simple binary protocol over http
+- Adler32 for block hash on the receiver side, rolling Adler32 on the sender side, sha1 used instead of MD4 copared to rsync
+
 ## Notes
 
-- still much duplicate code, especially between local and http receiver / sender as local sender / receiver were developed first to test concepts
+- still a lot of duplicate code, especially between local and http receiver / sender as local sender / receiver were developed first to test concepts
 - few benchmarks were performed to decide what readers to use, best compromise was to use buffered readers even with the section reader beneath
 - the httpSender -(spawn)-> readers -(spawn)-> http sender goroutine design is cause by the initial local sender design, I woudl have to rewrite the local sender OR write a new dedicated sender as those readers expect a receiver channel, that's why there is another worker responsible just for the http clients. However I expect the disk i/o to be the slowest part on both sides, so this should not impact the performance much. It's just not very elegant, readable...
 

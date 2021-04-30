@@ -60,10 +60,10 @@ func startLocalSync() {
 
 	sender := workers.NewLocalSender(ctx, list, local, remote)
 
-	g.Go(func() error { return sender.Start() })
+	g.Go(sender.Start)
 
 	receiver := workers.NewLocalReceiver(ctx, remote, local)
-	g.Go(func() error { return receiver.Start() })
+	g.Go(receiver.Start)
 
 	if err := g.Wait(); err == nil {
 		log.Info().
