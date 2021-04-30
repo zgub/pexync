@@ -88,6 +88,7 @@ func TestDiffLocalSync(t *testing.T) {
 		t.Fatalf("\n *** %s \n *** %s \n *** not equal", srcD+srcF, dstD+srcF)
 	}
 	err = cleanup(srcD+srcF, dstD+srcF)
+	t.Error(err.Error())
 }
 
 func compare(src, dst string) (bool, error) {
