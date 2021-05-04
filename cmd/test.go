@@ -8,6 +8,13 @@ import (
 	"github.com/zgub/pexync/test"
 )
 
+const (
+	X_X int = iota
+	X_0
+	XXX_YYY
+	XXX_000
+)
+
 func init() {
 
 	testCmd.Flags().StringVarP(&scenario, "scenario", "s", "C", "test help scenarion")
@@ -29,8 +36,10 @@ var (
 
 func testTasks() {
 	switch scenario {
-	case "C":
-		createTestFiles()
+	case "C1":
+		createTestFiles(X_X)
+	case "C2":
+		createTestFiles(XXX_000)
 	case "B":
 		test.ReadBenchmark()
 	default:
@@ -39,33 +48,63 @@ func testTasks() {
 	}
 }
 
-func createTestFiles() {
-	if err := os.Remove("testfiles/test-file"); err != nil {
-		log.Warn().
-			Msgf("no file to delete: %s", err.Error())
-	}
+func createTestFiles(mode int) {
+	switch mode {
+	case X_X:
+		if err := os.Remove("testfiles/test-file"); err != nil {
+			log.Warn().
+				Msgf("no file to delete: %s", err.Error())
+		}
 
-	if err := os.Remove("Xync/test-file"); err != nil {
-		log.Warn().
-			Msgf("no file to delete: %s", err.Error())
-	}
-	fn, err := test.CreateTestFile("testfiles/", "test-file", 700, 7, test.AABBCC)
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("error creating test files")
-	}
-	log.Info().
-		Str("file name", fn).
-		Msg("created")
+		if err := os.Remove("Xync/test-file"); err != nil {
+			log.Warn().
+				Msgf("no file to delete: %s", err.Error())
+		}
+		fn, err := test.CreateTestFile("testfiles/", "test-file", 700, 7, test.AABBCC)
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Msg("error creating test files")
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
 
-	fn, err = test.CreateTestFile("Xync/", "test-file", 700, 4, test.AACCEE)
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("error creating test files")
+		fn, err = test.CreateTestFile("Xync/", "test-file", 700, 4, test.AACCEE)
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Msg("error creating test files")
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
+	case XXX_000:
+		fn, err := test.CreateTestFile("testfiles/", "", 700, 3, test.AABBCC)
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to create a test file %s", err.Error())
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
+		fn, err = test.CreateTestFile("testFiles/", "", 700, 3, test.BBCCDD)
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to create a test file %s", err.Error())
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
+		fn, err = test.CreateTestFile("testFiles/", "", 700, 3, test.AACCEE)
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to create a test file %s", err.Error())
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
+	case XXX_YYY:
+
 	}
-	log.Info().
-		Str("file name", fn).
-		Msg("created")
 }

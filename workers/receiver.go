@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -375,11 +376,14 @@ LabelsInGo:
 			// initialization
 			case core.INI:
 				// update msg with local directory state(s)
+				spew.Dump(msg)
 				err := w.parseSenderList(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
 				msg.Flag = core.SUM
+				spew.Dump(msg)
+
 				err = sendWithTimeout(msg, w.sender)
 				if err != nil {
 					return errors.Wrap(err, "failed to respond to sender")
