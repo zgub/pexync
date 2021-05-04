@@ -40,6 +40,8 @@ func testTasks() {
 		createTestFiles(X_X)
 	case "C2":
 		createTestFiles(XXX_000)
+	case "C3":
+		createTestFiles(XXX_YYY)
 	case "B":
 		test.ReadBenchmark()
 	default:
@@ -105,6 +107,21 @@ func createTestFiles(mode int) {
 			Str("file name", fn).
 			Msg("created")
 	case XXX_YYY:
-
+		fn, err := test.CreateTestFile("testfiles/", "", 700, 5, test.AABBCC)
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to create a test file %s", err.Error())
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
+		fn, err = test.CreateTestFile("Xync/", "", 700, 3, test.AACCEE)
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to create a test file %s", err.Error())
+		}
+		log.Info().
+			Str("file name", fn).
+			Msg("created")
 	}
 }
