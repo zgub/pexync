@@ -38,25 +38,26 @@ type receiver struct {
 	fileWriters *errgroup.Group // writters error group
 }
 
+// parsinf list from sender and adding remote information
 func (rc receiver) parseSenderList(msg *core.Message) error {
 	rc.senderUUID = msg.UUID
 	log.Debug().
 		Str("sender uuid", rc.senderUUID.String()).
 		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
-	// stop all writers if any, this is a reset!
 
-	// store source filelist for future!!!
+	// store source filelist ina a map for future!!!
 	for i, fd := range msg.FileList {
 		rc.srcList[fd.Idx] = fd
 		if int64(i) != fd.Idx {
+			// TODO: remove index, redundant information
 			log.Warn().
 				Int("slice index", i).
 				Int64("file index", fd.Idx).
 				Msg("WHOA!!!")
 		}
-		//spew.Dump(fd)
 	}
 
+	// now compare sender and remote directories
 	diffMap, err := rc.compare()
 	if err != nil {
 		return errors.Wrap(err, "file comparator failed")
@@ -73,7 +74,6 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	}
 
 	// send data to checksum workers
-
 	for dstFd := range diffMap {
 		log.Trace().
 			Str("state", dstFd.State.String()).
@@ -102,6 +102,7 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	return nil
 }
 
+// main function comparing sender dir listing with remote directory listing
 func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
 	dstDir := viper.GetString("destination")
@@ -369,9 +370,11 @@ LabelsInGo:
 			// send fin to all readers
 			break LabelsInGo
 		case msg := <-w.inbox:
+			// received a message that is not a FIN
 			switch msg.Flag {
+			// initialization
 			case core.INI:
-				// update msg with local direcotory state(s)
+				// update msg with local directory state(s)
 				err := w.parseSenderList(msg)
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
