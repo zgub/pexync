@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -107,7 +106,7 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func (w *HttpSender) send(url string, msg *core.Message) (*core.Message, error) {
+func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
@@ -134,9 +133,6 @@ func (w *HttpSender) send(url string, msg *core.Message) (*core.Message, error) 
 	}
 	defer resp.Body.Close()
 
-	headers := resp.Header
-	fmt.Printf("===> http reposnse headers:\n %+v \n", headers)
-
 	log.Trace().
 		Str("status:", resp.Status).
 		Msg("http response")
@@ -155,21 +151,67 @@ func (w *HttpSender) send(url string, msg *core.Message) (*core.Message, error) 
 	return msg, nil
 }
 
+func (w *HttpSender) sendFileDesc(url string, data []byte) (*core.Message, error) {
+
+	buf, err := compress(data)
+	if err != nil {
+		return nil, errors.Wrap(err, "error compressing data")
+	}
+
+	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
+	//req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("User-Agent", "PeXync-client-mode")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Content-Encoding", "gzip")
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating http request")
+	}
+
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "error connecting server")
+	}
+	defer resp.Body.Close()
+
+	log.Trace().
+		Str("status:", resp.Status).
+		Msg("http response")
+
+	buf, err = decompress(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading server response")
+	}
+
+	msg := &core.Message{}
+	err = json.Unmarshal(buf.Bytes(), msg)
+	if err != nil {
+		return nil, errors.Wrap(err, "error reading server response")
+	}
+
+	return msg, nil
+}
+
 // this is not optimal, well... I would refactor the whole worker / sender / receiver design for possible next release
-func (w *HttpSender) runClient() error {
+func (w *HttpSender) dataSender() error {
 	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msgf("http client worker - closing, context done")
-		case msg := <-w.sendChan:
+		case msg := <-w.receiver:
 			// if FIN was send, don't send it to the standalone process
 			// but stop
 			if msg.Flag == core.FIN {
 				return nil
 			}
+			//spew.Dump(msg)
 			url := w.url.String() + "/data"
-			resp, err := w.send(url, msg)
+			data, err := msg.DataDesc.Serialize()
+			if err != nil {
+				return errors.Wrap(err, "failed to serialize data")
+			}
+			resp, err := w.sendFileDesc(url, data)
 			if err != nil {
 				return errors.Wrap(err, "failed to send data")
 			}

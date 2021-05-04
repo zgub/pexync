@@ -26,6 +26,7 @@
 - [ ] do I need fileindex????? (WHOA) seem not
 - [ ] tests!
 - [ ] validation at transfer end
+- [ ] sender state (reset after aaa)
 
 ## Ideas
 

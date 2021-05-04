@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"syscall"
+	//"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -24,6 +24,8 @@ const (
 	Diff                 // file exists but do not match
 	Skip                 // file exists and matches
 )
+
+var ErrEOF = errors.New("end of file transmission")
 
 var fileStatus = [...]string{
 	"MISS",
@@ -341,7 +343,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			return errors.Wrap(err, "file stat info failed")
 		}
 
-		stat := info.Sys().(*syscall.Stat_t)
+		//stat := info.Sys().(*syscall.Stat_t)
 
 		relPath, err := filepath.Rel(walkDir, path)
 		if err != nil {
@@ -365,8 +367,8 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 				FileSize: uint64(info.Size()),
 				Modified: info.ModTime(),
 				Mode:     info.Mode(),
-				Uid:      stat.Uid,
-				Gid:      stat.Gid,
+				//Uid:      stat.Uid,
+				//Gid:      stat.Gid,
 			}
 
 			list = append(list, fileDesc)

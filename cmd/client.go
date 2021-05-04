@@ -23,7 +23,12 @@ var (
 
 func init() {
 	clientCmd.Flags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
-	viper.BindPFlag("remote_host", clientCmd.Flags().Lookup("remote-host"))
+	err := viper.BindPFlag("remote_host", clientCmd.Flags().Lookup("remote-host"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 
 	rootCmd.AddCommand(clientCmd)
 }
@@ -33,7 +38,7 @@ func startClient() {
 	ctx := context.Background()
 	log.Info().
 		Msg("starting remote sync")
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	httpSender, err := workers.NewHttpSender(ctx)

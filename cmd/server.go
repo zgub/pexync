@@ -6,7 +6,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/workers"
 )
 
@@ -25,7 +24,12 @@ var (
 func init() {
 
 	serverCmd.Flags().StringVarP(&bindAddr, "bind-address", "B", "127.0.0.1", "ip address")
-	viper.BindPFlag("bind_address", serverCmd.Flags().Lookup("bind-address"))
+	err := viper.BindPFlag("bind_address", serverCmd.Flags().Lookup("bind-address"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 	//viper.SetDefault("bind_address", "127.0.0.1")
 
 	rootCmd.AddCommand(serverCmd)
@@ -34,16 +38,13 @@ func init() {
 
 func startServer() {
 	log.Info().
-		Msg("initializing PeXync server")
+		Msg("Starting PeXync server")
 	ctx := context.Background()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var (
-		remote, local chan *core.Message
-	)
-	receiver := workers.NewHttpReceiver(ctx, remote, local)
+	receiver := workers.NewHttpReceiver(ctx)
 	err := receiver.Start()
 
 	if err == nil {

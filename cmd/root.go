@@ -22,7 +22,6 @@ var (
 
 var (
 	// general
-	useCores       int
 	cfgFile        string
 	debug          bool
 	ccIo           int
@@ -50,25 +49,50 @@ func init() {
 
 	// common flags
 	rootCmd.PersistentFlags().IntVarP(&blockSize, "block-size", "b", 700, "block size in bytes, default <700b; 131kB>")
-	viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
+	err := viper.BindPFlag("block_size", rootCmd.PersistentFlags().Lookup("block-size"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 	//viper.SetDefault("block_size", 700)
 
 	viper.SetDefault("timeout", 5*time.Second)
 
 	rootCmd.PersistentFlags().IntVarP(&ccIo, "io-concurrency", "i", 2, "concurent io operations")
-	viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
+	err = viper.BindPFlag("io_concurrency", rootCmd.PersistentFlags().Lookup("io-concurrency"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 	//viper.SetDefault("io_concurrency", 2)
 
 	rootCmd.PersistentFlags().StringVarP(&srcDir, "source", "S", "testfiles/", "source directory to synchronize")
-	viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
+	err = viper.BindPFlag("source", rootCmd.PersistentFlags().Lookup("source"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 	//viper.SetDefault("source", "testfiles/")
 
 	rootCmd.PersistentFlags().StringVarP(&dstDir, "destination", "R", "/", "destination directory")
-	viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+	err = viper.BindPFlag("destination", rootCmd.PersistentFlags().Lookup("destination"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 	//viper.SetDefault("destination", "/")
 
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 3819, "http API port")
-	viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
+	err = viper.BindPFlag("port", rootCmd.PersistentFlags().Lookup("port"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
 	//viper.SetDefault("port", 3819)
 
 	cobra.OnInitialize(initConfig)
@@ -102,7 +126,7 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		log.Info().
 			Str("Using config file:", viper.ConfigFileUsed()).
-			Msg("CONFIG")
+			Msg("CFG")
 	}
 
 	if debug {
@@ -114,6 +138,6 @@ func initConfig() {
 		zerolog.SetGlobalLevel(level)
 		log.Info().
 			Str("log level", level.String()).
-			Send()
+			Msg("LOG")
 	}
 }

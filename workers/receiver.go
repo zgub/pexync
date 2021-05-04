@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -29,144 +30,51 @@ const (
 	WRT                    // spawned writers
 )
 
-// LocalSender represents blah balh
-type LocalReceiver struct {
-	ctx        context.Context
-	inbox      <-chan *core.Message
-	sender     chan<- *core.Message
-	state      senderState // not sure if needed, or if I ever implement this
-	senderUUID uuid.UUID   // same here
-	srcList    map[int64]*lfs.FileDesc
-	writersMap map[int64]FileWriter
+type receiver struct {
+	ctx         context.Context
+	state       senderState // not sure if needed, or if I ever implement this
+	senderUUID  uuid.UUID   // same here
+	srcList     map[int64]*lfs.FileDesc
+	writersMap  map[int64]FileWriter
+	fileWriters *errgroup.Group // writters error group
 }
 
-func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
-	return &LocalReceiver{
-		ctx:        ctx,
-		inbox:      in,
-		sender:     sender,
-		state:      RST,
-		srcList:    make(map[int64]*lfs.FileDesc),
-		writersMap: make(map[int64]FileWriter),
-	}
-}
-
-func (w *LocalReceiver) Start() error {
-
-	g := new(errgroup.Group)
-LabelsInGo:
-	for {
-		select {
-		case <-w.ctx.Done():
-			log.Debug().
-				Msg("receiver - closing, context done")
-			// send fin to all readers
-			break LabelsInGo
-		case msg := <-w.inbox:
-			switch msg.Flag {
-			case core.INI:
-				err := w.parseSenderList(msg)
-				if err != nil {
-					return errors.Wrap(err, "failed during sync init")
-				}
-			case core.FIN:
-				log.Trace().
-					Msg("receiver received FIN")
-				// send fin to all readers
-				break LabelsInGo
-			case core.WSQ:
-				log.Trace().
-					Str("filename", msg.FileDesc.FileName).
-					Int64("data sequence", msg.DataDesc.Seq()).
-					Msg("receiver - data received")
-				//spew.Dump(msg)
-				data, err := msg.DataDesc.Serialize()
-				if err != nil {
-					return errors.Wrap(err, "error serializing data")
-				}
-
-				// validate ???
-
-				// dd is new DataDesc created from serialized msg.DataDesc
-				dd, err := lfs.Deserialize(data)
-				if err != nil {
-					return errors.Wrap(err, "error deserializing data")
-				}
-				fi := dd.FileIndex()
-				if fileWritter, ok := w.writersMap[fi]; ok {
-					// new message
-					fileWritter.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: msg.List[fi],
-						DataDesc: dd,
-					}
-				} else {
-					log.Debug().
-						Str("filename", msg.FileDesc.FileName).
-						Msg("receiver - starting new writter")
-					inbox := make(chan *core.Message)
-					fr := NewFileWriter(w.ctx, w.senderUUID, msg.FileDesc, inbox)
-					w.writersMap[fi] = fr
-					// send a new message
-					g.Go(func() error { return fr.Start() })
-					fr.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: w.srcList[fi],
-						DataDesc: dd,
-					}
-				}
-
-			default:
-				return errors.New("unknown message received")
-			}
-		}
-	}
-	for _, wr := range w.writersMap {
-		wr.inbox <- &core.Message{
-			Flag: core.FIN,
-		}
-	}
-	err := g.Wait()
-
-	return err
-}
-
-func (w *LocalReceiver) parseSenderList(msg *core.Message) error {
-	w.senderUUID = msg.UUID
+// parsinf list from sender and adding remote information
+func (rc receiver) parseSenderList(msg *core.Message) error {
+	rc.senderUUID = msg.UUID
 	log.Debug().
-		Str("sender uuid", w.senderUUID.String()).
+		Str("sender uuid", rc.senderUUID.String()).
 		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
-	// stop all writers if any, this is a reset!
 
-	// store source filelist for future reference
+	// store source filelist ina a map for future!!!
 	for i, fd := range msg.FileList {
-		w.srcList[fd.Idx] = fd
+		rc.srcList[fd.Idx] = fd
 		if int64(i) != fd.Idx {
+			// TODO: remove index, redundant information
 			log.Warn().
 				Int("slice index", i).
 				Int64("file index", fd.Idx).
 				Msg("WHOA!!!")
 		}
-		//spew.Dump(fd)
 	}
 
-	diffMap, err := w.compare()
+	// now compare sender and remote directories
+	diffMap, err := rc.compare()
 	if err != nil {
 		return errors.Wrap(err, "file comparator failed")
 	}
 
 	// starting checksums workers
-	g := new(errgroup.Group)
+	hashReaders := new(errgroup.Group)
 	ccIo := viper.GetInt("io_concurrency")
 	hashChan := make(chan *core.Message)
 	for i := 0; i < ccIo; i++ {
-		dCtx := context.Context(w.ctx)
+		dCtx := context.Context(rc.ctx)
 		w := NewHashreader(dCtx, hashChan)
-		g.Go(func() error { return w.Start() })
+		hashReaders.Go(w.Start)
 	}
 
 	// send data to checksum workers
-
 	for dstFd := range diffMap {
 		log.Trace().
 			Str("state", dstFd.State.String()).
@@ -182,7 +90,7 @@ func (w *LocalReceiver) parseSenderList(msg *core.Message) error {
 			Flag: core.FIN,
 		}
 	}
-	err = g.Wait()
+	err = hashReaders.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error caclulation initial check sums")
 	}
@@ -192,136 +100,11 @@ func (w *LocalReceiver) parseSenderList(msg *core.Message) error {
 		srcFd.Weak = dstFd.Weak
 	}
 
-	msg.Flag = core.SUM
-	err = sendWithTimeout(msg, w.sender)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
-type HttpReceiver struct {
-	ctx        context.Context
-	inbox      <-chan *core.Message
-	sender     chan<- *core.Message
-	state      senderState // not sure if needed, or if I ever implement this
-	senderUUID uuid.UUID   // same here
-	srcList    map[int64]*lfs.FileDesc
-	writersMap map[int64]FileWriter
-}
-
-func NewHttpReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *HttpReceiver {
-	return &HttpReceiver{
-		ctx:        ctx,
-		inbox:      in,
-		sender:     sender,
-		state:      RST,
-		srcList:    make(map[int64]*lfs.FileDesc),
-		writersMap: make(map[int64]FileWriter),
-	}
-}
-
-func (w *HttpReceiver) Start() error {
-	r := chi.NewRouter()
-	timeoutValue := viper.GetDuration("timeout")
-
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Compress(gzip.DefaultCompression))
-	r.Use(middleware.Timeout(timeoutValue))
-
-	// routes
-	r.Route("/list", func(r chi.Router) {
-		r.Post("/", processList)
-	})
-
-	r.Route("/data", func(r chi.Router) {
-		r.Post("/", processData)
-	})
-
-	address := viper.GetString("bind_address")
-	if net.ParseIP(address) == nil {
-		return errors.New("invalid bind address: " + address)
-	}
-	port := strconv.Itoa(viper.GetInt("port"))
-	address = address + ":" + port
-	log.Debug().
-		Msgf("listening on: %s", address)
-	err := http.ListenAndServe(address, r)
-	if err != nil {
-		return errors.Wrapf(err, "unable to listen on %s", address)
-	}
-
-	return nil
-}
-
-func processList(w http.ResponseWriter, r *http.Request) {
-
-	buf, err := decompress(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("internal server error")
-		return
-	}
-
-	msg := *&core.Message{}
-	err = json.NewDecoder(buf).
-		Decode(&msg)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("internal server error")
-		return
-	}
-	err = respondWithJSON(w, http.StatusOK, msg)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("internal server error")
-		return
-	}
-
-}
-
-func processData(w http.ResponseWriter, r *http.Request) {
-	buf, err := decompress(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("internal server error")
-		return
-	}
-
-	log.Info().
-		Msgf("http  receiver - received %d bytes of data", buf.Len())
-
-	msg := *&core.Message{
-		Flag: core.ACK,
-	}
-
-	err = respondWithJSON(w, http.StatusOK, msg)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
-			Err(err).
-			Caller().
-			Msg("internal server error")
-		return
-	}
-}
-
-func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
+// main function comparing sender dir listing with remote directory listing
+func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
 	dstDir := viper.GetString("destination")
 
@@ -344,7 +127,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 		dstMap[dstFd.RelPath] = dstFd
 	}
 	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
-	for _, srcFd := range w.srcList {
+	for _, srcFd := range rc.srcList {
 		path := dstDir + srcFd.RelPath
 		log.Trace().
 			Str("source filename relatinve path", srcFd.RelPath).
@@ -381,7 +164,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// map both here for block checksum calculation later
 				diffMap[dstFd] = srcFd
 				// store!
-				w.srcList[srcFd.Idx] = srcFd
+				rc.srcList[srcFd.Idx] = srcFd
 
 				// determine what has changed, if permission and/or modtime only, do not set it to diff
 
@@ -449,7 +232,7 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				}
 				srcFd.State = lfs.Missing
 				// store!
-				w.srcList[srcFd.Idx] = srcFd
+				rc.srcList[srcFd.Idx] = srcFd
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
 					Uint64("source file size", srcFd.FileSize).
@@ -459,4 +242,261 @@ func (w *LocalReceiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 		}
 	}
 	return diffMap, nil
+}
+
+func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
+
+	buf, err := decompress(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error")
+		return
+	}
+
+	msg := &core.Message{}
+	err = json.NewDecoder(buf).
+		Decode(&msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error")
+		return
+	}
+
+	switch msg.Flag {
+	case core.INI:
+		// update msg with local state(s)
+		err := rc.parseSenderList(msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+		msg.Flag = core.SUM
+		err = respondWithJSON(w, http.StatusOK, msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error - unknown message")
+	}
+}
+
+func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
+	buf, err := decompress(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error - decompression failed")
+		return
+	}
+
+	log.Info().
+		Msgf("http  receiver - received %d bytes of data", buf.Len())
+
+	// write
+	//err = rc.(buf.Bytes())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error - write data failed")
+		return
+	}
+
+	resp := &core.Message{
+		Flag: core.ACK,
+	}
+
+	err = respondWithJSON(w, http.StatusOK, resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Error().
+			Err(err).
+			Caller().
+			Msg("internal server error")
+		return
+	}
+}
+
+// LocalSender represents blah balh
+type LocalReceiver struct {
+	inbox  <-chan *core.Message
+	sender chan<- *core.Message
+	receiver
+}
+
+func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
+	return &LocalReceiver{
+		receiver: receiver{
+			ctx:         ctx,
+			state:       RST,
+			srcList:     make(map[int64]*lfs.FileDesc),
+			writersMap:  make(map[int64]FileWriter),
+			fileWriters: new(errgroup.Group),
+		},
+		inbox:  in,
+		sender: sender,
+	}
+}
+
+func (w *LocalReceiver) Start() error {
+
+LabelsInGo:
+	for {
+		select {
+		case <-w.ctx.Done():
+			log.Debug().
+				Msg("receiver - closing, context done")
+			// send fin to all readers
+			break LabelsInGo
+		case msg := <-w.inbox:
+			// received a message that is not a FIN
+			switch msg.Flag {
+			// initialization
+			case core.INI:
+				// update msg with local directory state(s)
+				spew.Dump(msg)
+				err := w.parseSenderList(msg)
+				if err != nil {
+					return errors.Wrap(err, "failed during sync init")
+				}
+				msg.Flag = core.SUM
+				spew.Dump(msg)
+
+				err = sendWithTimeout(msg, w.sender)
+				if err != nil {
+					return errors.Wrap(err, "failed to respond to sender")
+				}
+			case core.WSQ:
+				//data, err := msg.DataDesc.Serialize()
+				//if err != nil {
+				//	return errors.Wrap(err, "error serializing data")
+				//}
+				dd := msg.DataDesc
+				log.Trace().
+					Str("filename", w.srcList[dd.FileIndex()].FileName).
+					Int64("data sequence", dd.Seq()).
+					Msg("receiver - data received")
+				fi := dd.FileIndex()
+				if fileWritter, ok := w.writersMap[fi]; ok {
+					// new message, already existing writer
+					fileWritter.inbox <- &core.Message{
+						Flag: core.WSQ,
+						//FileDesc: msg.List[fi],
+						DataDesc: dd,
+					}
+				} else {
+					// new file, new writer
+					log.Debug().
+						Str("filename", w.srcList[dd.FileIndex()].FileName).
+						Msg("receiver - starting new writter")
+					inbox := make(chan *core.Message)
+					// create new file writer worker
+					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[dd.FileIndex()], inbox)
+					// add it to the lookup map
+					w.writersMap[fi] = fr
+					// send a new message
+					w.fileWriters.Go(fr.Start)
+					fr.inbox <- &core.Message{
+						Flag: core.WSQ,
+						//FileDesc: w.srcList[fi],
+						DataDesc: dd,
+					}
+				}
+			case core.FIN:
+				log.Debug().
+					Msg("receiver received FIN")
+				break LabelsInGo
+			default:
+				return errors.New("unknown message received")
+			}
+		}
+	}
+	/*
+		for _, wr := range w.writersMap {
+			wr.inbox <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	*/
+	err := w.fileWriters.Wait()
+
+	return err
+}
+
+type HttpReceiver struct {
+	receiver
+}
+
+func NewHttpReceiver(ctx context.Context) *HttpReceiver {
+	return &HttpReceiver{
+		receiver: receiver{
+			ctx:         ctx,
+			state:       RST,
+			srcList:     make(map[int64]*lfs.FileDesc),
+			writersMap:  make(map[int64]FileWriter),
+			fileWriters: new(errgroup.Group),
+		},
+	}
+}
+
+func (w *HttpReceiver) Start() error {
+	r := chi.NewRouter()
+	timeoutValue := viper.GetDuration("timeout")
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Compress(gzip.DefaultCompression))
+	r.Use(middleware.Timeout(timeoutValue))
+
+	// routes
+	r.Route("/list", func(r chi.Router) {
+		r.Post("/", w.processList)
+	})
+
+	r.Route("/data", func(r chi.Router) {
+		r.Post("/", w.processRemoteData)
+	})
+
+	address := viper.GetString("bind_address")
+	if net.ParseIP(address) == nil {
+		return errors.New("invalid bind address: " + address)
+	}
+	port := strconv.Itoa(viper.GetInt("port"))
+	address = address + ":" + port
+	dstDir := viper.GetString("destination")
+	log.Info().
+		Str("destination directory", dstDir).
+		Str("listening", address).
+		Msg("RDY")
+	err := http.ListenAndServe(address, r)
+	if err != nil {
+		return errors.Wrapf(err, "unable to listen on %s", address)
+	}
+
+	err = w.fileWriters.Wait()
+	return err
 }

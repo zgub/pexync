@@ -142,6 +142,7 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 				Str("filename", msg.FileDesc.FileName).
 				Int64("datadesc len", int64(dd.Len())).
 				Int64("block size", msg.FileDesc.BlockSize).
+				Int64("seq", dd.Seq()).
 				Msgf("roll reader %d - sending data", w.myID)
 
 			err = sendWithTimeout(dMsg, w.receiver)
@@ -224,27 +225,26 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 		}
 	}
 
-	if dd.Len() > 0 {
-		dMsg := &core.Message{
-			Flag:     core.WSQ,
-			FileDesc: msg.FileDesc, // maybe strip the useless data
-			DataDesc: dd,
-		}
-
-		log.Trace().
-			Str("filename", msg.FileDesc.FileName).
-			Int64("datadesc len", int64(dd.Len())).
-			Int64("block size", msg.FileDesc.BlockSize).
-			Msgf("roll reader %d - sending remaining data", w.myID)
-
-		err = sendWithTimeout(dMsg, w.receiver)
-		w.msgCnt++
-		if err != nil {
-			return errors.Wrap(err, "error sending data")
-		}
-		seq++
-		dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+	dd.MarkAsLast()
+	dMsg := &core.Message{
+		Flag:     core.WSQ,
+		FileDesc: msg.FileDesc, // maybe strip the useless data
+		DataDesc: dd,
 	}
+
+	log.Trace().
+		Str("filename", msg.FileDesc.FileName).
+		Int64("datadesc len", int64(dd.Len())).
+		Int64("block size", msg.FileDesc.BlockSize).
+		Msgf("roll reader %d - sending remaining data", w.myID)
+
+	err = sendWithTimeout(dMsg, w.receiver)
+	w.msgCnt++
+	if err != nil {
+		return errors.Wrap(err, "error sending data")
+	}
+	seq++
+	dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 
 	return nil
 }
@@ -305,6 +305,18 @@ func (w *BytesReader) Start() error {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
+							// end of transmission
+							dd.MarkAsLast()
+							nMsg := &core.Message{
+								Flag:     core.WSQ,
+								FileDesc: msg.FileDesc,
+								DataDesc: dd,
+							}
+							fmt.Println("8888888888888888888888888888888888888888888")
+							err = sendWithTimeout(nMsg, w.receiver)
+							if err != nil {
+								return errors.Wrap(err, "error sending data")
+							}
 							break
 						}
 					}
