@@ -51,6 +51,8 @@ func testTasks() {
 }
 
 func createTestFiles(mode int) {
+	os.RemoveAll("tesfiles/")
+	os.RemoveAll("Xync/")
 	switch mode {
 	case X_X:
 		if err := os.Remove("testfiles/test-file"); err != nil {
@@ -112,6 +114,11 @@ func createTestFiles(mode int) {
 			log.Fatal().
 				Msgf("failed to create a test file %s", err.Error())
 		}
+		err = os.Rename("testfile/5x700-test-filr-AABBCC", "testfiles/test-file")
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to rename test file %s", err.Error())
+		}
 		log.Info().
 			Str("file name", fn).
 			Msg("created")
@@ -119,6 +126,11 @@ func createTestFiles(mode int) {
 		if err != nil {
 			log.Fatal().
 				Msgf("failed to create a test file %s", err.Error())
+		}
+		os.Rename("Xync/3x700-test-filr-AACCEE", "Xync/test-file")
+		if err != nil {
+			log.Fatal().
+				Msgf("failed to rename test file %s", err.Error())
 		}
 		log.Info().
 			Str("file name", fn).
