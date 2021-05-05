@@ -77,7 +77,7 @@ func (w *RollReader) Start() error {
 	}
 }
 
-func (w *RollReader) rollV3(msg *core.Message) error {
+func (w *RollReader) rollV2(msg *core.Message) error {
 
 	// open the file to roll
 	srcFilePath := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
