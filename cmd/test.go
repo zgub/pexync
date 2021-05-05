@@ -44,6 +44,17 @@ func testTasks() {
 		createTestFiles(XXX_YYY)
 	case "B":
 		test.ReadBenchmark()
+	case "R":
+		srcS := "123x456y789z0?!"
+		dstS := "123789u"
+		testS := "@#$%^123tt789u"
+
+		test.RollV3(srcS, dstS)
+
+		for _, s := range testS {
+			srcS += string(s)
+			test.RollV3(srcS, dstS)
+		}
 	default:
 		log.Fatal().
 			Msg("unknown scenario")
