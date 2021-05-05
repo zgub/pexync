@@ -55,7 +55,7 @@ func (w *RollReader) Start() error {
 				log.Debug().
 					Str("filename", msg.FileDesc.FileName).
 					Msgf("roll reader %d - file received", w.myID)
-				err := w.rollV2(msg)
+				err := w.rollV3(msg)
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
 				}
@@ -77,7 +77,7 @@ func (w *RollReader) Start() error {
 	}
 }
 
-func (w *RollReader) rollV2(msg *core.Message) error {
+func (w *RollReader) rollV3(msg *core.Message) error {
 
 	// open the file to roll
 	srcFilePath := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
@@ -136,8 +136,8 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 	//defer dumpF.Close()
 	//a32 := adler32.New()
 	// let's roll
-	for {
-		// check the dd data size
+	for done := false; !done; {
+		// check the dd data size and send if needed
 		if dd.Len() > msg.FileDesc.BlockSize {
 			dMsg := &core.Message{
 				Flag:     core.WSQ,
@@ -190,31 +190,47 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 			} else {
 				buf.Reset()
 				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize)
+				if n == 0 {
+					if err == io.EOF {
+						break
+					} else {
+						errors.Wrap(err, "roll reader %d - failed to read file")
+					}
+				}
+				// reset roll hash and write new data
+				rh.Reset()
+				_, err = rh.Write(buf.Bytes())
+				if err != nil {
+					return errors.Wrapf(err, "roll reader %d, unable to calculate rolling hash", w.myID)
+				}
 				log.Trace().
 					Int64("loaded bytes", n).
 					Str("data", string(buf.Bytes())).
-					Msg("full load after match")
-			}
-			if n == 0 {
-				if err == io.EOF {
-					break
-				} else {
-					errors.Wrap(err, "roll reader %d - failed to read file")
+					Str("rh window", string(rh.GetWindow())).
+					Msg("full load after match and wrote to rh")
+				// wrote new block into hash, read another one for roll
+				buf.Reset()
+				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize)
+				if n == 0 {
+					if err == io.EOF {
+						// can't break right now
+						done = true
+					} else {
+						errors.Wrap(err, "roll reader %d - failed to read file")
+					}
 				}
+				log.Trace().
+					Int64("loaded bytes", n).
+					Str("data", string(buf.Bytes())).
+					Msg("next full load after match")
 			}
 
-			// write appends, so reset first, the write nw data
-			rh.Reset()
-			_, err = rh.Write(buf.Bytes())
-			if err != nil {
-				return errors.Wrapf(err, "roll reader %d, unable to calculate rolling hash", w.myID)
-			}
 		} else {
 			// DOES NOT MATCH
 			// we have old buf in rh window
 			// we have new data in the buf
 			nb, err := buf.ReadByte()
-			fmt.Printf("nb: >n>%s<n<\n", string(nb))
+			//fmt.Printf("nb: >n>%s<n<\n", string(nb))
 			if err == io.EOF {
 				// empty buffer
 				// load a new block of data
@@ -230,16 +246,16 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 				}
 
 				// reset the rhash and write new data
-				rh.Reset()
-				_, err = rh.Write(buf.Bytes())
-				if err != nil {
-					return errors.Wrapf(err, "roll reader %d, unable to calculate rolling hash", w.myID)
-				}
+				//rh.Reset()
+				//_, err = rh.Write(buf.Bytes())
+				//if err != nil {
+				//	return errors.Wrapf(err, "roll reader %d, unable to calculate rolling hash", w.myID)
+				//}
 				// next!!!
-				continue
+				//continue
 			}
 			ob := rh.Roll(nb)
-			fmt.Printf("ob: >o>%s<o< nb: >n>%s<n<\n", string(ob), string(nb))
+			//fmt.Printf("ob: >o>%s<o< nb: >n>%s<n<\n", string(ob), string(nb))
 			//////////////////////////////////////
 			//window := rh.GetWindow()
 			//a32.Reset()

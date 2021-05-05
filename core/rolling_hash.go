@@ -86,8 +86,8 @@ func (r *Radler32) Roll(b byte) byte {
 		Str("window", string(r.window)).
 		Int("len", len(r.window)).
 		Int("oldest", r.oldest).
-		Uint32("entering", enter).
-		Uint32("leaving", leave).
+		Str("entering", string(byte(enter))).
+		Str("leaving", string(byte(leave))).
 		Msg("roll")
 	r.window[r.oldest] = b
 	r.oldest += 1
