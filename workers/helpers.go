@@ -9,7 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -21,7 +20,7 @@ import (
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	spew.Dump(msg)
+	//spew.Dump(msg)
 	select {
 	case dst <- msg:
 		return nil

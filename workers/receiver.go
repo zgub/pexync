@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -313,7 +314,8 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 		Msgf("http  receiver - received %d bytes of data", buf.Len())
 
 	// write
-	//err = rc.(buf.Bytes())
+	dd, err := lfs.Deserialize(buf.Bytes())
+	spew.Dump(dd)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -389,7 +391,7 @@ LabelsInGo:
 				}
 			case core.WSQ:
 				/********************************************************************************************************
-				 * ignore this, local was developed to test the concept, that's why the serialize / deserialize detoure *
+				 * ignore this, local was developed to test the concept, that's why the serialize / deserialize detour  *
 				 ********************************************************************************************************/
 				data, err := msg.DataDesc.Serialize()
 				if err != nil {

@@ -3,6 +3,8 @@ package core
 import (
 	"hash"
 	"hash/adler32"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -80,6 +82,13 @@ func (r *Radler32) Roll(b byte) byte {
 	// extract the entering/leaving bytes and update the circular buffer.
 	enter := uint32(b)
 	leave := uint32(r.window[r.oldest])
+	log.Trace().
+		Str("window", string(r.window)).
+		Int("len", len(r.window)).
+		Int("oldest", r.oldest).
+		Uint32("entering", enter).
+		Uint32("leaving", leave).
+		Msg("roll")
 	r.window[r.oldest] = b
 	r.oldest += 1
 	if r.oldest >= len(r.window) {
@@ -89,4 +98,9 @@ func (r *Radler32) Roll(b byte) byte {
 	r.a = (r.a + Mod + enter - leave) % Mod
 	r.b = (r.b + (r.n*leave/Mod+1)*Mod + r.a - (r.n * leave) - 1) % Mod
 	return byte(leave)
+}
+
+// return the window
+func (r *Radler32) GetWindow() []byte {
+	return r.window
 }

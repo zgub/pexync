@@ -128,6 +128,13 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 	// data descriptor
 	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
 
+	//dumpF, err := os.Create("roll.out")
+	//if err != nil {
+	//	log.Fatal().Err(err).Msg("failed to open file")
+	//}
+	//dw := bufio.NewWriter(io.Writer(dumpF))
+	//defer dumpF.Close()
+	//a32 := adler32.New()
 	// let's roll
 	for {
 		// check the dd data size
@@ -159,7 +166,10 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 
 		if hIndex, ok := w.hMap[sum]; ok {
 			// MATCH !!!
-
+			log.Trace().
+				Str("data", string(buf.Bytes())).
+				Uint32("index", sum).
+				Msg("match")
 			err := dd.WriteIndex(int64(hIndex))
 			if err != nil {
 				return errors.Wrapf(err, "roll reader %d - failed to write index data description", w.myID)
@@ -170,10 +180,20 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 			// it might hold some old data from a byte by byte roll run
 			if int64(buf.Len()) < msg.FileDesc.BlockSize {
 				// reset the buffer this time, to avoid appending
-				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize-int64(buf.Len()))
+				delta := msg.FileDesc.BlockSize - int64(buf.Len())
+				n, err = io.CopyN(buf, br, delta)
+				log.Trace().
+					Int64("delta", delta).
+					Int64("loaded bytes", n).
+					Str("data", string(buf.Bytes())).
+					Msg("partial load after match")
 			} else {
 				buf.Reset()
 				n, err = io.CopyN(buf, br, msg.FileDesc.BlockSize)
+				log.Trace().
+					Int64("loaded bytes", n).
+					Str("data", string(buf.Bytes())).
+					Msg("full load after match")
 			}
 			if n == 0 {
 				if err == io.EOF {
@@ -194,6 +214,7 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 			// we have old buf in rh window
 			// we have new data in the buf
 			nb, err := buf.ReadByte()
+			fmt.Printf("nb: >n>%s<n<\n", string(nb))
 			if err == io.EOF {
 				// empty buffer
 				// load a new block of data
@@ -218,6 +239,17 @@ func (w *RollReader) rollV2(msg *core.Message) error {
 				continue
 			}
 			ob := rh.Roll(nb)
+			fmt.Printf("ob: >o>%s<o< nb: >n>%s<n<\n", string(ob), string(nb))
+			//////////////////////////////////////
+			//window := rh.GetWindow()
+			//a32.Reset()
+			//a32.Write(window)
+			//_, err = dw.Write(window)
+			//if err != nil {
+			//	log.Fatal().Err(err).Msg("unabe to write data")
+			//}
+			//_, err = dw.WriteString(fmt.Sprintf(" len: %d rsum: %d asum: %d\n", len(window), rh.Sum32(), a32.Sum32()))
+			/////////////////////////////////////
 			err = dd.WriteByte(ob)
 			if err != nil {
 				return errors.Wrapf(err, "roll reader %d - failed to write bytes into data description", w.myID)

@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -91,7 +90,7 @@ AnotherLabel:
 			w.dataSeq[seq] = msg.DataDesc
 			if seq == w.pSeq {
 				// if we hae data at the current sequence, call writer
-				spew.Dump(msg)
+				//spew.Dump(msg)
 				err = w.writeToFile()
 				if err != nil {
 					if err == lfs.ErrEOF {
@@ -132,7 +131,7 @@ AnotherLabel:
 func (w *FileWriter) writeToFile() error {
 	fmt.Printf("==========> write() - sequence %d, write() start \n", w.pSeq)
 	dd := w.dataSeq[w.pSeq]
-	spew.Dump(dd.Bytes())
+	//spew.Dump(dd.Bytes())
 	br := bytes.NewReader(dd.Bytes())
 
 	for z := 0; ; z++ {
