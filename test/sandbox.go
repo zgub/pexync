@@ -296,9 +296,15 @@ func RollV3(srcS, dstS string) {
 		}
 	}
 	w := rh.GetWindow()
-	out = append(out, w...)
+	if len(w) > 0 {
+		out = append(out, w...)
+	}
+	if buf.Len() > 0 {
+		out = append(out, buf.Bytes()...)
+	}
 	fmt.Printf("src:\t%s\n", srcS)
 	fmt.Printf("out:\t%s\n", out)
 	fmt.Printf("dst:\t%s\n", dstS)
 	fmt.Printf("index hits: %d, uniques bytes: %d\n", idx, bts)
+	fmt.Printf("buf: %s\n", buf)
 }
