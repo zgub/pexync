@@ -51,11 +51,12 @@ func TestRhash(t *testing.T) {
 		}
 		rn++
 		window := data[i+1 : i+9]
-		t.Logf("rh window %s, a32 window %s", rh.window, window)
+
 		a32.Reset()
 		a32.Write(window)
 		aSum := a32.Sum32()
 		rSum := rh.Sum32()
+		t.Logf("rh window %s sum: %d, a32 window %s sum: %d", rh.window, rh.Sum32(), window, a32.Sum32())
 		if aSum != rSum {
 			t.Fatalf("rolling hash fail, adler32(%v) = %d != radler32(%v) = %d", string(window), aSum, string(rh.window), rSum)
 		}
