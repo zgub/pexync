@@ -28,7 +28,7 @@ type FileWriter struct {
 	rBuf, wBuf []byte
 	bw         *bufio.Writer
 	sr         *io.SectionReader
-	br         *bufio.Reader
+	//br         *bufio.Reader
 }
 
 func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
@@ -66,7 +66,7 @@ func (w FileWriter) Start() error {
 		}
 		r := io.ReaderAt(f)
 		w.sr = io.NewSectionReader(r, 0, int64(w.srcFd.FileSize))
-		w.br = bufio.NewReader(w.sr)
+		//w.br = bufio.NewReader(w.sr)
 		defer f.Close()
 	}
 
@@ -175,7 +175,7 @@ func (w *FileWriter) writeToFile() error {
 					Int64("seek", n).
 					Int64("location", v*w.srcFd.BlockSize).
 					Msg("seek")
-				_, err = io.CopyN(w.bw, w.br, w.srcFd.BlockSize)
+				_, err = io.CopyN(w.bw, w.sr, w.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}

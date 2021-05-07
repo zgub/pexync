@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"time"
 	"unicode/utf8"
 )
 
@@ -168,6 +169,8 @@ func CreateRandPair(bs, l int64) ([]int, error) {
 }
 
 func randPair(bs int64, l int64) (*TestData, error) {
+
+	rand.Seed(time.Now().UnixNano())
 
 	a32 := adler32.New()
 	t := &TestData{
