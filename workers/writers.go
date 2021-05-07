@@ -160,7 +160,6 @@ func (w *FileWriter) writeToFile() error {
 			w.bw.Flush()
 		case lfs.Index:
 			// indexes
-			fmt.Printf("========> c: %d writing sequence %d, writting index \n", z, w.pSeq)
 			hIndex := make([]int64, header.Len)
 			err = binary.Read(br, binary.BigEndian, hIndex)
 			if err != nil {
@@ -168,7 +167,14 @@ func (w *FileWriter) writeToFile() error {
 			}
 			for _, v := range hIndex {
 				fmt.Printf("========> c: %d writing sequence %d, writting index %d \n", z, w.pSeq, v)
-				w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
+				n, err := w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
+				if err != nil {
+					return errors.Wrap(err, "failed to seekd")
+				}
+				log.Trace().
+					Int64("seek", n).
+					Int64("location", v*w.srcFd.BlockSize).
+					Msg("seek")
 				_, err = io.CopyN(w.bw, w.br, w.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")

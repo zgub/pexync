@@ -3,6 +3,7 @@ package test
 import (
 	"bufio"
 	"fmt"
+	"hash/adler32"
 	"io"
 	"math/rand"
 	"os"
@@ -110,4 +111,103 @@ func CreateTestFile(dir, name string, blockSize, blockCount int, t testFileType)
 	bw.Flush()
 	f.Sync()
 	return path, nil
+}
+
+type TestData struct {
+	Src     [][]byte
+	Dst     [][]byte
+	HitList []int
+	HashMap map[uint32][]byte
+}
+
+func CreateRandPair(bs, l int64) ([]int, error) {
+	srcF, err := os.Create("testfiles/rand-test-file")
+	if err != nil {
+		return nil, err
+	}
+	defer srcF.Close()
+	dstF, err := os.Create("Xync/rand-test-file")
+	if err != nil {
+		return nil, err
+	}
+	defer dstF.Close()
+	td, err := randPair(bs, l)
+	if err != nil {
+		return nil, err
+	}
+
+	srcbw := bufio.NewWriter(srcF)
+	dstbw := bufio.NewWriter(dstF)
+
+	for _, b := range td.Src {
+		_, err := srcbw.Write(b)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	for _, b := range td.Dst {
+		_, err = dstbw.Write(b)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = srcbw.Flush()
+	if err != nil {
+		return nil, err
+	}
+	err = dstbw.Flush()
+	if err != nil {
+		return nil, err
+	}
+	srcF.Sync()
+	dstF.Sync()
+
+	return td.HitList, nil
+}
+
+func randPair(bs int64, l int64) (*TestData, error) {
+
+	a32 := adler32.New()
+	t := &TestData{
+		HashMap: make(map[uint32][]byte),
+	}
+
+	for i := int64(0); i < l; i++ {
+		a32.Reset()
+		d, err := getRandBytes(int(bs))
+		if err != nil {
+			return nil, err
+		}
+		a32.Write(d)
+		t.HashMap[a32.Sum32()] = d
+		t.Dst = append(t.Dst, d)
+	}
+
+	for i := int64(0); i < l; i++ {
+		r := rand.Intn(int(bs))
+		rd, err := getRandBytes(r)
+		if err != nil {
+			return nil, err
+		}
+		t.Src = append(t.Src, rd)
+		rp := rand.Intn(int(l))
+		t.HitList = append(t.HitList, rp)
+		t.Src = append(t.Src, t.Dst[rp])
+	}
+	r := rand.Intn(int(bs))
+	rd, err := getRandBytes(r)
+	if err != nil {
+		return nil, err
+	}
+	t.Src = append(t.Src, rd)
+
+	return t, nil
+}
+
+func getRandBytes(l int) ([]byte, error) {
+	buf := make([]byte, l)
+	_, err := rand.Read(buf)
+	return buf, err
 }
