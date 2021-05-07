@@ -84,7 +84,6 @@ type DataDesc struct {
 }
 
 func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
-	fmt.Printf("*** new dd seq: %d\n", sequence)
 	return &DataDesc{
 		fileIndex: fileIndex,
 		readBuf:   new(bytes.Buffer),

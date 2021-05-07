@@ -94,7 +94,6 @@ AnotherLabel:
 				err = w.writeToFile()
 				if err != nil {
 					if err == lfs.ErrEOF {
-						fmt.Println("ErrEOF")
 						break AnotherLabel
 					}
 					return errors.Wrap(err, "unable to write file")
