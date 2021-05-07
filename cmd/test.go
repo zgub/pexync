@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/zgub/pexync/test"
@@ -44,6 +45,26 @@ func testTasks() {
 		createTestFiles(XXX_YYY)
 	case "B":
 		test.ReadBenchmark()
+	case "R":
+		srcS := "123x456y789z0?!"
+		dstS := "123789u"
+		testS := "@#$%^123tt789u"
+
+		test.RollV3(srcS, dstS)
+
+		for _, s := range testS {
+			srcS += string(s)
+			test.RollV3(srcS, dstS)
+		}
+	case "RP":
+		hitList, err := test.CreateRandPair(700, 10)
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Caller().
+				Msg("failed to create files")
+		}
+		spew.Dump(hitList)
 	default:
 		log.Fatal().
 			Msg("unknown scenario")
