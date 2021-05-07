@@ -3,7 +3,7 @@
 ## Functionality
 
 - parallel read and writes - configurable
-- gzip compression
+- gzip compression, both ways
 - local sync
 - json + simple binary protocol over http
 - Adler32 for block hash on the receiver side, rolling Adler32 on the sender side, sha1 used instead of MD4 compared to rsync
