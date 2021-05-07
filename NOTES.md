@@ -27,6 +27,7 @@
 - [ ] tests!
 - [ ] validation at transfer end
 - [ ] sender state (reset after aaa)
+- [ ] make sure to not send the same file
 
 ## Ideas
 
