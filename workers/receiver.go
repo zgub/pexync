@@ -172,9 +172,9 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// store!
 				rc.srcList[srcFd.Idx] = srcFd
 
-				// determine what has changed, if permission and/or modtime only, do not set it to diff
-
 				if !srcFd.IsDir {
+					// a file that exists and is not dir
+
 					// treat "remote" files smaller than block sizes as missing
 					if uint64(srcFd.BlockSize) >= dstFd.FileSize {
 						srcFd.State = lfs.Missing
@@ -192,6 +192,16 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 							return nil, errors.Wrap(err, "error changing metadata")
 						}
 						srcFd.State = lfs.Skip
+					}
+					// determine what has changed, if permission and/or modtime only, do not set it to diff
+					if srcFd.FileSize == dstFd.FileSize {
+						// possibly the same file by contents
+						srcFd.State = lfs.Meta
+						dstFd.State = lfs.Meta
+						err = fixMeta(dstDir, srcFd, dstFd)
+						if err != nil {
+							return nil, errors.Wrap(err, "error changing metadata")
+						}
 					}
 				} else {
 					log.Trace().

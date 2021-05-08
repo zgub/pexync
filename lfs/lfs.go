@@ -30,7 +30,7 @@ var ErrEOF = errors.New("end of file transmission")
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
-	"META"
+	"META",
 	"SKIP",
 }
 
