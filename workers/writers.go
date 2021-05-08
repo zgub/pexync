@@ -19,15 +19,15 @@ import (
 )
 
 type FileWriter struct {
-	ctx        context.Context
-	inbox      chan *core.Message
-	senderID   uuid.UUID
-	srcFd      *lfs.FileDesc
-	dataSeq    map[int64]*lfs.DataDesc
-	pSeq       int64 //"pointer" to the last sequence writtn
-	rBuf, wBuf []byte
-	bw         *bufio.Writer
-	sr         *io.SectionReader
+	ctx      context.Context
+	inbox    chan *core.Message
+	senderID uuid.UUID
+	srcFd    *lfs.FileDesc
+	//dataSeq    map[int64]*lfs.DataDesc
+	pSeq int64 //"pointer" to the last sequence writtn
+	//rBuf, wBuf []byte
+	bw *bufio.Writer
+	sr *io.SectionReader
 	//br         *bufio.Reader
 }
 
@@ -37,9 +37,7 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox 
 		srcFd:    fd,
 		inbox:    inbox,
 		senderID: uuid,
-		dataSeq:  make(map[int64]*lfs.DataDesc),
-		rBuf:     make([]byte, fd.BlockSize),
-		wBuf:     make([]byte, fd.BlockSize),
+		//dataSeq:  make(map[int64]*lfs.DataDesc),
 	}
 }
 
@@ -104,6 +102,7 @@ AnotherLabel:
 					Int64("expecting", w.pSeq).
 					Msg("out of order")
 			}
+
 		}
 	}
 
