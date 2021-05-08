@@ -13,6 +13,7 @@ import (
 )
 
 func init() {
+
 	rootCmd.AddCommand(localCmd)
 }
 
@@ -29,6 +30,7 @@ var (
 
 func startLocalSync() {
 
+	// silly but it can be changed by viper.Set and it's used like this in tests
 	dstDir := viper.GetString("destination")
 
 	if dstDir == "/" {
@@ -58,10 +60,10 @@ func startLocalSync() {
 
 	sender := workers.NewLocalSender(ctx, list, local, remote)
 
-	g.Go(func() error { return sender.Start() })
+	g.Go(sender.Start)
 
 	receiver := workers.NewLocalReceiver(ctx, remote, local)
-	g.Go(func() error { return receiver.Start() })
+	g.Go(receiver.Start)
 
 	if err := g.Wait(); err == nil {
 		log.Info().

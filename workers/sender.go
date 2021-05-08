@@ -2,7 +2,6 @@ package workers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,37 +16,164 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// LocalSender represents blah balh
-type LocalSender struct {
-	ctx      context.Context
-	srcList  []*lfs.FileDesc
-	inbox    <-chan *core.Message
-	receiver chan<- *core.Message
-	uuid     uuid.UUID
+type sender struct {
+	ctx                  context.Context
+	srcList              []*lfs.FileDesc
+	uuid                 uuid.UUID
+	diffList, missList   []*lfs.FileDesc
+	g                    *errgroup.Group
+	rrCh, brCh, receiver chan *core.Message
 }
 
-func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan<- *core.Message) *LocalSender {
-	return &LocalSender{
-		ctx:      ctx,
-		srcList:  fl,
-		inbox:    in,
-		receiver: receiver,
-		uuid:     uuid.New(),
+func (s *sender) getSrcList() error {
+	// perform directory listing
+	list, err := lfs.ParseDir(viper.GetString("source"))
+	if err != nil {
+		return errors.Wrap(err, "http sender - directory parsing failed")
 	}
-}
 
-func (w *LocalSender) Start() error {
-
-	// calculate block sizes
-	for _, fd := range w.srcList {
+	// calculate blocksizes for each file
+	for _, fd := range list {
 		if !fd.IsDir {
 			fd.SetBlockSize()
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
-				Int64("block size calculated", fd.BlockSize).
-				Msg("local sender")
+				Int64("calculated block size", fd.BlockSize).
+				Msg("http sender")
 		}
+	}
+
+	s.srcList = list
+
+	return nil
+}
+
+func (s *sender) parseRemoteList(msg *core.Message) {
+	// prepare a slice with the delta
+	diff := make([]*lfs.FileDesc, 0)
+	miss := make([]*lfs.FileDesc, 0)
+	for _, fd := range msg.FileList {
+		if fd.State == lfs.Missing && !fd.IsDir {
+			// new file
+			log.Debug().
+				Int64("block size", fd.BlockSize).
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msgf("local sender %s", fd.State.String())
+			miss = append(miss, fd)
+		} else if fd.State == lfs.Diff {
+			// diff file
+			log.Debug().
+				Int64("block size", fd.BlockSize).
+				Int("hashes count", len(fd.Weak)).
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msgf("local sender %s", fd.State.String())
+			diff = append(diff, fd)
+
+		} else {
+			// skipped file
+			log.Debug().
+				Str("file", fd.Prefix+"/"+fd.FileName).
+				Msgf("local sender %s", fd.State.String())
+		}
+	}
+	s.diffList = diff
+	s.missList = miss
+}
+
+func (s *sender) spawnReaders() {
+	ccIo := viper.GetInt("io_concurrency")
+	dCtx := context.Context(s.ctx)
+
+	// spawn readers if we have diff files
+	if len(s.diffList) > 0 {
+		log.Debug().
+			Msg("local sender - spawning roll readers")
+
+		for i := 0; i < ccIo; i++ {
+			rr := NewRollReader(dCtx, s.rrCh, s.receiver)
+			s.g.Go(rr.Start)
+		}
+	}
+
+	// spawn missing file senders if we have missing files
+	if len(s.missList) > 0 {
+		log.Debug().
+			Msg("local sender - spawning bytes readers")
+
+		for i := 0; i < ccIo; i++ {
+			br := NewBytesReader(dCtx, s.brCh, s.receiver)
+			s.g.Go(br.Start)
+		}
+	}
+}
+
+func (s *sender) sendData() {
+
+	// send data - diff first
+	for _, fd := range s.diffList {
+
+		s.rrCh <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+
+	// new files next
+	for _, fd := range s.missList {
+
+		s.brCh <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.RSQ,
+			Offset:   0,
+			Limit:    int64(fd.FileSize),
+		}
+	}
+}
+
+func (s *sender) stopReaders() {
+	ccIo := viper.GetInt("io_concurrency")
+	// all data sent, stop zee workerz
+	if len(s.diffList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			s.rrCh <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
+	if len(s.missList) > 0 {
+		for i := 0; i < ccIo; i++ {
+			s.brCh <- &core.Message{
+				Flag: core.FIN,
+			}
+		}
+	}
+}
+
+// LocalSender represents blah balh
+type LocalSender struct {
+	inbox <-chan *core.Message
+	sender
+}
+
+func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+	return &LocalSender{
+		sender: sender{
+			ctx:      ctx,
+			srcList:  fl,
+			uuid:     uuid.New(),
+			receiver: receiver,
+		},
+		inbox: in,
+	}
+}
+
+func (w *LocalSender) Start() error {
+
+	if err := w.getSrcList(); err != nil {
+		return err
 	}
 
 	// prepare a message for the receiver
@@ -62,7 +188,7 @@ func (w *LocalSender) Start() error {
 
 	err := sendWithTimeout(msg, w.receiver)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "local sender")
 	}
 
 	// receive the filelist with checksums
@@ -71,107 +197,25 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	// prepare a slice with the delta
-	diffList := make([]*lfs.FileDesc, 0)
-	missList := make([]*lfs.FileDesc, 0)
-	for _, fd := range msg.FileList {
-		if fd.State == lfs.Missing && !fd.IsDir {
-			// new file
-			log.Debug().
-				Int64("block size", fd.BlockSize).
-				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("local sender %s", fd.State.String())
-			missList = append(missList, fd)
-		} else if fd.State == lfs.Diff {
-			// diff file
-			log.Debug().
-				Int64("block size", fd.BlockSize).
-				Int("hashes count", len(fd.Weak)).
-				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("local sender %s", fd.State.String())
-			diffList = append(diffList, fd)
+	w.parseRemoteList(msg)
 
-		} else {
-			// skipped file
-			log.Debug().
-				Str("file", fd.Prefix+"/"+fd.FileName).
-				Msgf("local sender %s", fd.State.String())
-		}
-	}
+	// prepare for transfer
+	w.rrCh = make(chan *core.Message)
+	w.brCh = make(chan *core.Message)
+	w.g = new(errgroup.Group)
 
-	rrInbox := make(chan *core.Message)
-	brInbox := make(chan *core.Message)
-	ccIo := viper.GetInt("io_concurrency")
-	g := new(errgroup.Group)
-	dCtx := context.Context(w.ctx)
+	w.spawnReaders()
 
-	// spawn readers if we have diff files
-	if len(diffList) > 0 {
-		log.Debug().
-			Msg("local sender - spawning roll readers")
+	w.sendData()
 
-		for i := 0; i < ccIo; i++ {
-			rr := NewRollReader(dCtx, rrInbox, w.receiver)
-			g.Go(func() error { return rr.Start() })
-		}
-	}
+	w.stopReaders()
 
-	// spawn missing file senders if we have missing files
-	if len(missList) > 0 {
-		log.Debug().
-			Msg("local sender - spawning bytes readers")
-
-		for i := 0; i < ccIo; i++ {
-			log.Debug().
-				Msgf("local sender - starting byte reader: %d", i)
-			br := NewBytesReader(dCtx, brInbox, w.receiver)
-			g.Go(func() error { return br.Start() })
-		}
-	}
-
-	// send data - diff first
-	for _, fd := range diffList {
-
-		rrInbox <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
-		}
-	}
-
-	// new files next
-	for _, fd := range missList {
-
-		brInbox <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
-		}
-	}
-
-	// all data sent, stop zee workerz
-	if len(diffList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			rrInbox <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	}
-	if len(missList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			brInbox <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	}
 	// validate ???
 
 	// end
-	err = g.Wait()
+	err = w.g.Wait()
 	if err != nil {
-		return errors.Wrap(err, "file reader error")
+		return errors.Wrap(err, "local sender worker failed")
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
@@ -187,29 +231,26 @@ func (w *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	ctx  context.Context
-	uuid uuid.UUID
+	url    *url.URL
+	client *http.Client
+	sender
 }
 
-func NewHttpSender(ctx context.Context) *HttpSender {
-	return &HttpSender{
-		ctx:  ctx,
-		uuid: uuid.New(),
-	}
-}
-
-func (w *HttpSender) Start() error {
+func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 
 	// first, prepare http client
-	host := viper.GetString("remote_destination")
+	host := viper.GetString("remote_host")
 	port := viper.GetInt("port")
 
 	url, err := url.Parse(fmt.Sprintf("http://%s:%d", host, port))
 	if err != nil {
-		return errors.Wrap(err, "invalid URL")
+		return nil, errors.Wrap(err, "http sender - invalid URL")
 	}
 
-	url.Path += "/list"
+	log.Debug().
+		Str("remote host", host).
+		Int("port", port).
+		Msg("destiantion set")
 
 	defaultTimeout := viper.GetDuration("timeout")
 	ccIo := viper.GetInt("io_concurrency")
@@ -229,77 +270,80 @@ func (w *HttpSender) Start() error {
 		DisableCompression:    false,
 	}
 
-	client := &http.Client{
+	c := &http.Client{
 		Timeout:   defaultTimeout,
 		Transport: tr,
 	}
 
-	// perform directory listing
-	srcList, err := lfs.ParseDir(viper.GetString("source"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
+	s := &HttpSender{
+		url:    url,
+		client: c,
+		sender: sender{
+			ctx:      ctx,
+			uuid:     uuid.New(),
+			receiver: make(chan *core.Message),
+		},
 	}
 
-	for _, fd := range srcList {
-		if !fd.IsDir {
-			fd.SetBlockSize()
-			log.Trace().
-				Str("file name", fd.FileName).
-				Int64("file size", int64(fd.FileSize)).
-				Int64("block size calculated", fd.BlockSize).
-				Send()
-		}
+	return s, nil
+}
+
+func (w *HttpSender) Start() error {
+
+	if err := w.getSrcList(); err != nil {
+		return err
 	}
 
+	// create a new message for the other side
 	msg := &core.Message{
 		Flag:     core.INI,
 		UUID:     w.uuid,
-		FileList: srcList,
+		FileList: w.srcList,
 	}
 
-	jsonMsg, err := json.Marshal(msg)
-
-	buf, err := compress(jsonMsg)
+	// send
+	url := w.url.String() + "/list"
+	msg, err := w.sendJson(url, msg)
 	if err != nil {
-		return errors.Wrap(err, "error compressing data")
+		errors.Wrap(err, "http sender - send failed")
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url.String(), buf)
-	//req.Header.Set("X-Custom-Header", "myvalue")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "PeXync-client-mode")
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("Content-Encoding", "gzip")
+	w.parseRemoteList(msg)
+
+	// prepare for transfer
+	w.rrCh = make(chan *core.Message)
+	w.brCh = make(chan *core.Message)
+	ccIo := viper.GetInt("io_concurrency")
+	w.g = new(errgroup.Group)
+
+	// starting http senders
+	for i := 0; i < 2*ccIo; i++ {
+		log.Trace().
+			Msg("http sender - starting http client worker")
+		w.g.Go(w.dataSender)
+	}
+
+	w.spawnReaders()
+
+	w.sendData()
+
+	w.stopReaders()
+
+	// don't forget zee http senderz
+	for i := 0; i < 2*ccIo; i++ {
+		w.receiver <- &core.Message{
+			Flag: core.FIN,
+		}
+	}
+
+	// end
+	err = w.g.Wait()
 	if err != nil {
-		return errors.Wrap(err, "error creating http request")
+		return errors.Wrap(err, "http sender worker failed")
 	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "error connecting server")
-	}
-
-	defer resp.Body.Close()
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-
-	buf, err = decompress(resp.Body)
-	if err != nil {
-		return errors.Wrap(err, "error reading server response")
-	}
-
-	msg = &core.Message{}
-	err = json.Unmarshal(buf.Bytes(), msg)
-	if err != nil {
-		return errors.Wrap(err, "error reading server response")
-	}
-
-	//spew.Dump(msg)
+	// do not send FIN to remote workers vi http
+	log.Trace().
+		Msg("http sender - finished")
 
 	return nil
 }

@@ -50,15 +50,9 @@ func (r *Radler32) Write(data []byte) (int, error) {
 		return 0, nil
 	}
 
-	// shuffle
-	n := len(r.window)
-	if r.oldest != 0 {
-		tmp := make([]byte, r.oldest)
-		copy(tmp, r.window[:r.oldest])
-		copy(r.window, r.window[r.oldest:])
-		copy(r.window[n-r.oldest:], tmp)
-		r.oldest = 0
-	}
+	// sort first
+	r.sort()
+
 	r.window = append(r.window, data...)
 
 	r.adler32.Reset()
@@ -67,6 +61,17 @@ func (r *Radler32) Write(data []byte) (int, error) {
 	r.a, r.b = s&0xffff, s>>16
 	r.n = uint32(len(r.window)) % Mod
 	return len(data), nil
+}
+
+func (r *Radler32) sort() {
+	n := len(r.window)
+	if r.oldest != 0 {
+		tmp := make([]byte, r.oldest)
+		copy(tmp, r.window[:r.oldest])
+		copy(r.window, r.window[r.oldest:])
+		copy(r.window[n-r.oldest:], tmp)
+		r.oldest = 0
+	}
 }
 
 // Sum32 returns the hash as a uint32
@@ -80,6 +85,15 @@ func (r *Radler32) Roll(b byte) byte {
 	// extract the entering/leaving bytes and update the circular buffer.
 	enter := uint32(b)
 	leave := uint32(r.window[r.oldest])
+	/*
+		log.Trace().
+			Bytes("window", r.window).
+			Int("len", len(r.window)).
+			Int("oldest", r.oldest).
+			Str("entering", string(byte(enter))).
+			Str("leaving", string(byte(leave))).
+			Msg("roll")
+	*/
 	r.window[r.oldest] = b
 	r.oldest += 1
 	if r.oldest >= len(r.window) {
@@ -89,4 +103,10 @@ func (r *Radler32) Roll(b byte) byte {
 	r.a = (r.a + Mod + enter - leave) % Mod
 	r.b = (r.b + (r.n*leave/Mod+1)*Mod + r.a - (r.n * leave) - 1) % Mod
 	return byte(leave)
+}
+
+// return the window
+func (r *Radler32) GetWindow() []byte {
+	r.sort()
+	return r.window
 }

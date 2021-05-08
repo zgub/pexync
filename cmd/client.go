@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	dstHost   string
 	clientCmd = &cobra.Command{
 		Use:   "client",
 		Short: "synchronize given directory with remote PeXync server",
@@ -20,26 +21,37 @@ var (
 	}
 )
 
+func init() {
+	clientCmd.Flags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
+	err := viper.BindPFlag("remote_host", clientCmd.Flags().Lookup("remote-host"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+
+	rootCmd.AddCommand(clientCmd)
+}
+
 func startClient() {
-
-	dstDir := viper.GetString("destination")
-
-	log.Info().
-		Str("destination set", dstDir).
-		Msg("starting")
 
 	ctx := context.Background()
 	log.Info().
 		Msg("starting remote sync")
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	httpSender := workers.NewHttpSender(ctx)
-	err := httpSender.Start()
+	httpSender, err := workers.NewHttpSender(ctx)
 	if err != nil {
 		log.Error().
 			Err(err).
-			Msg("error")
+			Msg("unable to create http sender")
+	}
+	err = httpSender.Start()
+	if err != nil {
+		log.Error().
+			Err(err).
+			Msg("unable to start http sender")
 	}
 
 }

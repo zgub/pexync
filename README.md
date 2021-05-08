@@ -1,79 +1,25 @@
-# pexync
+# PeXync
 
-## TODO
+## Functionality
 
-- [x] fetch blockSize from viper and overwrite calculated size
-- [x] blocksize to be calculated
-- [ ] study the rolling adler32
-- [x] test the checksums
-- [x] test various readers with paralelism
-- [ ] decide when use single file send, single goroutine send, multiple goroutine send
-- [ ] receiver should stop all go routines at RST
-- [ ] do not create cfg file automaticaly, add a command **confgen**
-- [ ] permissions / ownership / sha1 receiver comparison
-- [x] missing file sender
-- [ ] multicore
-- [ ] remove unnecessary pointers
-- [ ] struct padding adjustment
-- [ ] context.Done should send FIN to all workers
-- [ ] proto checksums?
-- [ ] change only meta if only meta was changed add **META** flag!!!
-- [ ] UUID and AAA
-- [ ] contexts
-- [ ] switch local / remote
-- [ ] fail when remote host is not specified
-- [ ] validate inputs
-- [ ] do I need fileindex????? (WHOA) seem not
-- [ ] tests!
+- parallel read and writes - configurable
+- gzip compression, both ways
+- local sync
+- json + simple binary protocol over http
+- Adler32 for block hash on the receiver side, rolling Adler32 on the sender side, sha1 used instead of MD4 compared to rsync
 
-## Ideas
+## Notes
 
-1. destination reader moze pouzit **SectionReader** na rychlejsie paralelne vyratanie adler32 suctov ak bude __sectionSize nasobok blockSize__
-1. source reader **zda sa** nemoze pouzivat section reader, lebo robime rolling checksum a ~~neviem ako vyriesit hranice sekcii~~, jedine ze by sme recyklovali sekcie, **sectionSize musi byt tiez nasobok blockSize**
-1. pouzivanie sekcii nema zmysel pri malych suboroch, tie nema asi zmysel ani robit diff, menej ako stovky bajtov
-1. mime/multipart?
-1. send blocks as they come
-1. ctx, cancel = context.WithTimeout(context.Background(), timeout)
-1. ~~worker management? (in case one fails?)~~ not in first version
-1. Sha1 comparisson auto || on demand? (will require Sha1 hash calculation at first GetList call)
+- still a lot of duplicate code, especially between local and http receiver / sender as local sender / receiver were developed first to test concepts
+- few benchmarks were performed to decide what readers to use, best compromise was to use buffered readers even with the section reader beneath
+- the httpSender -(spawn)-> readers -(spawn)-> http sender goroutine design is cause by the initial local sender design, I would have to rewrite the local sender OR write a new dedicated sender as those readers expect a receiver channel, that's why there is another worker responsible just for the http clients. However I expect the disk I/o to be the slowest part on both sides, so this should not impact the performance much. It's just not very elegant, readable...
 
-## Design concepts
+## Stretch goals / what could be added
 
-1. connect
-2. auth?
-3. sender posle filelist, alebo posiela priebezne
-4. receiver dostane filelist a porovna ho s tym co ma
-    1. worker pool dostane sekcie a bude vracat checksumy
-    2. collector worker ich spravne zaradi k suborom
-    3. vygeneruje sa checksum list pre kazdy subok
-    4. posle sa senderovi
-5. ak --delete zmaze nesync data
-6. pre kazdy file vznikne jedna alebo dve goroutinny
-7. data stream headers
+- more clients / one sever
+- continue after network outage
 
-### sender reader
+## What was avoided
 
-- fajl mensi ako 700 bytov je preneseny cely vzdy
-  - ak cokolvek nesedi, posle sa cely
-- fajl mensi ako 700 x 700 b ma blocksize 700
-- fajl vacsi ako 490 000b ma blocksize = sqrt(size)
-  - ak je fajl mensi ako 1GB **treba upresnit**, pouzije sa nebufferovany  
-
-## Stretch goals
-
-1. TLS
-1. --delete
-1. AAA
-
-## Progress
-
-1. checksum core concepts done, still have to understand the rolling adler32
-1. let's first do the local sync and add remote later on
-
-## Scenarios
-
-- blockSize = 4
- N N M M M M
-[       ] does not match, do nothing, adds to the oldBuff
-  [       ] does not match, add N to buffer
-    [       ] does match, add match to the buffer and seeks + blocksize
+- transfer encryption. My opinion regarding tools / utilities is "UX like", that a tool / utility should do **ONE** thing very well and leave the other specialized tools do their stuff the best way they can. My experience is that if a for example a data engineer writes encryption code, it's usually badly implemented standard. There are plenty of already existing https proxies I would use, instead of writing my own as I am not a (security / encryption ) developer, but more a devops guy that utilizes every existing handy tool around. Anyway it shouldn't be that difficult to implement though, with some already existing libraries, but it would be the same as using a proxy. Envoy / Nginx / Traefik and many more.
+- server side data encryption - same reason. Anyway if I was implementing a secure backup, I'd rather create an encrypted FS or use encrypted storage, rather than using software encryption. Much safer.
