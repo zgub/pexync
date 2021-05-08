@@ -20,7 +20,8 @@ type State int16
 
 const (
 	Missing State = iota // no file on the receiver side
-	Diff                 // file exists but do not match
+	Diff                 // file exists but has different file size
+	Meta                 // file exists, has the same filesize but different meta
 	Skip                 // file exists and matches
 )
 
@@ -29,6 +30,7 @@ var ErrEOF = errors.New("end of file transmission")
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
+	"META"
 	"SKIP",
 }
 
