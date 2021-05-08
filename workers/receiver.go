@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -315,7 +314,33 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 
 	// write
 	dd, err := lfs.Deserialize(buf.Bytes())
-	spew.Dump(dd)
+
+	fi := dd.FileIndex()
+
+	if fileWriter, ok := rc.writersMap[fi]; ok {
+		fileWriter.inbox <- &core.Message{
+			Flag:     core.WSQ,
+			DataDesc: dd,
+		}
+	} else {
+		// new file, new writer
+		log.Debug().
+			Str("filename", rc.srcList[dd.FileIndex()].FileName).
+			Msg("receiver - starting new writter")
+		inbox := make(chan *core.Message)
+		// create new file writer worker
+		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
+		// add it to the lookup map
+		rc.writersMap[fi] = fr
+		// send a new message
+		rc.fileWriters.Go(fr.Start)
+		fr.inbox <- &core.Message{
+			Flag: core.WSQ,
+			//FileDesc: w.srcList[fi],
+			DataDesc: dd,
+		}
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().

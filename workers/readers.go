@@ -354,7 +354,6 @@ func (w *BytesReader) Start() error {
 								FileDesc: msg.FileDesc,
 								DataDesc: dd,
 							}
-							fmt.Println("8888888888888888888888888888888888888888888")
 							err = sendWithTimeout(nMsg, w.receiver)
 							if err != nil {
 								return errors.Wrap(err, "error sending data")
