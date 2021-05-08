@@ -388,7 +388,7 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-LabelsInGo:
+:
 	for {
 		select {
 		case <-w.ctx.Done():
