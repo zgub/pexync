@@ -19,25 +19,23 @@ import (
 )
 
 type FileWriter struct {
-	ctx      context.Context
-	inbox    chan *core.Message
-	senderID uuid.UUID
-	srcFd    *lfs.FileDesc
-	//dataSeq    map[int64]*lfs.DataDesc
-	pSeq int64 //"pointer" to the last sequence writtn
-	//rBuf, wBuf []byte
-	bw *bufio.Writer
-	sr *io.SectionReader
-	//br         *bufio.Reader
+	ctx       context.Context
+	inbox     chan *core.Message
+	senderID  uuid.UUID
+	srcFd     *lfs.FileDesc
+	seqBuffer map[int64]*lfs.DataDesc
+	pSeq      int64 // last sequence written
+	bw        *bufio.Writer
+	sr        *io.SectionReader
 }
 
 func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
 	return FileWriter{
-		ctx:      ctx,
-		srcFd:    fd,
-		inbox:    inbox,
-		senderID: uuid,
-		//dataSeq:  make(map[int64]*lfs.DataDesc),
+		ctx:       ctx,
+		srcFd:     fd,
+		inbox:     inbox,
+		senderID:  uuid,
+		seqBuffer: make(map[int64]*lfs.DataDesc),
 	}
 }
 
@@ -64,7 +62,6 @@ func (w FileWriter) Start() error {
 		}
 		r := io.ReaderAt(f)
 		w.sr = io.NewSectionReader(r, 0, int64(w.srcFd.FileSize))
-		//w.br = bufio.NewReader(w.sr)
 		defer f.Close()
 	}
 
@@ -85,18 +82,40 @@ AnotherLabel:
 				Int64("seq", seq).
 				Int64("pSeq", w.pSeq).
 				Msg("file writer -  msg received")
-			w.dataSeq[seq] = msg.DataDesc
+			//w.dataSeq[seq] = msg.DataDesc
 			if seq == w.pSeq {
 				// if we hae data at the current sequence, call writer
 				//spew.Dump(msg)
-				err = w.writeToFile()
+				err = w.writeToFile(msg.DataDesc)
 				if err != nil {
 					if err == lfs.ErrEOF {
 						break AnotherLabel
 					}
 					return errors.Wrap(err, "unable to write file")
 				}
+				// increase the expected sequence number
+				w.pSeq++
+				// letch chekc whether we have some other data to write
+				haveCached := func() bool {
+					_, ok := w.seqBuffer[w.pSeq]
+					return ok
+				}
+				for haveCached() {
+					err = w.writeToFile(w.seqBuffer[w.pSeq])
+					if err != nil {
+						if err == lfs.ErrEOF {
+							break AnotherLabel
+						}
+						return errors.Wrap(err, "unable to write file")
+					}
+					// release memory
+					delete(w.seqBuffer, w.pSeq)
+					// increase the expected sequence number again
+					w.pSeq++
+				}
 			} else {
+				// out of order delivery, store it - there is only one writer goroutine per file, so the shouldn't be multiple accesses to this map
+				w.seqBuffer[msg.DataDesc.Seq()] = msg.DataDesc
 				log.Warn().
 					Int64("got", seq).
 					Int64("expecting", w.pSeq).
@@ -126,10 +145,8 @@ AnotherLabel:
 }
 
 // writeToFile reades a data stream and reconstructs a file based on headders
-func (w *FileWriter) writeToFile() error {
+func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	fmt.Printf("==========> write() - sequence %d, write() start \n", w.pSeq)
-	dd := w.dataSeq[w.pSeq]
-	//spew.Dump(dd.Bytes())
 	br := bytes.NewReader(dd.Bytes())
 
 	for z := 0; ; z++ {
@@ -186,6 +203,5 @@ func (w *FileWriter) writeToFile() error {
 			return errors.New("file writer - invalid header")
 		}
 	}
-	w.pSeq++
 	return nil
 }
