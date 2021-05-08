@@ -65,13 +65,13 @@ func (w FileWriter) Start() error {
 		defer f.Close()
 	}
 
-AnotherLabel:
+Loop:
 	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msg("file writer - closing, context done")
-			break AnotherLabel
+			break Loop
 		case msg := <-w.inbox:
 			if msg.Flag != core.WSQ {
 				return errors.New("file writer - invalide message type")
@@ -89,7 +89,7 @@ AnotherLabel:
 				err = w.writeToFile(msg.DataDesc)
 				if err != nil {
 					if err == lfs.ErrEOF {
-						break AnotherLabel
+						break Loop
 					}
 					return errors.Wrap(err, "unable to write file")
 				}
@@ -104,7 +104,7 @@ AnotherLabel:
 					err = w.writeToFile(w.seqBuffer[w.pSeq])
 					if err != nil {
 						if err == lfs.ErrEOF {
-							break AnotherLabel
+							break Loop
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
