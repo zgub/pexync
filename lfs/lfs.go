@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -384,78 +383,4 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	}
 
 	return list, nil
-}
-
-func DummyWriter(b []byte, name string) error {
-	var (
-		headerCnt, dataCnt, indexCnt int64
-	)
-	header := new(Header)
-	r := bytes.NewReader(b)
-	// read global
-	err := binary.Read(r, binary.BigEndian, header)
-	if err != nil {
-		return errors.Wrap(err, "unable to dummy read ")
-	}
-	headerCnt++
-	log.Trace().
-		Int64("file-index", header.FileIndex).
-		Int64("offset", header.Offset).
-		Int64("section data length", header.Len).
-		Int64("sequence #", header.Seq).
-		Str("filename", name).
-		Msg("DummyWriter - section global header")
-	for {
-		// read data header global header
-		err = binary.Read(r, binary.BigEndian, header)
-		if err != nil {
-			if err == io.EOF {
-				log.Trace().
-					Msg("DummyWriter - EOF - while reading global header")
-				break
-			} else {
-				return errors.Wrap(err, "DummyWritter - error reading header data")
-			}
-		}
-		headerCnt++
-		switch Flag(header.Flag) {
-		case Data:
-			dataBuf := make([]byte, header.Len)
-			err = binary.Read(r, binary.BigEndian, dataBuf)
-			if err != nil {
-				if err == io.EOF {
-					log.Trace().
-						Msg("DummyWriter - EOF - while reading data")
-					break
-				} else {
-					return errors.Wrap(err, "DummyWriter - error reading data")
-				}
-			}
-			dataCnt += header.Len
-		case Index:
-			indexes := make([]int64, header.Len)
-			err = binary.Read(r, binary.BigEndian, indexes)
-			if err != nil {
-				if err == io.EOF {
-					log.Trace().
-						Msg("DummyWritter - EOF - while reading indexes")
-					break
-				} else {
-					return errors.Wrap(err, "DummyWriter - error reading index data")
-				}
-
-			}
-			indexCnt += header.Len
-		}
-
-	}
-	log.Trace().
-		Int64("headers", headerCnt).
-		Int64("bytes", dataCnt).
-		Int64("indexes", indexCnt).
-		Int64("file-index", header.FileIndex).
-		Str("filename", name).
-		Msg("decoded")
-
-	return nil
 }
