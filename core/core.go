@@ -20,7 +20,6 @@ const (
 	ERR             // error
 	FIN             // tels the woker to stop
 	ACK             // just ACK
-	END             // end of data transmission
 )
 
 var messageTypes = [...]string{
