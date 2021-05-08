@@ -119,7 +119,7 @@ AnotherLabel:
 				log.Warn().
 					Int64("got", seq).
 					Int64("expecting", w.pSeq).
-					Msg("out of order")
+					Msg("out of order - caching")
 			}
 
 		}
