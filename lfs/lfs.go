@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"path/filepath"
 
-	"syscall"
+	//"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -21,7 +20,8 @@ type State int16
 
 const (
 	Missing State = iota // no file on the receiver side
-	Diff                 // file exists but do not match
+	Diff                 // file exists but has different file size
+	Meta                 // file exists, has the same filesize but different meta
 	Skip                 // file exists and matches
 )
 
@@ -30,6 +30,7 @@ var ErrEOF = errors.New("end of file transmission")
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
+	"META",
 	"SKIP",
 }
 
@@ -343,7 +344,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			return errors.Wrap(err, "file stat info failed")
 		}
 
-		stat := info.Sys().(*syscall.Stat_t)
+		//stat := info.Sys().(*syscall.Stat_t)
 
 		relPath, err := filepath.Rel(walkDir, path)
 		if err != nil {
@@ -367,8 +368,8 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 				FileSize: uint64(info.Size()),
 				Modified: info.ModTime(),
 				Mode:     info.Mode(),
-				Uid:      stat.Uid,
-				Gid:      stat.Gid,
+				//Uid:      stat.Uid,
+				//Gid:      stat.Gid,
 			}
 
 			list = append(list, fileDesc)
@@ -384,78 +385,4 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	}
 
 	return list, nil
-}
-
-func DummyWriter(b []byte, name string) error {
-	var (
-		headerCnt, dataCnt, indexCnt int64
-	)
-	header := new(Header)
-	r := bytes.NewReader(b)
-	// read global
-	err := binary.Read(r, binary.BigEndian, header)
-	if err != nil {
-		return errors.Wrap(err, "unable to dummy read ")
-	}
-	headerCnt++
-	log.Trace().
-		Int64("file-index", header.FileIndex).
-		Int64("offset", header.Offset).
-		Int64("section data length", header.Len).
-		Int64("sequence #", header.Seq).
-		Str("filename", name).
-		Msg("DummyWriter - section global header")
-	for {
-		// read data header global header
-		err = binary.Read(r, binary.BigEndian, header)
-		if err != nil {
-			if err == io.EOF {
-				log.Trace().
-					Msg("DummyWriter - EOF - while reading global header")
-				break
-			} else {
-				return errors.Wrap(err, "DummyWritter - error reading header data")
-			}
-		}
-		headerCnt++
-		switch Flag(header.Flag) {
-		case Data:
-			dataBuf := make([]byte, header.Len)
-			err = binary.Read(r, binary.BigEndian, dataBuf)
-			if err != nil {
-				if err == io.EOF {
-					log.Trace().
-						Msg("DummyWriter - EOF - while reading data")
-					break
-				} else {
-					return errors.Wrap(err, "DummyWriter - error reading data")
-				}
-			}
-			dataCnt += header.Len
-		case Index:
-			indexes := make([]int64, header.Len)
-			err = binary.Read(r, binary.BigEndian, indexes)
-			if err != nil {
-				if err == io.EOF {
-					log.Trace().
-						Msg("DummyWritter - EOF - while reading indexes")
-					break
-				} else {
-					return errors.Wrap(err, "DummyWriter - error reading index data")
-				}
-
-			}
-			indexCnt += header.Len
-		}
-
-	}
-	log.Trace().
-		Int64("headers", headerCnt).
-		Int64("bytes", dataCnt).
-		Int64("indexes", indexCnt).
-		Int64("file-index", header.FileIndex).
-		Str("filename", name).
-		Msg("decoded")
-
-	return nil
 }

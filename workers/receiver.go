@@ -38,10 +38,10 @@ type receiver struct {
 	fileWriters *errgroup.Group // writters error group
 }
 
-// parsinf list from sender and adding remote information
+// parseSenderList parses a file list from sender and updates it with the information from destiantion
 func (rc receiver) parseSenderList(msg *core.Message) error {
 	rc.senderUUID = msg.UUID
-	log.Debug().
+	log.Trace().
 		Str("sender uuid", rc.senderUUID.String()).
 		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
 
@@ -97,14 +97,16 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	// make sure that we copy the block hashes!!
 	for dstFd, srcFd := range diffMap {
 		srcFd.Weak = dstFd.Weak
+		srcFd.Sha1 = dstFd.Sha1
 	}
 
 	return nil
 }
 
-// main function comparing sender dir listing with remote directory listing
+// compare is the main function comparing sender dir listing with destiantion directory listing
 func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
+	// pull from config
 	dstDir := viper.GetString("destination")
 
 	// check if the destination dir exists
@@ -115,6 +117,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 		return nil, err
 	}
 
+	// well if it ODES exist, let's list it
 	dstList, err := lfs.ParseDir(dstDir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to list directory %s", dstDir)
@@ -125,17 +128,22 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 	for _, dstFd := range dstList {
 		dstMap[dstFd.RelPath] = dstFd
 	}
+
+	// prepare the result = a map of differences
 	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
 	for _, srcFd := range rc.srcList {
+
 		path := dstDir + srcFd.RelPath
 		log.Trace().
-			Str("source filename relatinve path", srcFd.RelPath).
-			Str("constructed remote path", path).
-			Msg("receiver comparing - searching")
+			Str("source path", srcFd.RelPath).
+			Str("destination path", path).
+			Msg("receiver - lookup and compare")
+
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
 			// it does exist on destination
 			if srcFd.FileSize == dstFd.FileSize && srcFd.Modified == dstFd.Modified {
-				// check permission, modtime and ownership and aupdate if needed
+				// same size, same modification date, we're adding SHA1 so if only mod time was changed, we can skip it anyway on source
+				// check permission, modtime and ownership and update if needed
 				err = fixMeta(dstDir, srcFd, dstFd)
 				if err != nil {
 					return nil, errors.Wrap(err, "unable to fix metadata")
@@ -165,11 +173,11 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// store!
 				rc.srcList[srcFd.Idx] = srcFd
 
-				// determine what has changed, if permission and/or modtime only, do not set it to diff
-
 				if !srcFd.IsDir {
+					// a file that exists and is not dir
+
 					// treat "remote" files smaller than block sizes as missing
-					if uint64(srcFd.BlockSize) > dstFd.FileSize {
+					if uint64(srcFd.BlockSize) >= dstFd.FileSize {
 						srcFd.State = lfs.Missing
 						continue
 					}
@@ -186,6 +194,16 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 						}
 						srcFd.State = lfs.Skip
 					}
+					// determine what has changed, if permission and/or modtime only, do not set it to diff
+					if srcFd.FileSize == dstFd.FileSize {
+						// possibly the same file by contents
+						srcFd.State = lfs.Meta
+						dstFd.State = lfs.Meta
+						err = fixMeta(dstDir, srcFd, dstFd)
+						if err != nil {
+							return nil, errors.Wrap(err, "error changing metadata")
+						}
+					}
 				} else {
 					log.Trace().
 						Str("path", path).
@@ -200,7 +218,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 			}
 			continue
 		} else {
-			// it does not exist on destination, check if it's a ditrectory
+			// it does not exist on destination, check if it's a directory
 			if srcFd.IsDir {
 				// create directory
 				log.Debug().
@@ -388,14 +406,14 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-LabelsInGo:
+Loop:
 	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msg("receiver - closing, context done")
 			// send fin to all readers
-			break LabelsInGo
+			break Loop
 		case msg := <-w.inbox:
 			// received a message that is not a FIN
 			switch msg.Flag {
@@ -462,7 +480,7 @@ LabelsInGo:
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-				break LabelsInGo
+				break Loop
 			default:
 				return errors.New("unknown message received")
 			}

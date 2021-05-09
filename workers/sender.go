@@ -1,11 +1,16 @@
 package workers
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha1"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -49,7 +54,7 @@ func (s *sender) getSrcList() error {
 	return nil
 }
 
-func (s *sender) parseRemoteList(msg *core.Message) {
+func (s *sender) parseRemoteList(msg *core.Message) error {
 	// prepare a slice with the delta
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
@@ -61,13 +66,33 @@ func (s *sender) parseRemoteList(msg *core.Message) {
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("local sender %s", fd.State.String())
 			miss = append(miss, fd)
-		} else if fd.State == lfs.Diff {
+		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
 			// diff file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", fd.Prefix+"/"+fd.FileName).
 				Msgf("local sender %s", fd.State.String())
+			if fd.State == lfs.Meta {
+				sha1sh := sha1.New()
+				mf, err := os.Open(fd.Prefix + "/" + fd.FileName)
+				if err != nil {
+					return errors.Wrapf(err, "unable to read file: %s", fd.Prefix+"/"+fd.FileName)
+				}
+				r := io.Reader(mf)
+				br := bufio.NewReader(r)
+				_, err = io.Copy(sha1sh, br)
+				if err != nil {
+					return errors.Wrapf(err, "unable to read file: %s", fd.Prefix+"/"+fd.FileName)
+				}
+				rSha1 := fd.Sha1
+				lSha1 := sha1sh.Sum(nil)[:20]
+				if bytes.Equal(rSha1, lSha1) {
+					log.Trace().
+						Msgf("local sender - file: %s has matching SHA1 digest, skipping", fd.Prefix+"/"+fd.FileName)
+					continue
+				}
+			}
 			diff = append(diff, fd)
 
 		} else {
@@ -79,6 +104,7 @@ func (s *sender) parseRemoteList(msg *core.Message) {
 	}
 	s.diffList = diff
 	s.missList = miss
+	return nil
 }
 
 func (s *sender) spawnReaders() {
@@ -197,7 +223,10 @@ func (w *LocalSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	w.parseRemoteList(msg)
+	err = w.parseRemoteList(msg)
+	if err != nil {
+		return errors.Wrap(err, "failed parsong remote file listing")
+	}
 
 	// prepare for transfer
 	w.rrCh = make(chan *core.Message)
@@ -308,7 +337,10 @@ func (w *HttpSender) Start() error {
 		errors.Wrap(err, "http sender - send failed")
 	}
 
-	w.parseRemoteList(msg)
+	err = w.parseRemoteList(msg)
+	if err != nil {
+		return errors.Wrap(err, "local sender")
+	}
 
 	// prepare for transfer
 	w.rrCh = make(chan *core.Message)

@@ -65,13 +65,13 @@ func (w FileWriter) Start() error {
 		defer f.Close()
 	}
 
-AnotherLabel:
+Loop:
 	for {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msg("file writer - closing, context done")
-			break AnotherLabel
+			break Loop
 		case msg := <-w.inbox:
 			if msg.Flag != core.WSQ {
 				return errors.New("file writer - invalide message type")
@@ -89,7 +89,7 @@ AnotherLabel:
 				err = w.writeToFile(msg.DataDesc)
 				if err != nil {
 					if err == lfs.ErrEOF {
-						break AnotherLabel
+						break Loop
 					}
 					return errors.Wrap(err, "unable to write file")
 				}
@@ -104,7 +104,7 @@ AnotherLabel:
 					err = w.writeToFile(w.seqBuffer[w.pSeq])
 					if err != nil {
 						if err == lfs.ErrEOF {
-							break AnotherLabel
+							break Loop
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
@@ -137,6 +137,7 @@ AnotherLabel:
 	}
 
 	// now rename
+	fmt.Printf("renaming: %s to %s\n", tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
 	err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
 	if err != nil {
 		return errors.Wrap(err, "unable to replace file")
@@ -184,7 +185,7 @@ func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				fmt.Printf("========> c: %d writing sequence %d, writting index %d \n", z, w.pSeq, v)
 				n, err := w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
-					return errors.Wrap(err, "failed to seekd")
+					return errors.Wrap(err, "failed to seek")
 				}
 				log.Trace().
 					Int64("seek", n).
