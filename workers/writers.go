@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -50,7 +51,8 @@ func (w FileWriter) Start() error {
 		Msg("file writer - DIFF opening temporary file")
 
 	w.bw = bufio.NewWriter(io.Writer(tmpF))
-	oldPath := dstDir + "/" + w.srcFd.FileName
+	oldPath := filepath.Join(dstDir, w.srcFd.FileName)
+	fmt.Printf("path: %s\n", oldPath)
 	// open a reader as well if we have to reference alredy present blocks
 	if w.srcFd.State == lfs.Diff {
 		log.Trace().
@@ -124,11 +126,13 @@ Loop:
 
 		}
 	}
+	p := filepath.Join(dstDir, w.srcFd.FileName)
+	fmt.Printf("path: %s\n", p)
 
 	log.Trace().
 		Str("orig name", w.srcFd.FileName).
 		Str("temp file path", tmpF.Name()).
-		Str("rename to", dstDir+"/"+w.srcFd.FileName).
+		Str("rename to", p).
 		Msg("file writer - finished, renaming")
 
 	// first close
@@ -137,8 +141,9 @@ Loop:
 	}
 
 	// now rename
-	fmt.Printf("renaming: %s to %s\n", tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
-	err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
+
+	fmt.Printf("renaming: %s to %s\n", tmpF.Name(), p)
+	err = os.Rename(tmpF.Name(), p)
 	if err != nil {
 		return errors.Wrap(err, "unable to replace file")
 	}

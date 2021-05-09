@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -84,7 +85,8 @@ func (w *RollReader) Start() error {
 func (w *RollReader) rollV3(msg *core.Message) error {
 
 	// open the file
-	srcFilePath := msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName
+	srcFilePath := filepath.Join(msg.FileDesc.Prefix, msg.FileDesc.FileName)
+	fmt.Printf("path: %s\n", srcFilePath)
 	log.Trace().
 		Msgf("roll reader %d - start reading: %s", w.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
@@ -327,7 +329,8 @@ func (w *BytesReader) Start() error {
 				log.Trace().
 					Str("filename", msg.FileDesc.FileName).
 					Msgf("bytes reader %d - message received", w.myID)
-				f, err := os.Open(msg.FileDesc.Prefix + "/" + msg.FileDesc.FileName)
+				p := filepath.Join(msg.FileDesc.Prefix, msg.FileDesc.FileName)
+				f, err := os.Open(p)
 				if err != nil {
 					return errors.Wrapf(err, "unable to read (missing) file %s", msg.FileDesc.FileName)
 				}

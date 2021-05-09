@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -63,7 +64,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
-				Str("file", fd.Prefix+"/"+fd.FileName).
+				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 				Msgf("local sender %s", fd.State.String())
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
@@ -71,25 +72,26 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
-				Str("file", fd.Prefix+"/"+fd.FileName).
+				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 				Msgf("local sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
 				sha1sh := sha1.New()
-				mf, err := os.Open(fd.Prefix + "/" + fd.FileName)
+				p := filepath.Join(fd.Prefix, fd.FileName)
+				mf, err := os.Open(p)
 				if err != nil {
-					return errors.Wrapf(err, "unable to read file: %s", fd.Prefix+"/"+fd.FileName)
+					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
 				}
 				r := io.Reader(mf)
 				br := bufio.NewReader(r)
 				_, err = io.Copy(sha1sh, br)
 				if err != nil {
-					return errors.Wrapf(err, "unable to read file: %s", fd.Prefix+"/"+fd.FileName)
+					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
 				}
 				rSha1 := fd.Sha1
 				lSha1 := sha1sh.Sum(nil)[:20]
 				if bytes.Equal(rSha1, lSha1) {
 					log.Trace().
-						Msgf("local sender - file: %s has matching SHA1 digest, skipping", fd.Prefix+"/"+fd.FileName)
+						Msgf("local sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
 					continue
 				}
 			}
@@ -98,7 +100,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 		} else {
 			// skipped file
 			log.Debug().
-				Str("file", fd.Prefix+"/"+fd.FileName).
+				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 				Msgf("local sender %s", fd.State.String())
 		}
 	}

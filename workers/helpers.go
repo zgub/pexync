@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/pkg/errors"
@@ -44,24 +46,25 @@ func recvWithTimeout(src <-chan *core.Message) (*core.Message, error) {
 }
 
 func fixMeta(dstDir string, srcFd, dstFd *lfs.FileDesc) error {
-	path := dstDir + "/" + srcFd.RelPath
+	p := filepath.Join(dstDir, srcFd.RelPath)
+	fmt.Printf("path: %s\n", p)
 	// check permissions and ownership
 	if srcFd.Modified != dstFd.Modified {
-		err := os.Chtimes(path, srcFd.Modified, srcFd.Modified)
+		err := os.Chtimes(p, srcFd.Modified, srcFd.Modified)
 		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify mtime", path)
+			return errors.Wrapf(err, "%s - unable to modify mtime", p)
 		}
 	}
 	if srcFd.Mode.Perm() != dstFd.Mode.Perm() {
-		err := os.Chmod(path, srcFd.Mode.Perm())
+		err := os.Chmod(p, srcFd.Mode.Perm())
 		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify permissions", path)
+			return errors.Wrapf(err, "%s - unable to modify permissions", p)
 		}
 	}
 	if srcFd.Gid != dstFd.Gid || srcFd.Uid != dstFd.Uid {
-		err := os.Chown(path, int(srcFd.Uid), int(srcFd.Gid))
+		err := os.Chown(p, int(srcFd.Uid), int(srcFd.Gid))
 		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify ownership", path)
+			return errors.Wrapf(err, "%s - unable to modify ownership", p)
 		}
 	}
 	return nil

@@ -3,9 +3,11 @@ package core
 import (
 	"bufio"
 	"crypto/sha1"
+	"fmt"
 	"hash/adler32"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -13,8 +15,9 @@ import (
 )
 
 func AddChecksums(fd *lfs.FileDesc) error {
-
-	f, err := os.Open(fd.Prefix + "/" + fd.FileName)
+	p := filepath.Join(fd.Prefix, fd.FileName)
+	fmt.Printf("filepath join: %s\n", p)
+	f, err := os.Open(p)
 	if err != nil {
 		return errors.Wrap(err, "error opening file")
 	}
@@ -59,7 +62,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	fd.Sha1 = sha1sh.Sum(nil)[:20]
 	fd.Weak = hashList
 	log.Trace().
-		Str("dst path", fd.Prefix+"/"+fd.FileName).
+		Str("dst path", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 		Int("checksums added", len(hashList)).
 		Msg("checksums calculated")
 	return nil
