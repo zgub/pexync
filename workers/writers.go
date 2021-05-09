@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -182,9 +183,10 @@ func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 			}
 			for _, v := range hIndex {
 				fmt.Printf("========> c: %d writing sequence %d, writting index %d \n", z, w.pSeq, v)
+				spew.Dump(w.sr)
 				n, err := w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
-					return errors.Wrap(err, "failed to seekd")
+					return errors.Wrap(err, "failed to seek")
 				}
 				log.Trace().
 					Int64("seek", n).
