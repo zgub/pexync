@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/go-chi/chi"
@@ -133,10 +134,10 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
 	for _, srcFd := range rc.srcList {
 
-		path := dstDir + srcFd.RelPath
+		p := filepath.Join(dstDir, srcFd.RelPath)
 		log.Trace().
 			Str("source path", srcFd.RelPath).
-			Str("destination path", path).
+			Str("destination path", p).
 			Msg("receiver - lookup and compare")
 
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
@@ -150,7 +151,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				}
 				srcFd.State = lfs.Skip
 				log.Debug().
-					Str("path", path).
+					Str("path", p).
 					Msg("receiver comparing -  updating metadata")
 			} else {
 				log.Debug().
@@ -184,7 +185,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					// check for zero sized files
 					if srcFd.FileSize == 0 {
 						log.Trace().
-							Str("path", path).
+							Str("path", p).
 							Msg("receiver comparing - empty file")
 
 						// file creted, modify meta if required and set as done
@@ -206,7 +207,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					}
 				} else {
 					log.Trace().
-						Str("path", path).
+						Str("path", p).
 						Msg("receiver comparing - fixing dir meta")
 					// directory that exists, check meta only
 					err = fixMeta(dstDir, srcFd, dstFd)
@@ -222,24 +223,24 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 			if srcFd.IsDir {
 				// create directory
 				log.Debug().
-					Str("path", path).
+					Str("path", p).
 					Msg("receiver comparing - creating directory")
-				if _, err := os.Stat(path); os.IsNotExist(err) {
+				if _, err := os.Stat(p); os.IsNotExist(err) {
 					// create one
-					os.Mkdir(path, os.ModeDir)
+					os.Mkdir(p, os.ModeDir)
 				} else if err != nil {
-					return nil, errors.Wrapf(err, "%s - unable to create directory", path)
+					return nil, errors.Wrapf(err, "%s - unable to create directory", p)
 				}
 			} else {
 				// set it as missing
 				// check for zero sized files
 				if srcFd.FileSize == 0 {
 					log.Trace().
-						Str("path", path).
+						Str("path", p).
 						Msg("receiver comparing - empty file")
-					file, err := os.Create(path)
+					file, err := os.Create(p)
 					if err != nil {
-						return nil, errors.Wrapf(err, "%s - unable to create file", path)
+						return nil, errors.Wrapf(err, "%s - unable to create file", p)
 					}
 					file.Close()
 

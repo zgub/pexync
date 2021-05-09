@@ -7,6 +7,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"time"
 	"unicode/utf8"
 )
@@ -31,13 +32,16 @@ func (t testFileType) String() string {
 
 func CreateTestFile(dir, name string, blockSize, blockCount int, t testFileType) (string, error) {
 
-	var path string
+	var p string
 	if name == "" {
-		path = fmt.Sprintf(dir+"/%dx%d-test-file-%s", blockCount, blockSize, t.String())
+		name = fmt.Sprintf("%dx%d-test-file-%s", blockCount, blockSize, t.String())
+		p = filepath.Join(dir, name)
+		fmt.Printf("path: %s\n", p)
 	} else {
-		path = dir + "/" + name
+		p = filepath.Join(dir, name)
+		fmt.Printf("path: %s\n", p)
 	}
-	f, err := os.Create(path)
+	f, err := os.Create(p)
 	if err != nil {
 		return "", err
 	}
@@ -111,7 +115,7 @@ func CreateTestFile(dir, name string, blockSize, blockCount int, t testFileType)
 
 	bw.Flush()
 	f.Sync()
-	return path, nil
+	return p, nil
 }
 
 type TestData struct {
