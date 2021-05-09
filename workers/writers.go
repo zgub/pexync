@@ -137,6 +137,7 @@ Loop:
 	}
 
 	// now rename
+	fmt.Printf("renaming: %s to %s\n", tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
 	err = os.Rename(tmpF.Name(), dstDir+"/"+w.srcFd.FileName)
 	if err != nil {
 		return errors.Wrap(err, "unable to replace file")
