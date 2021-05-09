@@ -97,6 +97,7 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	// make sure that we copy the block hashes!!
 	for dstFd, srcFd := range diffMap {
 		srcFd.Weak = dstFd.Weak
+		srcFd.Sha1 = dstFd.Sha1
 	}
 
 	return nil

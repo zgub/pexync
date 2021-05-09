@@ -85,7 +85,9 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				if err != nil {
 					return errors.Wrapf(err, "unable to read file: %s", fd.Prefix+"/"+fd.FileName)
 				}
-				if bytes.Equal(fd.Sha1, sha1sh.Sum(nil)[:20]) {
+				rSha1 := fd.Sha1
+				lSha1 := sha1sh.Sum(nil)[:20]
+				if bytes.Equal(rSha1, lSha1) {
 					log.Trace().
 						Msgf("local sender - file: %s has matching SHA1 digest, skipping", fd.Prefix+"/"+fd.FileName)
 					continue
