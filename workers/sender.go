@@ -201,7 +201,7 @@ func (s *sender) sendDataToReaders() {
 					Int64("limit", limit).
 					Msg("sender - reading file per partes")
 
-				s.rrCh <- &core.Message{
+				s.brCh <- &core.Message{
 					FileDesc: fd,
 					Flag:     core.RSQ,
 					Offset:   offset,
@@ -320,6 +320,8 @@ func (w *LocalSender) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
+	log.Debug().
+		Msgf("local sender - done")
 	return nil
 }
 

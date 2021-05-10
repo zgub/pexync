@@ -18,7 +18,7 @@ const (
 	RSQ             // read sequence
 	WSQ             // write sequence
 	ERR             // error
-	FIN             // tels the woker to stop
+	FIN             // tels the worker to stop
 	ACK             // just ACK
 )
 

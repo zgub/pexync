@@ -97,6 +97,10 @@ func (dd *DataDesc) Seq() int64 {
 	return dd.seq
 }
 
+func (dd *DataDesc) Offset() int64 {
+	return dd.offset
+}
+
 func (dd *DataDesc) FileIndex() int64 {
 	return dd.fileIndex
 }

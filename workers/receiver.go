@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -483,6 +484,7 @@ Loop:
 					Msg("receiver received FIN")
 				break Loop
 			default:
+				spew.Dump(msg)
 				return errors.New("unknown message received")
 			}
 		}

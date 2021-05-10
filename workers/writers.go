@@ -79,6 +79,8 @@ Loop:
 			seq := msg.DataDesc.Seq()
 			log.Trace().
 				//Str("filename", msg.FileDesc.FileName).
+				Int64("offset", msg.Offset).
+				Int64("limit", msg.Limit).
 				Int64("seq", seq).
 				Int64("pSeq", w.pSeq).
 				Msg("file writer -  msg received")
