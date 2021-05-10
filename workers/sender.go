@@ -37,7 +37,7 @@ func (s *sender) getSrcList() error {
 	// perform directory listing
 	list, err := lfs.ParseDir(viper.GetString("source"))
 	if err != nil {
-		return errors.Wrap(err, "http sender - directory parsing failed")
+		return errors.Wrap(err, "sender - directory parsing failed")
 	}
 
 	// calculate blocksizes for each file
@@ -48,7 +48,7 @@ func (s *sender) getSrcList() error {
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
 				Int64("calculated block size", fd.BlockSize).
-				Msg("http sender")
+				Msg("sender")
 		}
 	}
 
@@ -67,7 +67,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("local sender %s", fd.State.String())
+				Msgf("sender %s", fd.State.String())
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
 			// diff file
@@ -75,7 +75,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("local sender %s", fd.State.String())
+				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
 				sha1sh := sha1.New()
 				p := filepath.Join(fd.Prefix, fd.FileName)
@@ -93,7 +93,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				lSha1 := sha1sh.Sum(nil)[:20]
 				if bytes.Equal(rSha1, lSha1) {
 					log.Trace().
-						Msgf("local sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+						Msgf("sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
 					continue
 				}
 			}
@@ -103,7 +103,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// skipped file
 			log.Debug().
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("local sender %s", fd.State.String())
+				Msgf("sender %s", fd.State.String())
 		}
 	}
 	s.diffList = diff
@@ -119,7 +119,7 @@ func (s *sender) spawnReaders() {
 	// spawn readers if we have diff files
 	if len(s.diffList) > 0 {
 		log.Debug().
-			Msg("local sender - spawning roll readers")
+			Msg("sender - spawning roll readers")
 
 		for i := 0; i < ccIo; i++ {
 			rr := NewRollReader(dCtx, s.rrCh, s.receiver)
@@ -130,7 +130,7 @@ func (s *sender) spawnReaders() {
 	// spawn missing file senders if we have missing files
 	if len(s.missList) > 0 {
 		log.Debug().
-			Msg("local sender - spawning bytes readers")
+			Msg("sender - spawning bytes readers")
 
 		for i := 0; i < ccIo; i++ {
 			br := NewBytesReader(dCtx, s.brCh, s.receiver)
@@ -148,13 +148,13 @@ func (s *sender) sendDataToReaders() {
 
 		if fd.FileSize > uint64(splitSize) && ccIo > 1 {
 			chunkSize := int64(fd.FileSize / uint64(ccIo))
+			log.Debug().
+				Int64("file size", int64(fd.FileSize)).
+				Int64("chunk size", chunkSize).
+				Int("io_concurency", ccIo).
+				Msg("sender - using paralel reading")
 
 			for chunk := 0; chunk < ccIo; chunk++ {
-				log.Debug().
-					Int64("file size", int64(fd.FileSize)).
-					Int64("chunk size", chunkSize).
-					Int("io_concurency", ccIo).
-					Msg("using paralel reading")
 				limit := chunkSize * (int64(chunk) + 1)
 				if limit > int64(fd.FileSize) {
 					limit = int64(fd.FileSize)
@@ -180,11 +180,36 @@ func (s *sender) sendDataToReaders() {
 	// new files next
 	for _, fd := range s.missList {
 
-		s.brCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
+		ccIo := viper.GetInt("io_concurrency")
+
+		if fd.FileSize > uint64(splitSize) && ccIo > 1 {
+			chunkSize := int64(fd.FileSize / uint64(ccIo))
+			log.Debug().
+				Int64("file size", int64(fd.FileSize)).
+				Int64("chunk size", chunkSize).
+				Int("io_concurency", ccIo).
+				Msg("sender - using paralel reading")
+
+			for chunk := 0; chunk < ccIo; chunk++ {
+				limit := chunkSize * (int64(chunk) + 1)
+				if limit > int64(fd.FileSize) {
+					limit = int64(fd.FileSize)
+				}
+				s.rrCh <- &core.Message{
+					FileDesc: fd,
+					Flag:     core.RSQ,
+					Offset:   int64(chunk) * chunkSize,
+					Limit:    limit,
+				}
+			}
+
+		} else {
+			s.brCh <- &core.Message{
+				FileDesc: fd,
+				Flag:     core.RSQ,
+				Offset:   0,
+				Limit:    int64(fd.FileSize),
+			}
 		}
 	}
 }
