@@ -150,6 +150,11 @@ func (s *sender) sendDataToReaders() {
 			chunkSize := int64(fd.FileSize / uint64(ccIo))
 
 			for chunk := 0; chunk < ccIo; chunk++ {
+				log.Debug().
+					Int64("file size", int64(fd.FileSize)).
+					Int64("chunk size", chunkSize).
+					Int("io_concurency", ccIo).
+					Msg("using paralel reading")
 				limit := chunkSize * (int64(chunk) + 1)
 				if limit > int64(fd.FileSize) {
 					limit = int64(fd.FileSize)
