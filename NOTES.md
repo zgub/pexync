@@ -16,7 +16,6 @@
 - [ ] remove unnecessary pointers
 - [ ] struct padding adjustment
 - [ ] context.Done should send FIN to all workers
-- [ ] proto checksums?
 - [ ] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
 - [ ] contexts
@@ -27,7 +26,11 @@
 - [ ] tests!
 - [ ] validation at transfer end
 - [ ] sender state (reset after aaa)
-- [ ] make sure to not send the same file
+- [x] make sure to not send the same file
+
+## NOTODO
+
+- [ ] proto checksums?
 
 ## Ideas
 
