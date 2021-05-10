@@ -22,6 +22,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const splitSize = int64(536870912)
+
 type sender struct {
 	ctx                  context.Context
 	srcList              []*lfs.FileDesc
@@ -137,16 +139,36 @@ func (s *sender) spawnReaders() {
 	}
 }
 
-func (s *sender) sendData() {
+func (s *sender) sendDataToReaders() {
 
 	// send data - diff first
 	for _, fd := range s.diffList {
 
-		s.rrCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
+		ccIo := viper.GetInt("io_concurrency")
+
+		if fd.FileSize > uint64(splitSize) && ccIo > 1 {
+			chunkSize := int64(fd.FileSize / uint64(ccIo))
+
+			for chunk := 0; chunk < ccIo; chunk++ {
+				limit := chunkSize * (int64(chunk) + 1)
+				if limit > int64(fd.FileSize) {
+					limit = int64(fd.FileSize)
+				}
+				s.rrCh <- &core.Message{
+					FileDesc: fd,
+					Flag:     core.RSQ,
+					Offset:   int64(chunk) * chunkSize,
+					Limit:    limit,
+				}
+			}
+
+		} else {
+			s.rrCh <- &core.Message{
+				FileDesc: fd,
+				Flag:     core.RSQ,
+				Offset:   0,
+				Limit:    int64(fd.FileSize),
+			}
 		}
 	}
 
@@ -238,7 +260,7 @@ func (w *LocalSender) Start() error {
 
 	w.spawnReaders()
 
-	w.sendData()
+	w.sendDataToReaders()
 
 	w.stopReaders()
 
@@ -360,7 +382,7 @@ func (w *HttpSender) Start() error {
 
 	w.spawnReaders()
 
-	w.sendData()
+	w.sendDataToReaders()
 
 	w.stopReaders()
 
