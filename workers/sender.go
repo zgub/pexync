@@ -110,6 +110,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 }
 
 func (s *sender) spawnReaders() {
+	// concurrent IO parameter
 	ccIo := viper.GetInt("io_concurrency")
 	dCtx := context.Context(s.ctx)
 
