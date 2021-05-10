@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -52,7 +51,6 @@ func (w FileWriter) Start() error {
 
 	w.bw = bufio.NewWriter(io.Writer(tmpF))
 	oldPath := filepath.Join(dstDir, w.srcFd.FileName)
-	fmt.Printf("path: %s\n", oldPath)
 	// open a reader as well if we have to reference alredy present blocks
 	if w.srcFd.State == lfs.Diff {
 		log.Trace().
@@ -127,7 +125,6 @@ Loop:
 		}
 	}
 	p := filepath.Join(dstDir, w.srcFd.FileName)
-	fmt.Printf("path: %s\n", p)
 
 	log.Trace().
 		Str("orig name", w.srcFd.FileName).
@@ -142,7 +139,6 @@ Loop:
 
 	// now rename
 
-	fmt.Printf("renaming: %s to %s\n", tmpF.Name(), p)
 	err = os.Rename(tmpF.Name(), p)
 	if err != nil {
 		return errors.Wrap(err, "unable to replace file")
@@ -152,7 +148,6 @@ Loop:
 
 // writeToFile reades a data stream and reconstructs a file based on headders
 func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
-	fmt.Printf("==========> write() - sequence %d, write() start \n", w.pSeq)
 	br := bytes.NewReader(dd.Bytes())
 
 	for z := 0; ; z++ {
@@ -160,20 +155,17 @@ func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("========> c: %d writing sequence %d, EOF \n", z, w.pSeq)
 				// end of transmission
 				w.bw.Flush()
 				break
 			} else {
 				// nah something bad hapenned
-				fmt.Printf("========> c: %d writing sequence %d, error \n", z, w.pSeq)
 				return errors.Wrap(err, "error reading data header")
 			}
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			fmt.Printf("========> c: %d writing sequence %d, writing data \n", z, w.pSeq)
 			_, err := io.CopyN(w.bw, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
@@ -187,7 +179,6 @@ func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				fmt.Printf("========> c: %d writing sequence %d, writting index %d \n", z, w.pSeq, v)
 				n, err := w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")
@@ -205,7 +196,6 @@ func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		case lfs.End:
 			return lfs.ErrEOF
 		default:
-			fmt.Printf("========> c: %d writing sequence %d, invalid header \n", z, w.pSeq)
 			return errors.New("file writer - invalid header")
 		}
 	}

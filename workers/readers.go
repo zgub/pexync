@@ -86,7 +86,6 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 
 	// open the file
 	srcFilePath := filepath.Join(msg.FileDesc.Prefix, msg.FileDesc.FileName)
-	fmt.Printf("path: %s\n", srcFilePath)
 	log.Trace().
 		Msgf("roll reader %d - start reading: %s", w.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
