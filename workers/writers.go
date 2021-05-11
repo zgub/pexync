@@ -24,7 +24,7 @@ type FileWriter struct {
 	senderID  uuid.UUID
 	srcFd     *lfs.FileDesc
 	seqBuffer map[int64]*lfs.DataDesc
-	pSeq      int64 // last sequence written
+	pSeq      map[int64]int64 // last sequence written for the given (offset)
 	bw        *bufio.Writer
 	sr        *io.SectionReader
 }
@@ -36,6 +36,7 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox 
 		inbox:     inbox,
 		senderID:  uuid,
 		seqBuffer: make(map[int64]*lfs.DataDesc),
+		pSeq:      make(map[int64]int64),
 	}
 }
 
@@ -77,15 +78,14 @@ Loop:
 				return errors.New("file writer - invalide message type")
 			}
 			seq := msg.DataDesc.Seq()
+			offset := msg.DataDesc.Offset()
 			log.Trace().
 				//Str("filename", msg.FileDesc.FileName).
-				Int64("offset", msg.Offset).
-				Int64("limit", msg.Limit).
+				Int64("offset", offset).
 				Int64("seq", seq).
-				Int64("pSeq", w.pSeq).
 				Msg("file writer -  msg received")
 			//w.dataSeq[seq] = msg.DataDesc
-			if seq == w.pSeq {
+			if seq == w.pSeq[offset] {
 				// if we hae data at the current sequence, call writer
 				//spew.Dump(msg)
 				err = w.writeToFile(msg.DataDesc)
@@ -96,14 +96,14 @@ Loop:
 					return errors.Wrap(err, "unable to write file")
 				}
 				// increase the expected sequence number
-				w.pSeq++
-				// letch chekc whether we have some other data to write
+				w.pSeq[offset]++
+				// lets check whether we have some other data to write
 				haveCached := func() bool {
-					_, ok := w.seqBuffer[w.pSeq]
+					_, ok := w.seqBuffer[w.pSeq[offset]]
 					return ok
 				}
 				for haveCached() {
-					err = w.writeToFile(w.seqBuffer[w.pSeq])
+					err = w.writeToFile(w.seqBuffer[w.pSeq[offset]])
 					if err != nil {
 						if err == lfs.ErrEOF {
 							break Loop
@@ -111,16 +111,16 @@ Loop:
 						return errors.Wrap(err, "unable to write file")
 					}
 					// release memory
-					delete(w.seqBuffer, w.pSeq)
+					delete(w.seqBuffer, w.pSeq[offset])
 					// increase the expected sequence number again
-					w.pSeq++
+					w.pSeq[offset]++
 				}
 			} else {
 				// out of order delivery, store it - there is only one writer goroutine per file, so the shouldn't be multiple accesses to this map
 				w.seqBuffer[msg.DataDesc.Seq()] = msg.DataDesc
 				log.Warn().
 					Int64("got", seq).
-					Int64("expecting", w.pSeq).
+					Int64("expecting", w.pSeq[offset]).
 					Msg("out of order - caching")
 			}
 
