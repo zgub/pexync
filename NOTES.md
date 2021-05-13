@@ -27,6 +27,8 @@
 - [ ] validation at transfer end
 - [ ] sender state (reset after aaa)
 - [x] make sure to not send the same file
+- [ ] anonymous helper functions
+- [ ] don't use w for workers as w implies writer
 
 ## NOTODO
 

@@ -479,6 +479,11 @@ Loop:
 						DataDesc: dd,
 					}
 				}
+			case core.CSQ:
+				if fileWritter, ok := w.writersMap[msg.FileDesc.Idx]; ok {
+					// just forward the closing sequence message
+					fileWritter.inbox <- msg
+				}
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")

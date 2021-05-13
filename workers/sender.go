@@ -173,6 +173,11 @@ func (s *sender) sendDataToReaders() {
 				Limit:    int64(fd.FileSize),
 			}
 		}
+		// sending CSQ, to finish the file transfer
+		s.rrCh <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.CSQ,
+		}
 	}
 
 	// new files next
@@ -216,6 +221,11 @@ func (s *sender) sendDataToReaders() {
 				Offset:   0,
 				Limit:    int64(fd.FileSize),
 			}
+		}
+		// sending CSQ, to finish the file transfer
+		s.brCh <- &core.Message{
+			FileDesc: fd,
+			Flag:     core.CSQ,
 		}
 	}
 }

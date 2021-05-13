@@ -66,6 +66,12 @@ func (w *RollReader) Start() error {
 					Int64("data", w.dataCnt).
 					Int64("messages", w.msgCnt).
 					Msgf("roll reader %d - stats", w.myID)
+			case core.CSQ:
+				// closing sequence, just forward
+				err := sendWithTimeout(msg, w.receiver)
+				if err != nil {
+					return errors.Wrap(err, "error sending data")
+				}
 			case core.FIN:
 				log.Trace().
 					Msgf("roll reader %d - received FIN", w.myID)
@@ -385,6 +391,12 @@ func (w *BytesReader) Start() error {
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
 					}
+				}
+			case core.CSQ:
+				// closing sequence, just forward
+				err := sendWithTimeout(msg, w.receiver)
+				if err != nil {
+					return errors.Wrap(err, "error sending data")
 				}
 			default:
 				return errors.New("BytesReader unknown message")
