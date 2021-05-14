@@ -100,7 +100,6 @@ Loop:
 				// we already are processing this stream
 				// check the sequence
 				if seq == tmpF.seq {
-					fmt.Println("writng to file")
 					err := fw.writeToFile(msg.DataDesc)
 					if err != nil {
 						if err == lfs.ErrEOF {
@@ -112,7 +111,8 @@ Loop:
 							log.Trace().
 								Str("file name", dstPath).
 								Int64("offset chunk", offset).
-								Msg("file writer - closing temporary file")
+								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
+							continue
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
@@ -135,7 +135,8 @@ Loop:
 								log.Trace().
 									Str("file name", dstPath).
 									Int64("offset chunk", offset).
-									Msg("file writer - closing temporary file")
+									Msg("file writer - cccccccccccccccccccccc closing temporary file")
+								continue
 							}
 							return errors.Wrap(err, "unable to write file")
 						}
@@ -153,6 +154,7 @@ Loop:
 						Msg("out of order - caching")
 				}
 			case core.CSQ:
+				fmt.Println("===========================================")
 				break Loop
 			default:
 				return errors.New("file writer - invalide message type")
@@ -179,13 +181,20 @@ Loop:
 		}
 		tmpOffsets := make([]int64, len(fw.fileMap))
 		for offset := range fw.fileMap {
+			log.Debug().
+				Int64("offset", offset).
+				Msg("collecting")
 			tmpOffsets = append(tmpOffsets, offset)
 		}
 
+		fmt.Printf("++++++++ temp file map size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
+
 		// they shoudl add sort.Int64() but ... I know that int = int64 on most systems, but I don't like assumptions like that
-		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] < tmpOffsets[j] })
+		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] > tmpOffsets[j] })
 
 		bw := bufio.NewWriter(io.Writer(nf))
+
+		fmt.Printf("++++++++ temp file map size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
 
 		for _, offset := range tmpOffsets {
 			tf := fw.fileMap[offset]
@@ -277,10 +286,11 @@ func (fw FileWriter) newTempFile(offset int64) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to create temporary file")
 	}
-	log.Trace().
+	log.Debug().
 		Str("file name", tmpF.Name()).
 		Int64("offset", offset).
-		Msg("file writer - DIFF opening temporary file")
+		Int("temp files count", len(fw.fileMap)).
+		Msg("file writer - DIFF opening temporary file ++++++++++++++++++++++++++++++++++++++")
 
 	fw.fileMap[offset] = &tmpFile{
 		path:    tmpF.Name(),

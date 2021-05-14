@@ -318,7 +318,6 @@ func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver ch
 }
 
 func (w *BytesReader) Start() error {
-	fmt.Println("bytes reader starting")
 	for {
 		select {
 		case <-w.ctx.Done():

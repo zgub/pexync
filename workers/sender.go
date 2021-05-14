@@ -303,12 +303,9 @@ func (w *LocalSender) Start() error {
 	w.brCh = make(chan *core.Message, w.ccIo)
 	w.g = new(errgroup.Group)
 
-	fmt.Println("spawning readers")
 	w.spawnReaders()
-	fmt.Println("spawned readers")
 
 	w.sendDataToReaders()
-	fmt.Println("data sent")
 
 	w.stopReaders()
 
