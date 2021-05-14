@@ -92,12 +92,15 @@ Loop:
 				// check if we;re already oepend a temp file for the paralel stream
 				if _, ok := fw.fileMap[offset]; !ok {
 					err = fw.newTempFile(offset)
-					return errors.Wrap(err, "file writer - failed opening temporary file")
+					if err != nil {
+						return errors.Wrap(err, "file writer - failed opening temporary file")
+					}
 				}
 				tmpF := fw.fileMap[offset]
 				// we already are processing this stream
 				// check the sequence
 				if seq == tmpF.seq {
+					fmt.Println("writng to file")
 					err := fw.writeToFile(msg.DataDesc)
 					if err != nil {
 						if err == lfs.ErrEOF {
@@ -230,7 +233,8 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			_, err := io.CopyN(w, br, header.Len)
+			n, err := io.CopyN(w, br, header.Len)
+			fmt.Printf("%d received bytes written\n", n)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
@@ -251,7 +255,8 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 					Int64("seek", n).
 					Int64("location", v*fw.srcFd.BlockSize).
 					Msg("seek")
-				_, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
+				n, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
+				fmt.Printf("%d local bytes written\n", n)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
