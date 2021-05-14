@@ -17,7 +17,6 @@ const (
 	SUM             // checksum data from receiver
 	RSQ             // read sequence
 	WSQ             // write sequence
-	CSQ             // close sequence
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
@@ -30,7 +29,6 @@ var messageTypes = [...]string{
 	"SUM",
 	"RSQ",
 	"WSQ",
-	"CSQ",
 	"ERR",
 	"FIN",
 	"ACK",

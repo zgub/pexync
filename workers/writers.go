@@ -70,6 +70,7 @@ func (fw FileWriter) Start() error {
 		defer ref.Close()
 	}
 
+	tmpFileCount := 0
 Loop:
 	for {
 		select {
@@ -82,6 +83,9 @@ Loop:
 			case core.WSQ:
 				// data sequence (ref index or byte date)
 
+				if msg.CcIo == 0 {
+					log.Fatal().Msg("ccio == 0")
+				}
 				seq := msg.DataDesc.Seq()
 				offset := msg.DataDesc.Offset()
 				log.Trace().
@@ -108,11 +112,16 @@ Loop:
 							if err != nil {
 								errors.Wrap(err, "unable to close file")
 							}
-							log.Trace().
+							log.Debug().
 								Str("file name", dstPath).
 								Int64("offset chunk", offset).
 								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
-							continue
+							tmpFileCount++
+							if tmpFileCount == msg.CcIo {
+								break Loop
+							} else {
+								continue
+							}
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
@@ -132,11 +141,16 @@ Loop:
 								if err != nil {
 									errors.Wrap(err, "unable to close file")
 								}
-								log.Trace().
+								log.Debug().
 									Str("file name", dstPath).
 									Int64("offset chunk", offset).
 									Msg("file writer - cccccccccccccccccccccc closing temporary file")
-								continue
+								tmpFileCount++
+								if tmpFileCount == msg.CcIo {
+									break Loop
+								} else {
+									continue
+								}
 							}
 							return errors.Wrap(err, "unable to write file")
 						}
@@ -153,9 +167,6 @@ Loop:
 						Int64("expecting", tmpF.seq).
 						Msg("out of order - caching")
 				}
-			case core.CSQ:
-				fmt.Println("===========================================")
-				break Loop
 			default:
 				return errors.New("file writer - invalide message type")
 			}

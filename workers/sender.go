@@ -168,16 +168,12 @@ func (s *sender) sendDataToReaders() {
 
 		} else {
 			s.rrCh <- &core.Message{
+				CcIo:     s.ccIo,
 				FileDesc: fd,
 				Flag:     core.RSQ,
 				Offset:   0,
 				Limit:    int64(fd.FileSize),
 			}
-		}
-		// sending CSQ, to finish the file transfer
-		s.rrCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.CSQ,
 		}
 	}
 
@@ -222,11 +218,6 @@ func (s *sender) sendDataToReaders() {
 				Offset:   0,
 				Limit:    int64(fd.FileSize),
 			}
-		}
-		// sending CSQ, to finish the file transfer
-		s.brCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.CSQ,
 		}
 	}
 }
