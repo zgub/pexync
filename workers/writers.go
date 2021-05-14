@@ -84,6 +84,7 @@ Loop:
 				// data sequence (ref index or byte date)
 
 				if msg.CcIo == 0 {
+					fmt.Printf("%+v\n", msg)
 					log.Fatal().Msg("ccio == 0")
 				}
 				seq := msg.DataDesc.Seq()

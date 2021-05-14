@@ -204,6 +204,7 @@ func (s *sender) sendDataToReaders() {
 					Msg("sender - reading file per partes")
 
 				s.brCh <- &core.Message{
+					CcIo:     s.ccIo,
 					FileDesc: fd,
 					Flag:     core.RSQ,
 					Offset:   offset,
@@ -213,6 +214,7 @@ func (s *sender) sendDataToReaders() {
 
 		} else {
 			s.brCh <- &core.Message{
+				CcIo:     s.ccIo,
 				FileDesc: fd,
 				Flag:     core.RSQ,
 				Offset:   0,
@@ -247,12 +249,16 @@ type LocalSender struct {
 }
 
 func NewLocalSender(ctx context.Context, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+	ccIo := viper.GetInt("io_concurrency")
+	log.Debug().
+		Int("ccio", ccIo).
+		Msg("starting new local sender")
 	return &LocalSender{
 		sender: sender{
 			ctx:      ctx,
 			uuid:     uuid.New(),
 			receiver: receiver,
-			ccIo:     viper.GetInt("io_concurrency"),
+			ccIo:     ccIo,
 		},
 		inbox: in,
 	}
