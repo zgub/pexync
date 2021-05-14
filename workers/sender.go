@@ -158,6 +158,7 @@ func (s *sender) sendDataToReaders() {
 					limit = int64(fd.FileSize)
 				}
 				s.rrCh <- &core.Message{
+					CcIo:     s.ccIo,
 					FileDesc: fd,
 					Flag:     core.RSQ,
 					Offset:   int64(chunk) * chunkSize,

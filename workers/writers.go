@@ -174,12 +174,14 @@ Loop:
 			return errors.Wrap(err, "unable to replace file")
 		}
 	} else {
+		fmt.Printf("++++++++ temp file map size %d\n", len(fw.fileMap))
 		// large file, we need to reconstruct it from several tmp fil
 		nf, err := os.Create(dstPath)
 		if err != nil {
 			return errors.Wrap(err, "unable to open file")
 		}
-		tmpOffsets := make([]int64, len(fw.fileMap))
+		tmpOffsets := make([]int64, 0)
+		fmt.Printf("tmpOffsets len %d fileMap len %d\n", len(tmpOffsets), len(fw.fileMap))
 		for offset := range fw.fileMap {
 			log.Debug().
 				Int64("offset", offset).
@@ -187,14 +189,14 @@ Loop:
 			tmpOffsets = append(tmpOffsets, offset)
 		}
 
-		fmt.Printf("++++++++ temp file map size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
+		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
 
 		// they shoudl add sort.Int64() but ... I know that int = int64 on most systems, but I don't like assumptions like that
 		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] > tmpOffsets[j] })
 
 		bw := bufio.NewWriter(io.Writer(nf))
 
-		fmt.Printf("++++++++ temp file map size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
+		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
 
 		for _, offset := range tmpOffsets {
 			tf := fw.fileMap[offset]
@@ -214,6 +216,7 @@ Loop:
 				Str("filename", tf.path).
 				Msg("file writter - reconstructing")
 		}
+		fmt.Println("merge done")
 
 	}
 	return nil
@@ -242,8 +245,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			n, err := io.CopyN(w, br, header.Len)
-			fmt.Printf("%d received bytes written\n", n)
+			_, err := io.CopyN(w, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
@@ -264,8 +266,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 					Int64("seek", n).
 					Int64("location", v*fw.srcFd.BlockSize).
 					Msg("seek")
-				n, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
-				fmt.Printf("%d local bytes written\n", n)
+				_, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
