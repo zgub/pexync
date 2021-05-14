@@ -254,11 +254,10 @@ type LocalSender struct {
 	sender
 }
 
-func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
 	return &LocalSender{
 		sender: sender{
 			ctx:      ctx,
-			srcList:  fl,
 			uuid:     uuid.New(),
 			receiver: receiver,
 			ccIo:     viper.GetInt("io_concurrency"),

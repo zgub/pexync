@@ -466,7 +466,8 @@ Loop:
 					log.Debug().
 						Str("filename", w.srcList[dd.FileIndex()].FileName).
 						Msg("receiver - starting new writter")
-					inbox := make(chan *core.Message)
+					ccIo := viper.GetInt("io_concurrency")
+					inbox := make(chan *core.Message, ccIo)
 					// create new file writer worker
 					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[dd.FileIndex()], inbox)
 					// add it to the lookup map
