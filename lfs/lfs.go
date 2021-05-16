@@ -264,7 +264,7 @@ type FileDesc struct {
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64
-	FileSize  uint64
+	FileSize  int64
 	Sha1      []byte
 	Weak      []uint32
 	RelPath   string
@@ -360,7 +360,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 				RelPath:  relPath,
 				Prefix:   prefix,
 				FileName: entry.Name(),
-				FileSize: uint64(info.Size()),
+				FileSize: info.Size(),
 				Modified: info.ModTime(),
 				Mode:     info.Mode(),
 				//Uid:      stat.Uid,

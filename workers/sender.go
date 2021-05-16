@@ -62,7 +62,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	// prepare a slice with the delta
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
-	for _, fd := range msg.FileList {
+	for _, fd := range msg.GetList() {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
@@ -157,21 +157,11 @@ func (s *sender) sendDataToReaders() {
 				if limit > int64(fd.FileSize) {
 					limit = int64(fd.FileSize)
 				}
-				s.rrCh <- &core.Message{
-					FileDesc: fd,
-					Flag:     core.RSQ,
-					Offset:   int64(chunk) * chunkSize,
-					Limit:    limit,
-				}
+				s.rrCh <- core.NewRSQ(fd, int64(chunk)*chunkSize, limit)
 			}
 
 		} else {
-			s.rrCh <- &core.Message{
-				FileDesc: fd,
-				Flag:     core.RSQ,
-				Offset:   0,
-				Limit:    int64(fd.FileSize),
-			}
+			s.rrCh <- core.NewRSQ(fd, 0, int64(fd.FileSize))
 		}
 	}
 

@@ -40,9 +40,26 @@ func (f Flag) String() string {
 
 type Message struct {
 	flag                   Flag            // meta data
-	offset, oimit, streams int64           // meta data required for reconstruction
+	offset, limit, streams int64           // meta data required for reconstruction
 	uuid                   uuid.UUID       // meta data
 	fileList               []*lfs.FileDesc // meta data
 	fileDesc               *lfs.FileDesc   // meta data
 	dataDesc               *lfs.DataDesc   // binary (actual) data
+}
+
+func NewRSQ(fd *lfs.FileDesc, offset, limit int64) *Message {
+	return &Message{
+		flag:     RSQ,
+		offset:   offset,
+		limit:    limit,
+		fileDesc: fd,
+	}
+}
+
+func (m *Message) Flag() Flag {
+	return m.flag
+}
+
+func (m *Message) GetList() []*lfs.FileDesc {
+	return m.fileList
 }
