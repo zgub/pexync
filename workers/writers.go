@@ -35,12 +35,13 @@ type FileWriter struct {
 	srcFd    *lfs.FileDesc
 	rr       io.Reader // reference file reader
 	fileMap  map[int64]*tmpFile
-	ccIo     int // number of incomming streams
+	streams  int64 // number of incomming streams
 }
 
-func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
+func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
 	return FileWriter{
 		ctx:      ctx,
+		streams:  streams,
 		srcFd:    fd,
 		inbox:    inbox,
 		senderID: uuid,

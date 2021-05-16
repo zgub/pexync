@@ -341,7 +341,7 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 			Msg("receiver - starting new writter")
 		inbox := make(chan *core.Message)
 		// create new file writer worker
-		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
+		fr := NewFileWriter(rc.ctx, rc.senderUUID, dd.GetStreamCount(), rc.srcList[dd.FileIndex()], inbox)
 		// add it to the lookup map
 		rc.writersMap[fi] = fr
 		// send a new message
@@ -451,7 +451,7 @@ Loop:
 					ccIo := viper.GetInt("io_concurrency")
 					inbox := make(chan *core.Message, ccIo)
 					// create new file writer worker
-					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[dd.FileIndex()], inbox)
+					fr := NewFileWriter(w.ctx, w.senderUUID, dd.GetStreamCount(), w.srcList[dd.FileIndex()], inbox)
 					// add it to the lookup map
 					w.writersMap[fi] = fr
 					// send a new message

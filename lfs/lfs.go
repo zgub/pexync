@@ -203,6 +203,10 @@ func (dd *DataDesc) Len() int64 {
 	return int64(dd.readBuf.Len())
 }
 
+func (dd *DataDesc) GetStreamCount() int64 {
+	return dd.streams
+}
+
 func (dd *DataDesc) Serialize() ([]byte, error) {
 	// flush any remainung data
 	err := dd.flush()
