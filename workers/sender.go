@@ -31,7 +31,7 @@ type sender struct {
 	diffList, missList   []*lfs.FileDesc
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
-	ccIo                 int // this gets used so may times, it deserves an instance var
+	ccIo                 int64 // this gets used so may times, it deserves an instance var
 }
 
 func (s *sender) getSrcList() error {
@@ -121,7 +121,7 @@ func (s *sender) spawnReaders() {
 		log.Debug().
 			Msg("sender - spawning roll readers")
 
-		for i := 0; i < s.ccIo; i++ {
+		for i := int64(0); i < s.ccIo; i++ {
 			rr := NewRollReader(dCtx, s.rrCh, s.receiver)
 			s.g.Go(rr.Start)
 		}
@@ -132,7 +132,7 @@ func (s *sender) spawnReaders() {
 		log.Debug().
 			Msg("sender - spawning bytes readers")
 
-		for i := 0; i < s.ccIo; i++ {
+		for i := int64(0); i < s.ccIo; i++ {
 			br := NewBytesReader(dCtx, s.brCh, s.receiver)
 			s.g.Go(br.Start)
 		}
@@ -144,15 +144,15 @@ func (s *sender) sendDataToReaders() {
 	// send data - diff first
 	for _, fd := range s.diffList {
 
-		if fd.FileSize > uint64(splitSize) && s.ccIo > 1 {
-			chunkSize := int64(fd.FileSize / uint64(s.ccIo))
+		if fd.FileSize > splitSize && s.ccIo > 1 {
+			chunkSize := int64(fd.FileSize / s.ccIo)
 			log.Debug().
 				Int64("file size", int64(fd.FileSize)).
 				Int64("chunk size", chunkSize).
-				Int("io_concurency", s.ccIo).
+				Int64("io_concurency", s.ccIo).
 				Msg("sender - using paralel reading")
 
-			for chunk := 0; chunk < s.ccIo; chunk++ {
+			for chunk := int64(0); chunk < s.ccIo; chunk++ {
 				limit := chunkSize * (int64(chunk) + 1)
 				if limit > int64(fd.FileSize) {
 					limit = int64(fd.FileSize)
@@ -168,44 +168,34 @@ func (s *sender) sendDataToReaders() {
 	// new files next
 	for _, fd := range s.missList {
 
-		if fd.FileSize > uint64(splitSize) && s.ccIo > 1 {
-			chunkSize := int64(fd.FileSize / uint64(s.ccIo))
+		if fd.FileSize > splitSize && s.ccIo > 1 {
+			chunkSize := int64(fd.FileSize / s.ccIo)
 			log.Debug().
 				Int64("file size", int64(fd.FileSize)).
 				Int64("chunk size", chunkSize).
-				Int("io_concurency", s.ccIo).
+				Int64("io_concurency", s.ccIo).
 				Msg("sender - using paralel reading")
 
-			for chunk := 0; chunk < s.ccIo; chunk++ {
+			for chunk := int64(0); chunk < s.ccIo; chunk++ {
 
 				limit := chunkSize * (int64(chunk) + 1)
-				if limit > int64(fd.FileSize) {
-					limit = int64(fd.FileSize)
+				if limit > fd.FileSize {
+					limit = fd.FileSize
 				}
 				offset := int64(chunk) * chunkSize
 
 				log.Trace().
 					Str("filename", fd.FileName).
-					Int("chunk", chunk).
+					Int64("chunk", chunk).
 					Int64("offset", offset).
 					Int64("limit", limit).
 					Msg("sender - reading file per partes")
 
-				s.brCh <- &core.Message{
-					FileDesc: fd,
-					Flag:     core.RSQ,
-					Offset:   offset,
-					Limit:    limit,
-				}
+				s.brCh <- core.NewRSQ(fd, offset, limit)
 			}
 
 		} else {
-			s.brCh <- &core.Message{
-				FileDesc: fd,
-				Flag:     core.RSQ,
-				Offset:   0,
-				Limit:    int64(fd.FileSize),
-			}
+			s.brCh <- core.NewRSQ(fd, 0, fd.FileSize)
 		}
 	}
 }
@@ -213,17 +203,13 @@ func (s *sender) sendDataToReaders() {
 func (s *sender) stopReaders() {
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
-		for i := 0; i < s.ccIo; i++ {
-			s.rrCh <- &core.Message{
-				Flag: core.FIN,
-			}
+		for i := int64(0); i < s.ccIo; i++ {
+			s.rrCh <- core.NewFin()
 		}
 	}
 	if len(s.missList) > 0 {
-		for i := 0; i < s.ccIo; i++ {
-			s.brCh <- &core.Message{
-				Flag: core.FIN,
-			}
+		for i := int64(0); i < s.ccIo; i++ {
+			s.brCh <- core.NewFin()
 		}
 	}
 }
@@ -234,7 +220,7 @@ type LocalSender struct {
 	sender
 }
 
-func NewLocalSender(ctx context.Context, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
 	ccIo := viper.GetInt("io_concurrency")
 	log.Debug().
 		Int("ccio", ccIo).
@@ -242,7 +228,7 @@ func NewLocalSender(ctx context.Context, in <-chan *core.Message, receiver chan 
 	return &LocalSender{
 		sender: sender{
 			ctx:      ctx,
-			uuid:     uuid.New(),
+			uuid:     uuid,
 			receiver: receiver,
 			ccIo:     ccIo,
 		},
@@ -321,7 +307,7 @@ type HttpSender struct {
 	sender
 }
 
-func NewHttpSender(ctx context.Context) (*HttpSender, error) {
+func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 
 	// first, prepare http client
 	host := viper.GetString("remote_host")
@@ -365,7 +351,7 @@ func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 		client: c,
 		sender: sender{
 			ctx:      ctx,
-			uuid:     uuid.New(),
+			uuid:     uuid,
 			receiver: make(chan *core.Message),
 			ccIo:     ccIo,
 		},

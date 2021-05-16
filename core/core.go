@@ -56,6 +56,12 @@ func NewRSQ(fd *lfs.FileDesc, offset, limit int64) *Message {
 	}
 }
 
+func NewFin() *Message {
+	return &Message{
+		flag: FIN,
+	}
+}
+
 func (m *Message) Flag() Flag {
 	return m.flag
 }
