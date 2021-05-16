@@ -79,12 +79,12 @@ Loop:
 				Msg("file writer - closing, context done")
 			break Loop
 		case msg := <-fw.inbox:
-			switch msg.Flag {
+			switch msg.GetFlag() {
 			case core.WSQ:
 				// data sequence (ref index or byte date)
 
-				seq := msg.DataDesc.Seq()
-				offset := msg.DataDesc.Offset()
+				seq := msg.GetDataDesc().Seq()
+				offset := msg.GetDataDesc().Offset()
 				log.Trace().
 					Int64("offset", offset).
 					Int64("seq", seq).
@@ -101,7 +101,7 @@ Loop:
 				// we already are processing this stream
 				// check the sequence
 				if seq == tmpF.seq {
-					err := fw.writeToFile(msg.DataDesc)
+					err := fw.writeToFile(msg.GetDataDesc())
 					if err != nil {
 						if err == lfs.ErrEOF {
 							// end of chink, close tmp file
@@ -148,7 +148,7 @@ Loop:
 					}
 
 				} else {
-					tmpF.dataBuf[seq] = msg.DataDesc
+					tmpF.dataBuf[seq] = msg.GetDataDesc()
 					log.Warn().
 						Int64("got", seq).
 						Int64("expecting", tmpF.seq).
