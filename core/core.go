@@ -47,8 +47,17 @@ type Message struct {
 	dataDesc               *lfs.DataDesc   // binary (actual) data
 }
 
-func NewRSQ(fd *lfs.FileDesc, offset, limit int64) *Message {
+func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
 	return &Message{
+		flag:     INI,
+		uuid:     uuid,
+		fileList: list,
+	}
+}
+
+func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit int64) *Message {
+	return &Message{
+		uuid:     uuid,
 		flag:     RSQ,
 		offset:   offset,
 		limit:    limit,
@@ -56,16 +65,69 @@ func NewRSQ(fd *lfs.FileDesc, offset, limit int64) *Message {
 	}
 }
 
-func NewFin() *Message {
+func NewFIN(uuid uuid.UUID) *Message {
 	return &Message{
+		uuid: uuid,
 		flag: FIN,
 	}
 }
 
-func (m *Message) Flag() Flag {
+func NewHashRequest(fd *lfs.FileDesc) *Message {
+	return &Message{
+		flag:     HSH,
+		fileDesc: fd,
+	}
+}
+
+func NewWSQ(dd *lfs.DataDesc) *Message {
+	return &Message{
+		flag:     WSQ,
+		dataDesc: dd,
+	}
+}
+
+func NewDataWSQ(dd *lfs.DataDesc, fd *lfs.FileDesc) *Message {
+	return &Message{
+		flag:     WSQ,
+		fileDesc: fd,
+		dataDesc: dd,
+	}
+}
+
+func (m *Message) SetFlag(f Flag) {
+	m.flag = f
+}
+
+func (m *Message) GetFlag() Flag {
 	return m.flag
+}
+
+func NewACK() *Message {
+	return &Message{
+		flag: ACK,
+	}
 }
 
 func (m *Message) GetList() []*lfs.FileDesc {
 	return m.fileList
+}
+
+func (m *Message) GetUuid() uuid.UUID {
+	return m.uuid
+}
+
+func (m *Message) GetFileDesc() *lfs.FileDesc {
+	return m.fileDesc
+}
+
+func (m *Message) GetDataDesc() *lfs.DataDesc {
+	return m.dataDesc
+}
+
+func (m *Message) GetOffset() int64 {
+	return m.offset
+}
+
+func (m *Message) GetLimit() int64 {
+	return m.limit
 }

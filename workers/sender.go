@@ -157,11 +157,11 @@ func (s *sender) sendDataToReaders() {
 				if limit > int64(fd.FileSize) {
 					limit = int64(fd.FileSize)
 				}
-				s.rrCh <- core.NewRSQ(fd, int64(chunk)*chunkSize, limit)
+				s.rrCh <- core.NewRSQ(s.uuid, fd, int64(chunk)*chunkSize, limit)
 			}
 
 		} else {
-			s.rrCh <- core.NewRSQ(fd, 0, int64(fd.FileSize))
+			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, int64(fd.FileSize))
 		}
 	}
 
@@ -191,11 +191,11 @@ func (s *sender) sendDataToReaders() {
 					Int64("limit", limit).
 					Msg("sender - reading file per partes")
 
-				s.brCh <- core.NewRSQ(fd, offset, limit)
+				s.brCh <- core.NewRSQ(s.uuid, fd, offset, limit)
 			}
 
 		} else {
-			s.brCh <- core.NewRSQ(fd, 0, fd.FileSize)
+			s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize)
 		}
 	}
 }
@@ -204,12 +204,12 @@ func (s *sender) stopReaders() {
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
-			s.rrCh <- core.NewFin()
+			s.rrCh <- core.NewFIN(s.uuid)
 		}
 	}
 	if len(s.missList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
-			s.brCh <- core.NewFin()
+			s.brCh <- core.NewFIN(s.uuid)
 		}
 	}
 }
@@ -230,7 +230,7 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: receiver,
-			ccIo:     ccIo,
+			//ccIo:     ccIo,
 		},
 		inbox: in,
 	}
@@ -243,11 +243,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	// prepare a message for the receiver
-	msg := &core.Message{
-		Flag:     core.INI,
-		UUID:     w.uuid,
-		FileList: w.srcList,
-	}
+	msg := core.NewINI(w.uuid, w.srcList)
 
 	log.Debug().
 		Msgf("local sender - source file list, length: %d", len(w.srcList))
@@ -288,10 +284,7 @@ func (w *LocalSender) Start() error {
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = &core.Message{
-		Flag: core.FIN,
-		UUID: w.uuid,
-	}
+	msg = core.NewFIN(w.uuid)
 	err = sendWithTimeout(msg, w.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
@@ -353,7 +346,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: make(chan *core.Message),
-			ccIo:     ccIo,
+			//ccIo:     ccIo,
 		},
 	}
 
@@ -367,11 +360,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// create a new message for the other side
-	msg := &core.Message{
-		Flag:     core.INI,
-		UUID:     w.uuid,
-		FileList: w.srcList,
-	}
+	msg := core.NewINI(w.uuid, w.srcList)
 
 	// send
 	url := w.url.String() + "/list"
@@ -391,7 +380,7 @@ func (w *HttpSender) Start() error {
 	w.g = new(errgroup.Group)
 
 	// starting http senders
-	for i := 0; i < 2*w.ccIo; i++ {
+	for i := int64(0); i < 2*w.ccIo; i++ {
 		log.Trace().
 			Msg("http sender - starting http client worker")
 		w.g.Go(w.dataSender)
@@ -404,10 +393,8 @@ func (w *HttpSender) Start() error {
 	w.stopReaders()
 
 	// don't forget zee http senderz
-	for i := 0; i < 2*w.ccIo; i++ {
-		w.receiver <- &core.Message{
-			Flag: core.FIN,
-		}
+	for i := int64(0); i < 2*w.ccIo; i++ {
+		w.receiver <- core.NewFIN(w.uuid)
 	}
 
 	// end

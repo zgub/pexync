@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -28,6 +29,7 @@ var (
 )
 
 func startLocalSync() {
+	uuid := uuid.New()
 
 	// silly but it can be changed by viper.Set and it's used like this in tests
 	dstDir := viper.GetString("destination")
@@ -50,7 +52,7 @@ func startLocalSync() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sender := workers.NewLocalSender(ctx, local, remote)
+	sender := workers.NewLocalSender(ctx, uuid, local, remote)
 
 	g.Go(sender.Start)
 
