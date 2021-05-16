@@ -157,11 +157,13 @@ func (s *sender) sendDataToReaders() {
 				if limit > int64(fd.FileSize) {
 					limit = int64(fd.FileSize)
 				}
-				s.rrCh <- core.NewRSQ(s.uuid, fd, int64(chunk)*chunkSize, limit)
+				// data stream count = s.ccIo
+				s.rrCh <- core.NewRSQ(s.uuid, fd, int64(chunk)*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
-			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, int64(fd.FileSize))
+			// data streams count = 1
+			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, int64(fd.FileSize), 1)
 		}
 	}
 
@@ -191,11 +193,13 @@ func (s *sender) sendDataToReaders() {
 					Int64("limit", limit).
 					Msg("sender - reading file per partes")
 
-				s.brCh <- core.NewRSQ(s.uuid, fd, offset, limit)
+				// data stream count = s.ccIo
+				s.brCh <- core.NewRSQ(s.uuid, fd, offset, limit, s.ccIo)
 			}
 
 		} else {
-			s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize)
+			// data streams count = 1
+			s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 		}
 	}
 }

@@ -55,7 +55,7 @@ func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
 	}
 }
 
-func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit int64) *Message {
+func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	return &Message{
 		uuid:     uuid,
 		flag:     RSQ,
@@ -130,4 +130,8 @@ func (m *Message) GetOffset() int64 {
 
 func (m *Message) GetLimit() int64 {
 	return m.limit
+}
+
+func (m *Message) GetStreamCount() int64 {
+	return m.streams
 }

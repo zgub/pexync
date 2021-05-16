@@ -84,6 +84,12 @@ func (w *RollReader) Start() error {
 // 3rd implementation of the rolling hash reader
 func (w *RollReader) rollV3(msg *core.Message) error {
 
+	// sanity check
+	streams := msg.GetStreamCount()
+	if streams == 0 {
+		return errors.New("zero data streams count")
+	}
+
 	// open the file
 	srcFilePath := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
 	log.Trace().
@@ -319,6 +325,13 @@ func (w *BytesReader) Start() error {
 					Msgf("bytes reader %d - received FIN", w.myID)
 				return nil
 			case core.RSQ:
+
+				// sanity check
+				streams := msg.GetStreamCount()
+				if streams == 0 {
+					errors.New("zero data stream count")
+				}
+
 				log.Trace().
 					Str("filename", msg.GetFileDesc().FileName).
 					Msgf("bytes reader %d - message received", w.myID)
