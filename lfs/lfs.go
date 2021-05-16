@@ -56,7 +56,7 @@ func (f Flag) String() string {
 }
 
 const (
-	HeaderSize = 34
+	HeaderSize = 42
 )
 
 // common errors, lazy to type
