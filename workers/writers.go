@@ -114,7 +114,12 @@ Loop:
 								Str("file name", dstPath).
 								Int64("offset chunk", offset).
 								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
-							continue
+							fw.streams--
+							if fw.streams == 0 {
+								break Loop
+							} else {
+								continue
+							}
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
@@ -138,7 +143,12 @@ Loop:
 									Str("file name", dstPath).
 									Int64("offset chunk", offset).
 									Msg("file writer - cccccccccccccccccccccc closing temporary file")
-								continue
+								fw.streams--
+								if fw.streams == 0 {
+									break Loop
+								} else {
+									continue
+								}
 							}
 							return errors.Wrap(err, "unable to write file")
 						}
