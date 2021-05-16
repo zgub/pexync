@@ -130,6 +130,7 @@ func (s *sender) spawnReaders() {
 	// spawn missing file senders if we have missing files
 	if len(s.missList) > 0 {
 		log.Debug().
+			Int64("io concurrency", s.ccIo).
 			Msg("sender - spawning bytes readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
@@ -234,7 +235,7 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: receiver,
-			//ccIo:     ccIo,
+			ccIo:     int64(ccIo),
 		},
 		inbox: in,
 	}
@@ -350,7 +351,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: make(chan *core.Message),
-			//ccIo:     ccIo,
+			ccIo:     int64(ccIo),
 		},
 	}
 
