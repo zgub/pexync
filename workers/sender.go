@@ -158,7 +158,6 @@ func (s *sender) sendDataToReaders() {
 					limit = int64(fd.FileSize)
 				}
 				s.rrCh <- &core.Message{
-					CcIo:     s.ccIo,
 					FileDesc: fd,
 					Flag:     core.RSQ,
 					Offset:   int64(chunk) * chunkSize,
@@ -168,7 +167,6 @@ func (s *sender) sendDataToReaders() {
 
 		} else {
 			s.rrCh <- &core.Message{
-				CcIo:     s.ccIo,
 				FileDesc: fd,
 				Flag:     core.RSQ,
 				Offset:   0,
@@ -204,7 +202,6 @@ func (s *sender) sendDataToReaders() {
 					Msg("sender - reading file per partes")
 
 				s.brCh <- &core.Message{
-					CcIo:     s.ccIo,
 					FileDesc: fd,
 					Flag:     core.RSQ,
 					Offset:   offset,
@@ -214,7 +211,6 @@ func (s *sender) sendDataToReaders() {
 
 		} else {
 			s.brCh <- &core.Message{
-				CcIo:     s.ccIo,
 				FileDesc: fd,
 				Flag:     core.RSQ,
 				Offset:   0,

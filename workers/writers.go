@@ -35,6 +35,7 @@ type FileWriter struct {
 	srcFd    *lfs.FileDesc
 	rr       io.Reader // reference file reader
 	fileMap  map[int64]*tmpFile
+	ccIo     int // number of incomming streams
 }
 
 func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
@@ -70,7 +71,6 @@ func (fw FileWriter) Start() error {
 		defer ref.Close()
 	}
 
-	tmpFileCount := 0
 Loop:
 	for {
 		select {
@@ -83,10 +83,6 @@ Loop:
 			case core.WSQ:
 				// data sequence (ref index or byte date)
 
-				if msg.CcIo == 0 {
-					fmt.Printf("%+v\n", msg)
-					log.Fatal().Msg("ccio == 0")
-				}
 				seq := msg.DataDesc.Seq()
 				offset := msg.DataDesc.Offset()
 				log.Trace().
@@ -117,12 +113,7 @@ Loop:
 								Str("file name", dstPath).
 								Int64("offset chunk", offset).
 								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
-							tmpFileCount++
-							if tmpFileCount == msg.CcIo {
-								break Loop
-							} else {
-								continue
-							}
+							continue
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
@@ -146,12 +137,7 @@ Loop:
 									Str("file name", dstPath).
 									Int64("offset chunk", offset).
 									Msg("file writer - cccccccccccccccccccccc closing temporary file")
-								tmpFileCount++
-								if tmpFileCount == msg.CcIo {
-									break Loop
-								} else {
-									continue
-								}
+								continue
 							}
 							return errors.Wrap(err, "unable to write file")
 						}

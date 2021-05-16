@@ -135,7 +135,6 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 		if dd.Len() > msg.FileDesc.BlockSize {
 			// new message
 			dMsg := &core.Message{
-				CcIo:     msg.CcIo,
 				Flag:     core.WSQ,
 				FileDesc: msg.FileDesc, // maybe strip the useless data
 				DataDesc: dd,
@@ -279,7 +278,6 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 		return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 	}
 	dMsg := &core.Message{
-		CcIo:     msg.CcIo,
 		Flag:     core.WSQ,
 		FileDesc: msg.FileDesc, // maybe strip the useless data
 		DataDesc: dd,
@@ -354,7 +352,6 @@ func (w *BytesReader) Start() error {
 							// end of transmission
 							dd.MarkAsLast()
 							nMsg := &core.Message{
-								CcIo:     msg.CcIo,
 								Flag:     core.WSQ,
 								FileDesc: msg.FileDesc,
 								DataDesc: dd,
@@ -372,7 +369,6 @@ func (w *BytesReader) Start() error {
 						return errors.Wrap(err, "error reading file")
 					}
 					nMsg := &core.Message{
-						CcIo:     msg.CcIo,
 						Flag:     core.WSQ,
 						FileDesc: msg.FileDesc,
 						DataDesc: dd,
