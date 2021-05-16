@@ -71,6 +71,7 @@ type Header struct {
 	FileIndex int64 // global header only
 	Offset    int64 // global header only
 	Seq       int64 // for proper reconstruction
+	Streams   int64 // number of simultaneous data streams
 	Len       int64
 }
 
@@ -80,16 +81,18 @@ type DataDesc struct {
 	iBuff                  []int64       // intermediate index buffer
 	readBuf                *bytes.Buffer // intermediate data buffer
 	data                   *bytes.Buffer
+	streams                int64 // ccIo
 	//len                    int64         //is ths really neccessary?
 }
 
-func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
+func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
 	return &DataDesc{
 		fileIndex: fileIndex,
 		readBuf:   new(bytes.Buffer),
 		data:      new(bytes.Buffer),
 		offset:    offset,
 		seq:       sequence,
+		streams:   streams,
 	}
 }
 
@@ -209,6 +212,7 @@ func (dd *DataDesc) Serialize() ([]byte, error) {
 	// global header
 	header := &Header{
 		FileIndex: dd.fileIndex,
+		Streams:   int64(dd.streams),
 		Offset:    dd.offset,
 		Seq:       dd.seq,
 		Len:       int64(dd.data.Len()),
@@ -233,6 +237,7 @@ func Deserialize(p []byte) (*DataDesc, error) {
 	}
 	dd := &DataDesc{
 		fileIndex: header.FileIndex,
+		streams:   header.Streams,
 		offset:    header.Offset,
 		seq:       header.Seq,
 		data:      bytes.NewBuffer(p[HeaderSize:]),

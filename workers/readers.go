@@ -22,13 +22,13 @@ var (
 
 // RollReader reads a file, compares the data witha hash table and send either data or indexes
 type RollReader struct {
+	myID                      int
+	indexCnt, dataCnt, msgCnt int64 // counters
 	ctx                       context.Context
 	receiver                  chan<- *core.Message
 	inbox                     <-chan *core.Message
 	senderID                  uuid.UUID
 	hMap                      map[uint32]int
-	indexCnt, dataCnt, msgCnt int64
-	myID                      int
 }
 
 func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
@@ -126,7 +126,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 	var seq int64
 
 	// fresh data descriptor
-	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+	dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq, streams)
 
 	for {
 		rSum := rh.Sum32()
@@ -155,7 +155,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			}
 			// next!
 			seq++
-			dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+			dd = lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq, w.streams)
 		}
 
 		if hIndex, ok := w.hMap[rSum]; ok {
@@ -294,11 +294,11 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 
 // BytesReader reads a file by blocks with given block size and sends them
 type BytesReader struct {
+	myID     int
 	ctx      context.Context
 	receiver chan<- *core.Message
 	inbox    <-chan *core.Message
 	senderID uuid.UUID
-	myID     int
 }
 
 func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *BytesReader {
@@ -339,7 +339,7 @@ func (w *BytesReader) Start() error {
 				buf := make([]byte, msg.FileDesc.BlockSize)
 
 				for seq := int64(0); ; seq++ {
-					dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq)
+					dd := lfs.NewDataDesc(msg.FileDesc.Idx, msg.Offset, seq, streams)
 
 					n, err := io.ReadFull(br, buf)
 					if n == 0 {
