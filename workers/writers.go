@@ -258,13 +258,9 @@ Loop:
 func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	br := bytes.NewReader(dd.Bytes())
 	offset := dd.Offset()
-	//f := fw.fileMap[offset].f
 	w := fw.fileMap[offset].w
 
-	//fmt.Println("WRWRWRWR wirting")
-	//spew.Dump(dd)
-
-	for z := 0; ; z++ {
+	for {
 		header := new(lfs.Header)
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
@@ -279,19 +275,10 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
-			//fmt.Printf("WRWRWRWRWRWRWRW Writing data: %d bytes\n", len(dd.Bytes()))
-			//spew.Dump(dd)
-			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			deBuf := new(bytes.Buffer)
-			teer := io.TeeReader(br, deBuf)
-			n, err := io.CopyN(w, teer, header.Len)
-			//n, err := w.Write(dd.Bytes())
-			//fmt.Printf("deBuff: %s\n", deBuf.Bytes())
-			//spew.Dump(dd.Bytes())
+			_, err := io.CopyN(w, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
-			fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
 			w.Flush()
 		case lfs.Index:
 			// indexes

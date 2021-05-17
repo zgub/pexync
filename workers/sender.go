@@ -367,11 +367,15 @@ func (w *HttpSender) Start() error {
 	// create a new message for the other side
 	msg := core.NewINI(w.uuid, w.srcList)
 
+	//spew.Dump(msg)
+
 	// send
 	url := w.url.String() + "/list"
-	msg, err := w.sendJson(url, msg)
+	_, err := w.sendJson(url, msg)
 	if err != nil {
-		errors.Wrap(err, "http sender - send failed")
+		log.Fatal().
+			Err(err).
+			Msg("error comunicating with server")
 	}
 
 	err = w.parseRemoteList(msg)
