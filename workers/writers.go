@@ -264,7 +264,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	//fmt.Println("WRWRWRWR wirting")
 	//spew.Dump(dd)
 
-	for z := 0; ; z++ {
+	for {
 		header := new(lfs.Header)
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
