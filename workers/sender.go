@@ -65,7 +65,6 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	for _, fd := range msg.GetList() {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
-			fmt.Println(" ************ MISS **************")
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
@@ -73,7 +72,6 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
 			// diff file
-			fmt.Println(" ************ DIFF **************")
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
@@ -174,7 +172,6 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.missList {
 
 		// data streams count = 1
-		fmt.Println("sending file to bytes reader")
 		s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 	}
 }
@@ -373,7 +370,6 @@ func (w *HttpSender) Start() error {
 
 	w.sendDataToReaders()
 
-	fmt.Println("*** stopping readers ***")
 	w.stopReaders()
 
 	// end

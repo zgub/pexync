@@ -455,9 +455,6 @@ func (w *LocalReceiver) Start() error {
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
-				//spew.Dump(msg)
-				//fmt.Println("receiver - WSQ")
-				//spew.Dump(dd)
 				/***********************
 				 * end of detour       *
 				 ***********************/
