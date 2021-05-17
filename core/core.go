@@ -39,19 +39,19 @@ func (f Flag) String() string {
 }
 
 type Message struct {
-	flag                   Flag            // meta data
-	offset, limit, streams int64           // meta data required for reconstruction
-	uuid                   uuid.UUID       // meta data
-	fileList               []*lfs.FileDesc // meta data
-	fileDesc               *lfs.FileDesc   // meta data
-	dataDesc               *lfs.DataDesc   // binary (actual) data
+	Flag                   Flag            // meta data
+	Offset, Limit, Streams int64           // meta data required for reconstruction
+	Uuid                   uuid.UUID       // meta data
+	FileList               []*lfs.FileDesc // meta data
+	FileDesc               *lfs.FileDesc   // meta data
+	DataDesc               *lfs.DataDesc   // binary (actual) data
 }
 
 func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
 	return &Message{
-		flag:     INI,
-		uuid:     uuid,
-		fileList: list,
+		Flag:     INI,
+		Uuid:     uuid,
+		FileList: list,
 	}
 }
 
@@ -60,82 +60,82 @@ func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Mes
 		panic("new rsq: zero data streams")
 	}
 	return &Message{
-		uuid:     uuid,
-		flag:     RSQ,
-		offset:   offset,
-		limit:    limit,
-		streams:  streams,
-		fileDesc: fd,
+		Uuid:     uuid,
+		Flag:     RSQ,
+		Offset:   offset,
+		Limit:    limit,
+		Streams:  streams,
+		FileDesc: fd,
 	}
 }
 
 func NewFIN(uuid uuid.UUID) *Message {
 	return &Message{
-		uuid: uuid,
-		flag: FIN,
+		Uuid: uuid,
+		Flag: FIN,
 	}
 }
 
 func NewHashRequest(fd *lfs.FileDesc) *Message {
 	return &Message{
-		flag:     HSH,
-		fileDesc: fd,
+		Flag:     HSH,
+		FileDesc: fd,
 	}
 }
 
 func NewWSQ(dd *lfs.DataDesc) *Message {
 	return &Message{
-		flag:     WSQ,
-		dataDesc: dd,
+		Flag:     WSQ,
+		DataDesc: dd,
 	}
 }
 
 func NewDataWSQ(dd *lfs.DataDesc, fd *lfs.FileDesc) *Message {
 	return &Message{
-		flag:     WSQ,
-		fileDesc: fd,
-		dataDesc: dd,
+		Flag:     WSQ,
+		FileDesc: fd,
+		DataDesc: dd,
 	}
 }
 
 func NewACK() *Message {
 	return &Message{
-		flag: ACK,
+		Flag: ACK,
 	}
 }
 
 func (m *Message) SetFlag(f Flag) {
-	m.flag = f
+	m.Flag = f
 }
 
 func (m *Message) GetFlag() Flag {
-	return m.flag
+	return m.Flag
 }
 
 func (m *Message) GetList() []*lfs.FileDesc {
-	return m.fileList
+	return m.FileList
 }
 
 func (m *Message) GetUuid() uuid.UUID {
-	return m.uuid
+	return m.Uuid
 }
 
 func (m *Message) GetFileDesc() *lfs.FileDesc {
-	return m.fileDesc
+	return m.FileDesc
 }
 
 func (m *Message) GetDataDesc() *lfs.DataDesc {
-	return m.dataDesc
+	return m.DataDesc
 }
 
 func (m *Message) GetOffset() int64 {
-	return m.offset
+	return m.Offset
 }
 
 func (m *Message) GetLimit() int64 {
-	return m.limit
+	return m.Limit
 }
 
 func (m *Message) GetStreamCount() int64 {
-	return m.streams
+	return m.Streams
 }

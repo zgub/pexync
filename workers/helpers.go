@@ -119,12 +119,14 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 }
 
 func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
+	fmt.Println("*** MSG ***")
+	spew.Dump(msg)
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
 	}
 
-	spew.Dump(msg)
+	fmt.Printf("json: %s\n", string(j))
 
 	buf, err := compress(j)
 	if err != nil {
