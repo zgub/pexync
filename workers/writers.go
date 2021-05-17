@@ -284,10 +284,10 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
 			deBuf := new(bytes.Buffer)
 			teer := io.TeeReader(br, deBuf)
-			n, err := io.CopyN(w, teer, header.Len)
+			_, err := io.CopyN(w, teer, header.Len)
 			//n, err := w.Write(dd.Bytes())
-			fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
-			fmt.Printf("deBuff: %s\n", deBuf.Bytes())
+			//fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
+			//fmt.Printf("deBuff: %s\n", deBuf.Bytes())
 			//spew.Dump(dd.Bytes())
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
