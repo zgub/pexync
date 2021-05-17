@@ -355,13 +355,17 @@ func (w *HttpSender) Start() error {
 	// prepare for transfer
 	w.rrCh = make(chan *core.Message, w.ccIo)
 	w.brCh = make(chan *core.Message, w.ccIo)
+	// one errorgroup for readers and data senders
 	w.g = new(errgroup.Group)
+
+	// another, independent one for http senders
+	eg := new(errgroup.Group)
 
 	// starting http senders
 	for i := int64(0); i < 2*w.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		w.g.Go(w.dataSender)
+		eg.Go(w.dataSender)
 	}
 
 	w.spawnReaders()
@@ -379,6 +383,11 @@ func (w *HttpSender) Start() error {
 	// don't forget zee http senderz
 	for i := int64(0); i < 2*w.ccIo; i++ {
 		w.receiver <- core.NewFIN(w.uuid)
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return errors.Wrap(err, "http reader failed")
 	}
 
 	// do not send FIN to remote workers vi http
