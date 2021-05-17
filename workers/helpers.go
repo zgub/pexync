@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -47,7 +46,6 @@ func recvWithTimeout(src <-chan *core.Message) (*core.Message, error) {
 
 func fixMeta(dstDir string, srcFd, dstFd *lfs.FileDesc) error {
 	p := filepath.Join(dstDir, srcFd.RelPath)
-	fmt.Printf("path: %s\n", p)
 	// check permissions and ownership
 	if srcFd.Modified != dstFd.Modified {
 		err := os.Chtimes(p, srcFd.Modified, srcFd.Modified)
@@ -206,12 +204,12 @@ func (w *HttpSender) dataSender() error {
 		case msg := <-w.receiver:
 			// if FIN was send, don't send it to the standalone process
 			// but stop
-			if msg.Flag == core.FIN {
+			if msg.GetFlag() == core.FIN {
 				return nil
 			}
 			//spew.Dump(msg)
 			url := w.url.String() + "/data"
-			data, err := msg.DataDesc.Serialize()
+			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
 				return errors.Wrap(err, "failed to serialize data")
 			}
@@ -219,13 +217,13 @@ func (w *HttpSender) dataSender() error {
 			if err != nil {
 				return errors.Wrap(err, "failed to send data")
 			}
-			switch resp.Flag {
+			switch resp.GetFlag() {
 			case core.ACK:
 				log.Trace().
 					Msg("http client worker - received ack")
 			default:
 				log.Error().
-					Msgf("http client worker - receives %s", resp.Flag.String())
+					Msgf("http client worker - receives %s", resp.GetFlag().String())
 			}
 			//spew.Dump(resp)
 

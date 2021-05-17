@@ -3,11 +3,11 @@ package cmd
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
-	"github.com/zgub/pexync/lfs"
 	"github.com/zgub/pexync/workers"
 	"golang.org/x/sync/errgroup"
 )
@@ -29,6 +29,7 @@ var (
 )
 
 func startLocalSync() {
+	uuid := uuid.New()
 
 	// silly but it can be changed by viper.Set and it's used like this in tests
 	dstDir := viper.GetString("destination")
@@ -42,23 +43,16 @@ func startLocalSync() {
 		Str("local destination set", dstDir).
 		Msg("starting local sync")
 
-	list, err := lfs.ParseDir(viper.GetString("source"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Stack().
-			Caller().
-			Send()
-	}
 	ctx := context.Background()
+	ccIo := viper.GetInt("io_concurrency")
 
 	g := new(errgroup.Group)
-	local := make(chan *core.Message)
-	remote := make(chan *core.Message)
+	local := make(chan *core.Message, ccIo)
+	remote := make(chan *core.Message, ccIo)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sender := workers.NewLocalSender(ctx, list, local, remote)
+	sender := workers.NewLocalSender(ctx, uuid, local, remote)
 
 	g.Go(sender.Start)
 

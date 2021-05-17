@@ -37,7 +37,7 @@ func TestHeaders(t *testing.T) {
 
 func TestBytesWriter(t *testing.T) {
 	d1 := []byte("“For us, at the Highest Possible Level, there is nothing left to do in this Universe, \nand to create another Universe, in my opinion, would be in extremely poor taste.”")
-	dd1 := NewDataDesc(0, 1, 2)
+	dd1 := NewDataDesc(0, 1, 2, 1)
 	n, err := dd1.Write(d1)
 	t.Logf("encoded %d bytes\n", n)
 	if err != nil {

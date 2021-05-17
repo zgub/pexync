@@ -22,6 +22,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const splitSize = int64(536870912)
+
 type sender struct {
 	ctx                  context.Context
 	srcList              []*lfs.FileDesc
@@ -29,13 +31,14 @@ type sender struct {
 	diffList, missList   []*lfs.FileDesc
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
+	ccIo                 int64 // this gets used so may times, it deserves an instance var
 }
 
 func (s *sender) getSrcList() error {
 	// perform directory listing
 	list, err := lfs.ParseDir(viper.GetString("source"))
 	if err != nil {
-		return errors.Wrap(err, "http sender - directory parsing failed")
+		return errors.Wrap(err, "sender - directory parsing failed")
 	}
 
 	// calculate blocksizes for each file
@@ -46,7 +49,7 @@ func (s *sender) getSrcList() error {
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
 				Int64("calculated block size", fd.BlockSize).
-				Msg("http sender")
+				Msg("sender")
 		}
 	}
 
@@ -59,13 +62,13 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	// prepare a slice with the delta
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
-	for _, fd := range msg.FileList {
+	for _, fd := range msg.GetList() {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("local sender %s", fd.State.String())
+				Msgf("sender %s", fd.State.String())
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
 			// diff file
@@ -73,7 +76,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("local sender %s", fd.State.String())
+				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
 				sha1sh := sha1.New()
 				p := filepath.Join(fd.Prefix, fd.FileName)
@@ -91,7 +94,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				lSha1 := sha1sh.Sum(nil)[:20]
 				if bytes.Equal(rSha1, lSha1) {
 					log.Trace().
-						Msgf("local sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+						Msgf("sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
 					continue
 				}
 			}
@@ -101,7 +104,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// skipped file
 			log.Debug().
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("local sender %s", fd.State.String())
+				Msgf("sender %s", fd.State.String())
 		}
 	}
 	s.diffList = diff
@@ -111,15 +114,14 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 
 func (s *sender) spawnReaders() {
 	// concurrent IO parameter
-	ccIo := viper.GetInt("io_concurrency")
 	dCtx := context.Context(s.ctx)
 
 	// spawn readers if we have diff files
 	if len(s.diffList) > 0 {
 		log.Debug().
-			Msg("local sender - spawning roll readers")
+			Msg("sender - spawning roll readers")
 
-		for i := 0; i < ccIo; i++ {
+		for i := int64(0); i < s.ccIo; i++ {
 			rr := NewRollReader(dCtx, s.rrCh, s.receiver)
 			s.g.Go(rr.Start)
 		}
@@ -128,55 +130,91 @@ func (s *sender) spawnReaders() {
 	// spawn missing file senders if we have missing files
 	if len(s.missList) > 0 {
 		log.Debug().
-			Msg("local sender - spawning bytes readers")
+			Int64("io concurrency", s.ccIo).
+			Msg("sender - spawning bytes readers")
 
-		for i := 0; i < ccIo; i++ {
+		for i := int64(0); i < s.ccIo; i++ {
 			br := NewBytesReader(dCtx, s.brCh, s.receiver)
 			s.g.Go(br.Start)
 		}
 	}
 }
 
-func (s *sender) sendData() {
+func (s *sender) sendDataToReaders() {
 
 	// send data - diff first
 	for _, fd := range s.diffList {
 
-		s.rrCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
+		if fd.FileSize > splitSize && s.ccIo > 1 {
+			chunkSize := int64(fd.FileSize / s.ccIo)
+			log.Debug().
+				Int64("file size", int64(fd.FileSize)).
+				Int64("chunk size", chunkSize).
+				Int64("io_concurency", s.ccIo).
+				Msg("sender - using paralel reading")
+
+			for chunk := int64(0); chunk < s.ccIo; chunk++ {
+				limit := chunkSize * (int64(chunk) + 1)
+				if limit > int64(fd.FileSize) {
+					limit = int64(fd.FileSize)
+				}
+				// data stream count = s.ccIo
+				s.rrCh <- core.NewRSQ(s.uuid, fd, int64(chunk)*chunkSize, limit, s.ccIo)
+			}
+
+		} else {
+			// data streams count = 1
+			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, int64(fd.FileSize), 1)
 		}
 	}
 
 	// new files next
 	for _, fd := range s.missList {
 
-		s.brCh <- &core.Message{
-			FileDesc: fd,
-			Flag:     core.RSQ,
-			Offset:   0,
-			Limit:    int64(fd.FileSize),
+		if fd.FileSize > splitSize && s.ccIo > 1 {
+			chunkSize := int64(fd.FileSize / s.ccIo)
+			log.Debug().
+				Int64("file size", int64(fd.FileSize)).
+				Int64("chunk size", chunkSize).
+				Int64("io_concurency", s.ccIo).
+				Msg("sender - using paralel reading")
+
+			for chunk := int64(0); chunk < s.ccIo; chunk++ {
+
+				limit := chunkSize * (int64(chunk) + 1)
+				if limit > fd.FileSize {
+					limit = fd.FileSize
+				}
+				offset := int64(chunk) * chunkSize
+
+				log.Trace().
+					Str("filename", fd.FileName).
+					Int64("chunk", chunk).
+					Int64("offset", offset).
+					Int64("limit", limit).
+					Msg("sender - reading file per partes")
+
+				// data stream count = s.ccIo
+				s.brCh <- core.NewRSQ(s.uuid, fd, offset, limit, s.ccIo)
+			}
+
+		} else {
+			// data streams count = 1
+			s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 		}
 	}
 }
 
 func (s *sender) stopReaders() {
-	ccIo := viper.GetInt("io_concurrency")
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			s.rrCh <- &core.Message{
-				Flag: core.FIN,
-			}
+		for i := int64(0); i < s.ccIo; i++ {
+			s.rrCh <- core.NewFIN(s.uuid)
 		}
 	}
 	if len(s.missList) > 0 {
-		for i := 0; i < ccIo; i++ {
-			s.brCh <- &core.Message{
-				Flag: core.FIN,
-			}
+		for i := int64(0); i < s.ccIo; i++ {
+			s.brCh <- core.NewFIN(s.uuid)
 		}
 	}
 }
@@ -187,13 +225,17 @@ type LocalSender struct {
 	sender
 }
 
-func NewLocalSender(ctx context.Context, fl []*lfs.FileDesc, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+	ccIo := viper.GetInt("io_concurrency")
+	log.Debug().
+		Int("ccio", ccIo).
+		Msg("starting new local sender")
 	return &LocalSender{
 		sender: sender{
 			ctx:      ctx,
-			srcList:  fl,
-			uuid:     uuid.New(),
+			uuid:     uuid,
 			receiver: receiver,
+			ccIo:     int64(ccIo),
 		},
 		inbox: in,
 	}
@@ -206,11 +248,7 @@ func (w *LocalSender) Start() error {
 	}
 
 	// prepare a message for the receiver
-	msg := &core.Message{
-		Flag:     core.INI,
-		UUID:     w.uuid,
-		FileList: w.srcList,
-	}
+	msg := core.NewINI(w.uuid, w.srcList)
 
 	log.Debug().
 		Msgf("local sender - source file list, length: %d", len(w.srcList))
@@ -232,13 +270,13 @@ func (w *LocalSender) Start() error {
 	}
 
 	// prepare for transfer
-	w.rrCh = make(chan *core.Message)
-	w.brCh = make(chan *core.Message)
+	w.rrCh = make(chan *core.Message, w.ccIo)
+	w.brCh = make(chan *core.Message, w.ccIo)
 	w.g = new(errgroup.Group)
 
 	w.spawnReaders()
 
-	w.sendData()
+	w.sendDataToReaders()
 
 	w.stopReaders()
 
@@ -251,14 +289,13 @@ func (w *LocalSender) Start() error {
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = &core.Message{
-		Flag: core.FIN,
-		UUID: w.uuid,
-	}
+	msg = core.NewFIN(w.uuid)
 	err = sendWithTimeout(msg, w.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
+	log.Debug().
+		Msgf("local sender - done")
 	return nil
 }
 
@@ -268,7 +305,7 @@ type HttpSender struct {
 	sender
 }
 
-func NewHttpSender(ctx context.Context) (*HttpSender, error) {
+func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 
 	// first, prepare http client
 	host := viper.GetString("remote_host")
@@ -312,8 +349,9 @@ func NewHttpSender(ctx context.Context) (*HttpSender, error) {
 		client: c,
 		sender: sender{
 			ctx:      ctx,
-			uuid:     uuid.New(),
+			uuid:     uuid,
 			receiver: make(chan *core.Message),
+			ccIo:     int64(ccIo),
 		},
 	}
 
@@ -327,11 +365,7 @@ func (w *HttpSender) Start() error {
 	}
 
 	// create a new message for the other side
-	msg := &core.Message{
-		Flag:     core.INI,
-		UUID:     w.uuid,
-		FileList: w.srcList,
-	}
+	msg := core.NewINI(w.uuid, w.srcList)
 
 	// send
 	url := w.url.String() + "/list"
@@ -346,13 +380,12 @@ func (w *HttpSender) Start() error {
 	}
 
 	// prepare for transfer
-	w.rrCh = make(chan *core.Message)
-	w.brCh = make(chan *core.Message)
-	ccIo := viper.GetInt("io_concurrency")
+	w.rrCh = make(chan *core.Message, w.ccIo)
+	w.brCh = make(chan *core.Message, w.ccIo)
 	w.g = new(errgroup.Group)
 
 	// starting http senders
-	for i := 0; i < 2*ccIo; i++ {
+	for i := int64(0); i < 2*w.ccIo; i++ {
 		log.Trace().
 			Msg("http sender - starting http client worker")
 		w.g.Go(w.dataSender)
@@ -360,15 +393,13 @@ func (w *HttpSender) Start() error {
 
 	w.spawnReaders()
 
-	w.sendData()
+	w.sendDataToReaders()
 
 	w.stopReaders()
 
 	// don't forget zee http senderz
-	for i := 0; i < 2*ccIo; i++ {
-		w.receiver <- &core.Message{
-			Flag: core.FIN,
-		}
+	for i := int64(0); i < 2*w.ccIo; i++ {
+		w.receiver <- core.NewFIN(w.uuid)
 	}
 
 	// end

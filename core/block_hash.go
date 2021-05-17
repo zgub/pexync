@@ -3,7 +3,6 @@ package core
 import (
 	"bufio"
 	"crypto/sha1"
-	"fmt"
 	"hash/adler32"
 	"io"
 	"os"
@@ -16,7 +15,6 @@ import (
 
 func AddChecksums(fd *lfs.FileDesc) error {
 	p := filepath.Join(fd.Prefix, fd.FileName)
-	fmt.Printf("filepath join: %s\n", p)
 	f, err := os.Open(p)
 	if err != nil {
 		return errors.Wrap(err, "error opening file")

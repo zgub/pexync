@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -19,166 +20,279 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
+type tmpFile struct {
+	f       *os.File
+	w       *bufio.Writer
+	seq     int64
+	dataBuf map[int64]*lfs.DataDesc
+	path    string
+}
+
 type FileWriter struct {
-	ctx       context.Context
-	inbox     chan *core.Message
-	senderID  uuid.UUID
-	srcFd     *lfs.FileDesc
-	seqBuffer map[int64]*lfs.DataDesc
-	pSeq      int64 // last sequence written
-	bw        *bufio.Writer
-	sr        *io.SectionReader
+	ctx      context.Context
+	inbox    chan *core.Message
+	senderID uuid.UUID
+	srcFd    *lfs.FileDesc
+	ref      *os.File
+	rr       io.Reader // reference file reader
+	fileMap  map[int64]*tmpFile
+	streams  int64 // number of incomming streams
 }
 
-func NewFileWriter(ctx context.Context, uuid uuid.UUID, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
+func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
 	return FileWriter{
-		ctx:       ctx,
-		srcFd:     fd,
-		inbox:     inbox,
-		senderID:  uuid,
-		seqBuffer: make(map[int64]*lfs.DataDesc),
+		ctx:      ctx,
+		streams:  streams,
+		srcFd:    fd,
+		inbox:    inbox,
+		senderID: uuid,
+		fileMap:  make(map[int64]*tmpFile),
 	}
 }
 
-func (w FileWriter) Start() error {
-	dstDir := viper.GetString("destination")
-	tmpF, err := ioutil.TempFile(dstDir, w.srcFd.RelPath+".*."+w.senderID.String())
-	if err != nil {
-		return errors.Wrap(err, "unable to create file")
-	}
-	log.Trace().
-		Str("file name", tmpF.Name()).
-		Msg("file writer - DIFF opening temporary file")
+func (fw FileWriter) Start() error {
+	var err error
 
-	w.bw = bufio.NewWriter(io.Writer(tmpF))
-	oldPath := filepath.Join(dstDir, w.srcFd.FileName)
-	fmt.Printf("path: %s\n", oldPath)
+	dstDir := viper.GetString("destination")
+	dstPath := filepath.Join(dstDir, fw.srcFd.FileName)
+
 	// open a reader as well if we have to reference alredy present blocks
-	if w.srcFd.State == lfs.Diff {
+	if fw.srcFd.State == lfs.Diff {
+		// first rename the old file
+		refName := dstPath + ".ref"
+		err = os.Rename(dstPath, refName)
 		log.Trace().
-			Str("file name", oldPath).
+			Str("existing file name", dstPath).
+			Str("renamed to", refName).
 			Msg("file writer - DIFF opening destination file for reference")
-		f, err := os.Open(oldPath)
+		fw.ref, err = os.Open(refName)
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
 		}
-		r := io.ReaderAt(f)
-		w.sr = io.NewSectionReader(r, 0, int64(w.srcFd.FileSize))
-		defer f.Close()
+		fw.rr = io.Reader(fw.ref)
+		defer fw.ref.Close()
 	}
 
 Loop:
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-fw.ctx.Done():
 			log.Debug().
 				Msg("file writer - closing, context done")
 			break Loop
-		case msg := <-w.inbox:
-			if msg.Flag != core.WSQ {
-				return errors.New("file writer - invalide message type")
-			}
-			seq := msg.DataDesc.Seq()
-			log.Trace().
-				//Str("filename", msg.FileDesc.FileName).
-				Int64("seq", seq).
-				Int64("pSeq", w.pSeq).
-				Msg("file writer -  msg received")
-			//w.dataSeq[seq] = msg.DataDesc
-			if seq == w.pSeq {
-				// if we hae data at the current sequence, call writer
-				//spew.Dump(msg)
-				err = w.writeToFile(msg.DataDesc)
-				if err != nil {
-					if err == lfs.ErrEOF {
-						break Loop
+		case msg := <-fw.inbox:
+			switch msg.GetFlag() {
+			case core.WSQ:
+				// data sequence (ref index or byte date)
+
+				seq := msg.GetDataDesc().Seq()
+				offset := msg.GetDataDesc().Offset()
+				log.Trace().
+					Int64("offset", offset).
+					Int64("seq", seq).
+					Msg("file writer -  msg received")
+
+				// check if we;re already oepend a temp file for the paralel stream
+				if _, ok := fw.fileMap[offset]; !ok {
+					err = fw.newTempFile(offset)
+					if err != nil {
+						return errors.Wrap(err, "file writer - failed opening temporary file")
 					}
-					return errors.Wrap(err, "unable to write file")
 				}
-				// increase the expected sequence number
-				w.pSeq++
-				// letch chekc whether we have some other data to write
-				haveCached := func() bool {
-					_, ok := w.seqBuffer[w.pSeq]
-					return ok
-				}
-				for haveCached() {
-					err = w.writeToFile(w.seqBuffer[w.pSeq])
+				tmpF := fw.fileMap[offset]
+				// we already are processing this stream
+				// check the sequence
+				dd := msg.GetDataDesc()
+				fmt.Println("checking seq")
+				//spew.Dump(dd)
+				if seq == tmpF.seq {
+					fmt.Println("OKOKOKOK seq in order")
+					err := fw.writeToFile(dd)
 					if err != nil {
 						if err == lfs.ErrEOF {
-							break Loop
+							// end of chink, close tmp file
+							err = tmpF.f.Close()
+							if err != nil {
+								errors.Wrap(err, "unable to close file")
+							}
+							log.Debug().
+								Str("file name", dstPath).
+								Int64("offset chunk", offset).
+								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
+							fw.streams--
+							fmt.Printf("stream still up: %d\n", fw.streams)
+							if fw.streams == 0 {
+								break Loop
+							} else {
+								continue
+							}
 						}
 						return errors.Wrap(err, "unable to write file")
 					}
-					// release memory
-					delete(w.seqBuffer, w.pSeq)
-					// increase the expected sequence number again
-					w.pSeq++
-				}
-			} else {
-				// out of order delivery, store it - there is only one writer goroutine per file, so the shouldn't be multiple accesses to this map
-				w.seqBuffer[msg.DataDesc.Seq()] = msg.DataDesc
-				log.Warn().
-					Int64("got", seq).
-					Int64("expecting", w.pSeq).
-					Msg("out of order - caching")
-			}
+					// increase the sequence counter
+					tmpF.seq++
 
+					haveCached := func() bool {
+						_, ok := tmpF.dataBuf[tmpF.seq]
+						return ok
+					}
+
+					for haveCached() {
+						err = fw.writeToFile(tmpF.dataBuf[tmpF.seq])
+						if err != nil {
+							if err == lfs.ErrEOF {
+								err = tmpF.f.Close()
+								if err != nil {
+									errors.Wrap(err, "unable to close file")
+								}
+								log.Debug().
+									Str("file name", dstPath).
+									Int64("offset chunk", offset).
+									Msg("file writer - cccccccccccccccccccccc closing temporary file")
+								fw.streams--
+								if fw.streams == 0 {
+									break Loop
+								} else {
+									continue
+								}
+							}
+							return errors.Wrap(err, "unable to write file")
+						}
+						// release memory
+						delete(tmpF.dataBuf, tmpF.seq)
+						// increase the expected sequence number again
+						tmpF.seq++
+					}
+
+				} else {
+					tmpF.dataBuf[seq] = msg.GetDataDesc()
+					log.Warn().
+						Int64("got", seq).
+						Int64("expecting", tmpF.seq).
+						Msg("out of order - caching")
+				}
+			default:
+				return errors.New("file writer - invalide message type")
+			}
 		}
 	}
-	p := filepath.Join(dstDir, w.srcFd.FileName)
-	fmt.Printf("path: %s\n", p)
 
 	log.Trace().
-		Str("orig name", w.srcFd.FileName).
-		Str("temp file path", tmpF.Name()).
-		Str("rename to", p).
-		Msg("file writer - finished, renaming")
+		Str("orig name", fw.srcFd.FileName).
+		Str("merging to", dstPath).
+		Msg("file writer - finished, rebuilding")
 
-	// first close
-	if err = tmpF.Close(); err != nil {
-		return errors.Wrap(err, "unable to close file")
-	}
+	// if there is only one, just rename
+	if len(fw.fileMap) == 1 {
+		err = os.Rename(fw.fileMap[0].f.Name(), dstPath)
+		if err != nil {
+			return errors.Wrap(err, "unable to replace file")
+		}
+	} else {
+		fmt.Printf("++++++++ temp file map size %d\n", len(fw.fileMap))
+		// large file, we need to reconstruct it from several tmp fil
+		nf, err := os.Create(dstPath)
+		if err != nil {
+			return errors.Wrap(err, "unable to open file")
+		}
+		tmpOffsets := make([]int64, 0)
+		fmt.Printf("tmpOffsets len %d fileMap len %d\n", len(tmpOffsets), len(fw.fileMap))
+		for offset := range fw.fileMap {
+			log.Debug().
+				Int64("offset", offset).
+				Msg("collecting")
+			tmpOffsets = append(tmpOffsets, offset)
+		}
 
-	// now rename
+		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
 
-	fmt.Printf("renaming: %s to %s\n", tmpF.Name(), p)
-	err = os.Rename(tmpF.Name(), p)
-	if err != nil {
-		return errors.Wrap(err, "unable to replace file")
+		// they shoudl add sort.Int64() but ... I know that int = int64 on most systems, but I don't like assumptions like that
+		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] < tmpOffsets[j] })
+
+		bw := bufio.NewWriter(io.Writer(nf))
+
+		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
+
+		for _, offset := range tmpOffsets {
+			tf := fw.fileMap[offset]
+			tf.f, err = os.Open(tf.path)
+			if err != nil {
+				return errors.Wrap(err, "failed to open temporary file")
+			}
+			br := bufio.NewReader(io.Reader(tf.f))
+			fmt.Printf("merging offset %d into %s\n", offset, dstPath)
+			n, err := io.Copy(bw, br)
+			if err != nil {
+				return errors.Wrap(err, "failed to reconstruct file")
+			}
+			// close temp file
+			err = tf.f.Close()
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("failed to close file")
+			}
+			// delete temp file
+			log.Debug().
+				Str("tmp file", tf.path).
+				Msg("removing")
+			err = os.Remove(tf.path)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("failed to close file")
+			}
+			log.Trace().
+				Int64("file offset", offset).
+				Int64("bytes written", n).
+				Str("filename", tf.path).
+				Msg("file writter - reconstructing")
+		}
+		fmt.Println("merge done")
+
 	}
 	return nil
 }
 
 // writeToFile reades a data stream and reconstructs a file based on headders
-func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
-	fmt.Printf("==========> write() - sequence %d, write() start \n", w.pSeq)
+func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	br := bytes.NewReader(dd.Bytes())
+	offset := dd.Offset()
+	//f := fw.fileMap[offset].f
+	w := fw.fileMap[offset].w
+
+	//fmt.Println("WRWRWRWR wirting")
+	//spew.Dump(dd)
 
 	for z := 0; ; z++ {
 		header := new(lfs.Header)
 		err := binary.Read(br, binary.BigEndian, header)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Printf("========> c: %d writing sequence %d, EOF \n", z, w.pSeq)
 				// end of transmission
-				w.bw.Flush()
+				w.Flush()
 				break
 			} else {
 				// nah something bad hapenned
-				fmt.Printf("========> c: %d writing sequence %d, error \n", z, w.pSeq)
 				return errors.Wrap(err, "error reading data header")
 			}
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
+			//fmt.Printf("WRWRWRWRWRWRWRW Writing data: %d bytes\n", len(dd.Bytes()))
+			//spew.Dump(dd)
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			fmt.Printf("========> c: %d writing sequence %d, writing data \n", z, w.pSeq)
-			_, err := io.CopyN(w.bw, br, header.Len)
+			deBuf := new(bytes.Buffer)
+			teer := io.TeeReader(br, deBuf)
+			n, err := io.CopyN(w, teer, header.Len)
+			//n, err := w.Write(dd.Bytes())
+			//fmt.Printf("deBuff: %s\n", deBuf.Bytes())
+			//spew.Dump(dd.Bytes())
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
-			w.bw.Flush()
+			fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
+			w.Flush()
 		case lfs.Index:
 			// indexes
 			hIndex := make([]int64, header.Len)
@@ -187,27 +301,55 @@ func (w *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				fmt.Printf("========> c: %d writing sequence %d, writting index %d \n", z, w.pSeq, v)
-				n, err := w.sr.Seek(v*w.srcFd.BlockSize, io.SeekStart)
+				n, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")
 				}
 				log.Trace().
 					Int64("seek", n).
-					Int64("location", v*w.srcFd.BlockSize).
+					Int64("location", v*fw.srcFd.BlockSize).
 					Msg("seek")
-				_, err = io.CopyN(w.bw, w.sr, w.srcFd.BlockSize)
+				n, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
-				w.bw.Flush()
+				fmt.Printf("WRWRWRWRWRW %d bytes copied form reference\n", n)
+				w.Flush()
 			}
 		case lfs.End:
 			return lfs.ErrEOF
 		default:
-			fmt.Printf("========> c: %d writing sequence %d, invalid header \n", z, w.pSeq)
 			return errors.New("file writer - invalid header")
 		}
 	}
 	return nil
+}
+
+func (fw FileWriter) newTempFile(offset int64) error {
+	dstDir := viper.GetString("destination")
+	tmpF, err := ioutil.TempFile(dstDir, fw.srcFd.RelPath+".*."+fw.senderID.String())
+	if err != nil {
+		return errors.Wrap(err, "unable to create temporary file")
+	}
+	log.Debug().
+		Str("file name", tmpF.Name()).
+		Int64("offset", offset).
+		Int("temp files count", len(fw.fileMap)).
+		Msg("file writer - DIFF opening temporary file ++++++++++++++++++++++++++++++++++++++")
+
+	fw.fileMap[offset] = &tmpFile{
+		path:    tmpF.Name(),
+		f:       tmpF,
+		w:       bufio.NewWriter(io.Writer(tmpF)),
+		dataBuf: make(map[int64]*lfs.DataDesc),
+	}
+
+	return nil
+}
+
+func (fw FileWriter) IsAlive() bool {
+	if fw.streams == 0 {
+		return false
+	}
+	return true
 }

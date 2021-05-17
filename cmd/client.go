@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -35,13 +36,15 @@ func init() {
 
 func startClient() {
 
+	uuid := uuid.New()
+
 	ctx := context.Background()
 	log.Info().
 		Msg("starting remote sync")
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	httpSender, err := workers.NewHttpSender(ctx)
+	httpSender, err := workers.NewHttpSender(ctx, uuid)
 	if err != nil {
 		log.Error().
 			Err(err).

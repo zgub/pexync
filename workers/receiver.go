@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -41,13 +42,13 @@ type receiver struct {
 
 // parseSenderList parses a file list from sender and updates it with the information from destiantion
 func (rc receiver) parseSenderList(msg *core.Message) error {
-	rc.senderUUID = msg.UUID
+	rc.senderUUID = msg.GetUuid()
 	log.Trace().
 		Str("sender uuid", rc.senderUUID.String()).
-		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
+		Msgf("receiver list parser - src file list, length: %d", len(msg.GetList()))
 
 	// store source filelist ina a map for future!!!
-	for i, fd := range msg.FileList {
+	for i, fd := range msg.GetList() {
 		rc.srcList[fd.Idx] = fd
 		if int64(i) != fd.Idx {
 			// TODO: remove index, redundant information
@@ -80,15 +81,10 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 			Str("state", dstFd.State.String()).
 			Str("file name", dstFd.Prefix+"/"+dstFd.FileName).
 			Msg("receiver list parser - sending to hash reader")
-		hashChan <- &core.Message{
-			Flag:     core.HSH,
-			FileDesc: dstFd,
-		}
+		hashChan <- core.NewHashRequest(dstFd)
 	}
 	for i := 0; i < ccIo; i++ {
-		hashChan <- &core.Message{
-			Flag: core.FIN,
-		}
+		hashChan <- core.NewFIN(msg.GetUuid())
 	}
 	err = hashReaders.Wait()
 	if err != nil {
@@ -156,8 +152,8 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 			} else {
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
-					Uint64("source file size", srcFd.FileSize).
-					Uint64("destination file size", dstFd.FileSize).
+					Int64("source file size", srcFd.FileSize).
+					Int64("destination file size", dstFd.FileSize).
 					Time("source file modified", srcFd.Modified.UTC()).
 					Time("receiver file modified", dstFd.Modified.UTC()).
 					Msg("receiver DIFF")
@@ -178,7 +174,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					// a file that exists and is not dir
 
 					// treat "remote" files smaller than block sizes as missing
-					if uint64(srcFd.BlockSize) >= dstFd.FileSize {
+					if srcFd.BlockSize >= dstFd.FileSize {
 						srcFd.State = lfs.Missing
 						continue
 					}
@@ -253,7 +249,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				rc.srcList[srcFd.Idx] = srcFd
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
-					Uint64("source file size", srcFd.FileSize).
+					Int64("source file size", srcFd.FileSize).
 					Time("source file modified", srcFd.Modified.UTC()).
 					Msg("receiver MISS")
 			}
@@ -286,7 +282,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch msg.Flag {
+	switch msg.GetFlag() {
 	case core.INI:
 		// update msg with local state(s)
 		err := rc.parseSenderList(msg)
@@ -298,7 +294,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
-		msg.Flag = core.SUM
+		msg.SetFlag(core.SUM)
 		err = respondWithJSON(w, http.StatusOK, msg)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -337,10 +333,7 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 	fi := dd.FileIndex()
 
 	if fileWriter, ok := rc.writersMap[fi]; ok {
-		fileWriter.inbox <- &core.Message{
-			Flag:     core.WSQ,
-			DataDesc: dd,
-		}
+		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
 		// new file, new writer
 		log.Debug().
@@ -348,16 +341,12 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 			Msg("receiver - starting new writter")
 		inbox := make(chan *core.Message)
 		// create new file writer worker
-		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
+		fr := NewFileWriter(rc.ctx, rc.senderUUID, dd.GetStreamCount(), rc.srcList[dd.FileIndex()], inbox)
 		// add it to the lookup map
 		rc.writersMap[fi] = fr
 		// send a new message
 		rc.fileWriters.Go(fr.Start)
-		fr.inbox <- &core.Message{
-			Flag: core.WSQ,
-			//FileDesc: w.srcList[fi],
-			DataDesc: dd,
-		}
+		fr.inbox <- core.NewWSQ(dd)
 	}
 
 	if err != nil {
@@ -369,9 +358,7 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := &core.Message{
-		Flag: core.ACK,
-	}
+	resp := core.NewACK()
 
 	err = respondWithJSON(w, http.StatusOK, resp)
 	if err != nil {
@@ -407,26 +394,40 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-Loop:
-	for {
+	finSent := false
+
+	writtersDone := func() bool {
+		if !finSent {
+			return false
+		}
+		for _, fw := range w.writersMap {
+			if !fw.IsAlive() {
+				return false
+			}
+		}
+		return true
+	}
+
+	for !writtersDone() {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msg("receiver - closing, context done")
 			// send fin to all readers
-			break Loop
+			return errors.New("context done")
 		case msg := <-w.inbox:
 			// received a message that is not a FIN
-			switch msg.Flag {
+			switch msg.GetFlag() {
 			// initialization
 			case core.INI:
 				// update msg with local directory state(s)
 				//spew.Dump(msg)
 				err := w.parseSenderList(msg)
+				w.senderUUID = msg.GetUuid()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
-				msg.Flag = core.SUM
+				msg.SetFlag(core.SUM)
 				//spew.Dump(msg)
 
 				err = sendWithTimeout(msg, w.sender)
@@ -437,7 +438,7 @@ Loop:
 				/********************************************************************************************************
 				 * ignore this, local was developed to test the concept, that's why the serialize / deserialize detour  *
 				 ********************************************************************************************************/
-				data, err := msg.DataDesc.Serialize()
+				data, err := msg.GetDataDesc().Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
@@ -445,6 +446,9 @@ Loop:
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
+				//spew.Dump(msg)
+				//fmt.Println("receiver - WSQ")
+				//spew.Dump(dd)
 				/***********************
 				 * end of detour       *
 				 ***********************/
@@ -455,34 +459,37 @@ Loop:
 				fi := dd.FileIndex()
 				if fileWritter, ok := w.writersMap[fi]; ok {
 					// new message, already existing writer
-					fileWritter.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: msg.List[fi],
-						DataDesc: dd,
-					}
+					fileWritter.inbox <- core.NewWSQ(dd)
 				} else {
 					// new file, new writer
 					log.Debug().
 						Str("filename", w.srcList[dd.FileIndex()].FileName).
 						Msg("receiver - starting new writter")
-					inbox := make(chan *core.Message)
+					streams := dd.GetStreamCount()
+
+					// sanity check
+					if streams == 0 {
+						panic("zero stream count")
+					}
+
+					inbox := make(chan *core.Message, streams)
 					// create new file writer worker
-					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[dd.FileIndex()], inbox)
+					fr := NewFileWriter(w.ctx, w.senderUUID, streams, w.srcList[dd.FileIndex()], inbox)
 					// add it to the lookup map
 					w.writersMap[fi] = fr
 					// send a new message
 					w.fileWriters.Go(fr.Start)
-					fr.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: w.srcList[fi],
-						DataDesc: dd,
-					}
+					fmt.Println("sending first packet")
+					//spew.Dump(dd)
+					fr.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-				break Loop
+				finSent = true
+				//break Loop
 			default:
+				//spew.Dump(msg)
 				return errors.New("unknown message received")
 			}
 		}
@@ -494,9 +501,17 @@ Loop:
 			}
 		}
 	*/
-	err := w.fileWriters.Wait()
 
-	return err
+	fmt.Println("waiting for writers to return")
+
+	err := w.fileWriters.Wait()
+	if err != nil {
+		return errors.Wrap(err, "error writing files")
+	}
+	log.Debug().
+		Msg("writers done")
+
+	return nil
 }
 
 type HttpReceiver struct {

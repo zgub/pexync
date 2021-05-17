@@ -3,12 +3,11 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 
-	"syscall"
+	//"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -57,7 +56,7 @@ func (f Flag) String() string {
 }
 
 const (
-	HeaderSize = 34
+	HeaderSize = 42
 )
 
 // common errors, lazy to type
@@ -72,6 +71,7 @@ type Header struct {
 	FileIndex int64 // global header only
 	Offset    int64 // global header only
 	Seq       int64 // for proper reconstruction
+	Streams   int64 // number of simultaneous data streams
 	Len       int64
 }
 
@@ -81,34 +81,30 @@ type DataDesc struct {
 	iBuff                  []int64       // intermediate index buffer
 	readBuf                *bytes.Buffer // intermediate data buffer
 	data                   *bytes.Buffer
+	streams                int64 // ccIo
 	//len                    int64         //is ths really neccessary?
 }
 
-func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
+func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
+	if streams == 0 {
+		panic("zero stream count")
+	}
 	return &DataDesc{
 		fileIndex: fileIndex,
 		readBuf:   new(bytes.Buffer),
 		data:      new(bytes.Buffer),
 		offset:    offset,
 		seq:       sequence,
+		streams:   streams,
 	}
-}
-
-func (dd *DataDesc) Print(comment string) {
-	fmt.Printf("\nAnnotation: %s\n", comment)
-	fmt.Printf("Mode: %s\n", dd.mode.String())
-	fmt.Printf("Offset: %d\n", dd.offset)
-	fmt.Printf("Sequence: %d\n", dd.seq)
-	//fmt.Printf("Lenght: %d\n", dd.len)
-	fmt.Printf("Indexes: %+v\n", dd.iBuff)
-	fmt.Printf("Read buffer: %s\n", dd.readBuf.Bytes())
-	fmt.Printf("Read buffer Len: %d\n", dd.readBuf.Len())
-	fmt.Printf("Data: %s\n", dd.data.Bytes())
-	fmt.Printf("Data buf Len: %d\n\n", dd.data.Len())
 }
 
 func (dd *DataDesc) Seq() int64 {
 	return dd.seq
+}
+
+func (dd *DataDesc) Offset() int64 {
+	return dd.offset
 }
 
 func (dd *DataDesc) FileIndex() int64 {
@@ -210,15 +206,26 @@ func (dd *DataDesc) Len() int64 {
 	return int64(dd.readBuf.Len())
 }
 
+func (dd *DataDesc) GetStreamCount() int64 {
+	return dd.streams
+}
+
 func (dd *DataDesc) Serialize() ([]byte, error) {
 	// flush any remainung data
 	err := dd.flush()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode data")
 	}
+
+	streams := dd.streams
+	if streams == 0 {
+		panic("Serialize: zero stream count")
+	}
+
 	// global header
 	header := &Header{
 		FileIndex: dd.fileIndex,
+		Streams:   dd.streams,
 		Offset:    dd.offset,
 		Seq:       dd.seq,
 		Len:       int64(dd.data.Len()),
@@ -243,6 +250,7 @@ func Deserialize(p []byte) (*DataDesc, error) {
 	}
 	dd := &DataDesc{
 		fileIndex: header.FileIndex,
+		streams:   header.Streams,
 		offset:    header.Offset,
 		seq:       header.Seq,
 		data:      bytes.NewBuffer(p[HeaderSize:]),
@@ -269,7 +277,7 @@ type FileDesc struct {
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64
-	FileSize  uint64
+	FileSize  int64
 	Sha1      []byte
 	Weak      []uint32
 	RelPath   string
@@ -344,7 +352,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			return errors.Wrap(err, "file stat info failed")
 		}
 
-		stat := info.Sys().(*syscall.Stat_t)
+		//stat := info.Sys().(*syscall.Stat_t)
 
 		relPath, err := filepath.Rel(walkDir, path)
 		if err != nil {
@@ -365,11 +373,11 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 				RelPath:  relPath,
 				Prefix:   prefix,
 				FileName: entry.Name(),
-				FileSize: uint64(info.Size()),
+				FileSize: info.Size(),
 				Modified: info.ModTime(),
 				Mode:     info.Mode(),
-				Uid:      stat.Uid,
-				Gid:      stat.Gid,
+				//Uid:      stat.Uid,
+				//Gid:      stat.Gid,
 			}
 
 			list = append(list, fileDesc)

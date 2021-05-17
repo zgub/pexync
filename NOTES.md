@@ -7,14 +7,13 @@
 - [x] study the rolling adler32
 - [x] test the checksums
 - [x] test various readers with paralelism
-- [ ] decide when use single file send, single goroutine send, multiple goroutine send
+- [x] decide when use single file send, single goroutine send, multiple goroutine send
 - [ ] receiver should stop all go routines at RST
 - [x] do not create cfg file automaticaly, add a command **confgen**
 - [ ] permissions / ownership / sha1 receiver comparison
 - [x] missing file sender
 - [ ] multicore
 - [ ] remove unnecessary pointers
-- [ ] struct padding adjustment
 - [ ] context.Done should send FIN to all workers
 - [ ] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
@@ -24,13 +23,18 @@
 - [ ] validate inputs
 - [ ] do I need fileindex????? (WHOA) seem not
 - [ ] tests!
-- [ ] validation at transfer end
 - [ ] sender state (reset after aaa)
 - [x] make sure to not send the same file
+- [ ] anonymous helper functions
+- [ ] don't use w for workers as w implies writer
+- [ ] monitor
+- [ ] core.Message constructor (ccio)
 
 ## NOTODO
 
 - [ ] proto checksums?
+- [ ] struct padding adjustment
+- [ ] validation at transfer end
 
 ## Ideas
 
