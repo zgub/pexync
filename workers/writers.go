@@ -33,6 +33,7 @@ type FileWriter struct {
 	inbox    chan *core.Message
 	senderID uuid.UUID
 	srcFd    *lfs.FileDesc
+	ref      *os.File
 	rr       io.Reader // reference file reader
 	fileMap  map[int64]*tmpFile
 	streams  int64 // number of incomming streams
@@ -64,12 +65,12 @@ func (fw FileWriter) Start() error {
 			Str("existing file name", dstPath).
 			Str("renamed to", refName).
 			Msg("file writer - DIFF opening destination file for reference")
-		ref, err := os.Open(refName)
+		fw.ref, err = os.Open(refName)
 		if err != nil {
 			errors.Wrap(err, "unable to open file for writer reference")
 		}
-		fw.rr = io.Reader(ref)
-		defer ref.Close()
+		fw.rr = io.Reader(fw.ref)
+		defer fw.ref.Close()
 	}
 
 Loop:
@@ -101,8 +102,12 @@ Loop:
 				tmpF := fw.fileMap[offset]
 				// we already are processing this stream
 				// check the sequence
+				dd := msg.GetDataDesc()
+				fmt.Println("checking seq")
+				//spew.Dump(dd)
 				if seq == tmpF.seq {
-					err := fw.writeToFile(msg.GetDataDesc())
+					fmt.Println("OKOKOKOK seq in order")
+					err := fw.writeToFile(dd)
 					if err != nil {
 						if err == lfs.ErrEOF {
 							// end of chink, close tmp file
@@ -115,6 +120,7 @@ Loop:
 								Int64("offset chunk", offset).
 								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
 							fw.streams--
+							fmt.Printf("stream still up: %d\n", fw.streams)
 							if fw.streams == 0 {
 								break Loop
 							} else {
@@ -201,7 +207,7 @@ Loop:
 		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
 
 		// they shoudl add sort.Int64() but ... I know that int = int64 on most systems, but I don't like assumptions like that
-		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] > tmpOffsets[j] })
+		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] < tmpOffsets[j] })
 
 		bw := bufio.NewWriter(io.Writer(nf))
 
@@ -219,6 +225,23 @@ Loop:
 			if err != nil {
 				return errors.Wrap(err, "failed to reconstruct file")
 			}
+			// close temp file
+			err = tf.f.Close()
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("failed to close file")
+			}
+			// delete temp file
+			log.Debug().
+				Str("tmp file", tf.path).
+				Msg("removing")
+			err = os.Remove(tf.path)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("failed to close file")
+			}
 			log.Trace().
 				Int64("file offset", offset).
 				Int64("bytes written", n).
@@ -235,8 +258,11 @@ Loop:
 func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	br := bytes.NewReader(dd.Bytes())
 	offset := dd.Offset()
-	f := fw.fileMap[offset].f
+	//f := fw.fileMap[offset].f
 	w := fw.fileMap[offset].w
+
+	//fmt.Println("WRWRWRWR wirting")
+	//spew.Dump(dd)
 
 	for z := 0; ; z++ {
 		header := new(lfs.Header)
@@ -253,8 +279,16 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
+			//fmt.Printf("WRWRWRWRWRWRWRW Writing data: %d bytes\n", len(dd.Bytes()))
+			//spew.Dump(dd)
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
-			_, err := io.CopyN(w, br, header.Len)
+			deBuf := new(bytes.Buffer)
+			teer := io.TeeReader(br, deBuf)
+			n, err := io.CopyN(w, teer, header.Len)
+			//n, err := w.Write(dd.Bytes())
+			fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
+			fmt.Printf("deBuff: %s\n", deBuf.Bytes())
+			//spew.Dump(dd.Bytes())
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
@@ -267,7 +301,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				n, err := f.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
+				n, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")
 				}
@@ -310,4 +344,11 @@ func (fw FileWriter) newTempFile(offset int64) error {
 	}
 
 	return nil
+}
+
+func (fw FileWriter) IsAlive() bool {
+	if fw.streams == 0 {
+		return false
+	}
+	return true
 }

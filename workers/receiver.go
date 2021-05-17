@@ -4,13 +4,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -394,14 +394,27 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 
 func (w *LocalReceiver) Start() error {
 
-Loop:
-	for {
+	finSent := false
+
+	writtersDone := func() bool {
+		if !finSent {
+			return false
+		}
+		for _, fw := range w.writersMap {
+			if !fw.IsAlive() {
+				return false
+			}
+		}
+		return true
+	}
+
+	for !writtersDone() {
 		select {
 		case <-w.ctx.Done():
 			log.Debug().
 				Msg("receiver - closing, context done")
 			// send fin to all readers
-			break Loop
+			return errors.New("context done")
 		case msg := <-w.inbox:
 			// received a message that is not a FIN
 			switch msg.GetFlag() {
@@ -410,6 +423,7 @@ Loop:
 				// update msg with local directory state(s)
 				//spew.Dump(msg)
 				err := w.parseSenderList(msg)
+				w.senderUUID = msg.GetUuid()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
@@ -432,6 +446,9 @@ Loop:
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
+				//spew.Dump(msg)
+				//fmt.Println("receiver - WSQ")
+				//spew.Dump(dd)
 				/***********************
 				 * end of detour       *
 				 ***********************/
@@ -448,22 +465,31 @@ Loop:
 					log.Debug().
 						Str("filename", w.srcList[dd.FileIndex()].FileName).
 						Msg("receiver - starting new writter")
-					ccIo := viper.GetInt("io_concurrency")
-					inbox := make(chan *core.Message, ccIo)
+					streams := dd.GetStreamCount()
+
+					// sanity check
+					if streams == 0 {
+						panic("zero stream count")
+					}
+
+					inbox := make(chan *core.Message, streams)
 					// create new file writer worker
-					fr := NewFileWriter(w.ctx, w.senderUUID, dd.GetStreamCount(), w.srcList[dd.FileIndex()], inbox)
+					fr := NewFileWriter(w.ctx, w.senderUUID, streams, w.srcList[dd.FileIndex()], inbox)
 					// add it to the lookup map
 					w.writersMap[fi] = fr
 					// send a new message
 					w.fileWriters.Go(fr.Start)
+					fmt.Println("sending first packet")
+					//spew.Dump(dd)
 					fr.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
 				log.Debug().
 					Msg("receiver received FIN")
-				break Loop
+				finSent = true
+				//break Loop
 			default:
-				spew.Dump(msg)
+				//spew.Dump(msg)
 				return errors.New("unknown message received")
 			}
 		}
@@ -475,9 +501,17 @@ Loop:
 			}
 		}
 	*/
-	err := w.fileWriters.Wait()
 
-	return err
+	fmt.Println("waiting for writers to return")
+
+	err := w.fileWriters.Wait()
+	if err != nil {
+		return errors.Wrap(err, "error writing files")
+	}
+	log.Debug().
+		Msg("writers done")
+
+	return nil
 }
 
 type HttpReceiver struct {

@@ -56,11 +56,15 @@ func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
 }
 
 func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
+	if streams == 0 {
+		panic("new rsq: zero data streams")
+	}
 	return &Message{
 		uuid:     uuid,
 		flag:     RSQ,
 		offset:   offset,
 		limit:    limit,
+		streams:  streams,
 		fileDesc: fd,
 	}
 }
@@ -94,18 +98,18 @@ func NewDataWSQ(dd *lfs.DataDesc, fd *lfs.FileDesc) *Message {
 	}
 }
 
+func NewACK() *Message {
+	return &Message{
+		flag: ACK,
+	}
+}
+
 func (m *Message) SetFlag(f Flag) {
 	m.flag = f
 }
 
 func (m *Message) GetFlag() Flag {
 	return m.flag
-}
-
-func NewACK() *Message {
-	return &Message{
-		flag: ACK,
-	}
 }
 
 func (m *Message) GetList() []*lfs.FileDesc {

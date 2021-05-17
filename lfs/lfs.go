@@ -86,6 +86,9 @@ type DataDesc struct {
 }
 
 func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
+	if streams == 0 {
+		panic("zero stream count")
+	}
 	return &DataDesc{
 		fileIndex: fileIndex,
 		readBuf:   new(bytes.Buffer),
@@ -213,10 +216,16 @@ func (dd *DataDesc) Serialize() ([]byte, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode data")
 	}
+
+	streams := dd.streams
+	if streams == 0 {
+		panic("Serialize: zero stream count")
+	}
+
 	// global header
 	header := &Header{
 		FileIndex: dd.fileIndex,
-		Streams:   int64(dd.streams),
+		Streams:   dd.streams,
 		Offset:    dd.offset,
 		Seq:       dd.seq,
 		Len:       int64(dd.data.Len()),
