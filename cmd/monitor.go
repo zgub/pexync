@@ -59,11 +59,14 @@ func startMonitor() {
 			Err(err).
 			Msg("unable to start http sender")
 	}
+
+	// initial sync done
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal().
 			Err(err).
-			Msg("unable to watch directory")
+			Msg("unable to initialize watcher")
 	}
 
 	var wg sync.WaitGroup
