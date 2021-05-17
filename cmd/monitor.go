@@ -34,7 +34,7 @@ func init() {
 			Send()
 	}
 
-	monitorCmd.AddCommand(monitorCmd)
+	rootCmd.AddCommand(monitorCmd)
 }
 
 func startMonitor() {
