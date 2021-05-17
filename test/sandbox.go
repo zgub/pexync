@@ -268,7 +268,6 @@ func RollV3(srcS, dstS string) {
 			// we have some new data in buffer and some old in hash
 			if buf.Len() == 0 {
 				n, err = io.CopyN(buf, sr, bs)
-				//fmt.Printf("===============>  empty buffer, loaded %d bytes: %s\n", n, string(buf.Bytes()))
 				if n == 0 {
 					if err == io.EOF {
 						// loaded 0 bytes, no more data, break

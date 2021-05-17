@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -22,7 +22,6 @@ import (
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	//spew.Dump(msg)
 	select {
 	case dst <- msg:
 		return nil
@@ -214,9 +213,9 @@ func (w *HttpSender) dataSender() error {
 			// if FIN was send, don't send it to the standalone process
 			// but stop
 			if msg.GetFlag() == core.FIN {
+				fmt.Println(" *** FIN *** ")
 				return nil
 			}
-			spew.Dump(msg)
 			url := w.url.String() + "/data"
 			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
@@ -234,8 +233,6 @@ func (w *HttpSender) dataSender() error {
 				log.Error().
 					Msgf("http client worker - receives %s", resp.GetFlag().String())
 			}
-			//spew.Dump(resp)
-
 		}
 	}
 }

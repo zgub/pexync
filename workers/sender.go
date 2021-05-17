@@ -172,7 +172,6 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.missList {
 
 		// data streams count = 1
-		fmt.Println("sending file to bytes reader")
 		s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 	}
 }
@@ -339,18 +338,16 @@ func (w *HttpSender) Start() error {
 	// create a new message for the other side
 	msg := core.NewINI(w.uuid, w.srcList)
 
-	//spew.Dump(msg)
-
 	// send
 	url := w.url.String() + "/list"
-	_, err := w.sendJson(url, msg)
+	resp, err := w.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error comunicating with server")
 	}
 
-	err = w.parseRemoteList(msg)
+	err = w.parseRemoteList(resp)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
@@ -358,13 +355,17 @@ func (w *HttpSender) Start() error {
 	// prepare for transfer
 	w.rrCh = make(chan *core.Message, w.ccIo)
 	w.brCh = make(chan *core.Message, w.ccIo)
+	// one errorgroup for readers and data senders
 	w.g = new(errgroup.Group)
+
+	// another, independent one for http senders
+	eg := new(errgroup.Group)
 
 	// starting http senders
 	for i := int64(0); i < 2*w.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		w.g.Go(w.dataSender)
+		eg.Go(w.dataSender)
 	}
 
 	w.spawnReaders()
@@ -373,16 +374,22 @@ func (w *HttpSender) Start() error {
 
 	w.stopReaders()
 
-	// don't forget zee http senderz
-	for i := int64(0); i < 2*w.ccIo; i++ {
-		w.receiver <- core.NewFIN(w.uuid)
-	}
-
 	// end
 	err = w.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "http sender worker failed")
 	}
+
+	// don't forget zee http senderz
+	for i := int64(0); i < 2*w.ccIo; i++ {
+		w.receiver <- core.NewFIN(w.uuid)
+	}
+
+	err = eg.Wait()
+	if err != nil {
+		return errors.Wrap(err, "http reader failed")
+	}
+
 	// do not send FIN to remote workers vi http
 	log.Trace().
 		Msg("http sender - finished")

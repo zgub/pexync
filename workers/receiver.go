@@ -428,14 +428,12 @@ func (w *LocalReceiver) Start() error {
 			// initialization
 			case core.INI:
 				// update msg with local directory state(s)
-				//spew.Dump(msg)
 				err := w.parseSenderList(msg)
 				w.senderUUID = msg.GetUuid()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
 				msg.SetFlag(core.SUM)
-				//spew.Dump(msg)
 
 				err = sendWithTimeout(msg, w.sender)
 				if err != nil {
@@ -453,9 +451,6 @@ func (w *LocalReceiver) Start() error {
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
-				//spew.Dump(msg)
-				//fmt.Println("receiver - WSQ")
-				//spew.Dump(dd)
 				/***********************
 				 * end of detour       *
 				 ***********************/
@@ -487,7 +482,6 @@ func (w *LocalReceiver) Start() error {
 					w.writersMap[fi] = fr
 					// send a new message
 					w.fileWriters.Go(fr.Start)
-					//spew.Dump(dd)
 					fr.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
@@ -496,7 +490,6 @@ func (w *LocalReceiver) Start() error {
 				finSent = true
 				//break Loop
 			default:
-				//spew.Dump(msg)
 				return errors.New("unknown message received")
 			}
 		}
