@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -23,7 +22,6 @@ import (
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	//spew.Dump(msg)
 	select {
 	case dst <- msg:
 		return nil
@@ -75,7 +73,6 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error
 	if err != nil {
 		return err
 	}
-	spew.Dump(response)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(response)
@@ -219,7 +216,6 @@ func (w *HttpSender) dataSender() error {
 				fmt.Println(" *** FIN *** ")
 				return nil
 			}
-			//spew.Dump(msg)
 			url := w.url.String() + "/data"
 			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
@@ -237,8 +233,6 @@ func (w *HttpSender) dataSender() error {
 				log.Error().
 					Msgf("http client worker - receives %s", resp.GetFlag().String())
 			}
-			//spew.Dump(resp)
-
 		}
 	}
 }

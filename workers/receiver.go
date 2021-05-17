@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -295,7 +294,6 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msg.SetFlag(core.SUM)
-		spew.Dump(msg)
 		err = respondWithJSON(w, http.StatusOK, msg)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -430,14 +428,12 @@ func (w *LocalReceiver) Start() error {
 			// initialization
 			case core.INI:
 				// update msg with local directory state(s)
-				//spew.Dump(msg)
 				err := w.parseSenderList(msg)
 				w.senderUUID = msg.GetUuid()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
 				msg.SetFlag(core.SUM)
-				//spew.Dump(msg)
 
 				err = sendWithTimeout(msg, w.sender)
 				if err != nil {
@@ -486,7 +482,6 @@ func (w *LocalReceiver) Start() error {
 					w.writersMap[fi] = fr
 					// send a new message
 					w.fileWriters.Go(fr.Start)
-					//spew.Dump(dd)
 					fr.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
@@ -495,7 +490,6 @@ func (w *LocalReceiver) Start() error {
 				finSent = true
 				//break Loop
 			default:
-				//spew.Dump(msg)
 				return errors.New("unknown message received")
 			}
 		}

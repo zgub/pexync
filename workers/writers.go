@@ -102,7 +102,6 @@ Loop:
 				// we already are processing this stream
 				// check the sequence
 				dd := msg.GetDataDesc()
-				//spew.Dump(dd)
 				if seq == tmpF.seq {
 					err := fw.writeToFile(dd)
 					if err != nil {
