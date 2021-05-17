@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -176,7 +175,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			}
 			w.indexCnt++
 			log.Trace().Msgf("===================MATCH================== seq: %d", seq)
-			spew.Dump(rh.GetWindow())
+			//spew.Dump(rh.GetWindow())
 			//log.Trace().Msg("===================MATCH==================")
 
 			// we need to load a new block of data, so reset the hash first

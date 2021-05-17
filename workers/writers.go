@@ -284,14 +284,14 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 			//func CopyN(dst Writer, src Reader, n int64) (written int64, err error)
 			deBuf := new(bytes.Buffer)
 			teer := io.TeeReader(br, deBuf)
-			_, err := io.CopyN(w, teer, header.Len)
+			n, err := io.CopyN(w, teer, header.Len)
 			//n, err := w.Write(dd.Bytes())
-			//fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
 			//fmt.Printf("deBuff: %s\n", deBuf.Bytes())
 			//spew.Dump(dd.Bytes())
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
+			fmt.Printf("WRWRWRWRWRW %d bytes written, lenght give %d\n", n, header.Len)
 			w.Flush()
 		case lfs.Index:
 			// indexes
@@ -309,10 +309,11 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 					Int64("seek", n).
 					Int64("location", v*fw.srcFd.BlockSize).
 					Msg("seek")
-				_, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
+				n, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
+				fmt.Printf("WRWRWRWRWRW %d bytes copied form reference\n", n)
 				w.Flush()
 			}
 		case lfs.End:
