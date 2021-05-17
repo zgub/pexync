@@ -367,6 +367,8 @@ func (w *HttpSender) Start() error {
 	// create a new message for the other side
 	msg := core.NewINI(w.uuid, w.srcList)
 
+	//spew.Dump(msg)
+
 	// send
 	url := w.url.String() + "/list"
 	_, err := w.sendJson(url, msg)
