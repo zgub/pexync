@@ -338,9 +338,17 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 		log.Debug().
 			Str("filename", rc.srcList[dd.FileIndex()].FileName).
 			Msg("receiver - starting new writter")
+
+		streams := dd.GetStreamCount()
+
+		// sanity check
+		if streams == 0 {
+			panic("zero stream count")
+		}
+
 		inbox := make(chan *core.Message)
 		// create new file writer worker
-		fr := NewFileWriter(rc.ctx, rc.senderUUID, dd.GetStreamCount(), rc.srcList[dd.FileIndex()], inbox)
+		fr := NewFileWriter(rc.ctx, rc.senderUUID, streams, rc.srcList[dd.FileIndex()], inbox)
 		// add it to the lookup map
 		rc.writersMap[fi] = fr
 		// send a new message
@@ -464,6 +472,7 @@ func (w *LocalReceiver) Start() error {
 					log.Debug().
 						Str("filename", w.srcList[dd.FileIndex()].FileName).
 						Msg("receiver - starting new writter")
+
 					streams := dd.GetStreamCount()
 
 					// sanity check

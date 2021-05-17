@@ -171,37 +171,9 @@ func (s *sender) sendDataToReaders() {
 	// new files next
 	for _, fd := range s.missList {
 
-		if fd.FileSize > splitSize && s.ccIo > 1 {
-			chunkSize := int64(fd.FileSize / s.ccIo)
-			log.Debug().
-				Int64("file size", int64(fd.FileSize)).
-				Int64("chunk size", chunkSize).
-				Int64("io_concurency", s.ccIo).
-				Msg("sender - using paralel reading")
-
-			for chunk := int64(0); chunk < s.ccIo; chunk++ {
-
-				limit := chunkSize * (int64(chunk) + 1)
-				if limit > fd.FileSize {
-					limit = fd.FileSize
-				}
-				offset := int64(chunk) * chunkSize
-
-				log.Trace().
-					Str("filename", fd.FileName).
-					Int64("chunk", chunk).
-					Int64("offset", offset).
-					Int64("limit", limit).
-					Msg("sender - reading file per partes")
-
-				// data stream count = s.ccIo
-				s.brCh <- core.NewRSQ(s.uuid, fd, offset, limit, s.ccIo)
-			}
-
-		} else {
-			// data streams count = 1
-			s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
-		}
+		// data streams count = 1
+		fmt.Println("sending file to bytes reader")
+		s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 	}
 }
 
@@ -391,7 +363,7 @@ func (w *HttpSender) Start() error {
 	// starting http senders
 	for i := int64(0); i < 2*w.ccIo; i++ {
 		log.Trace().
-			Msg("http sender - starting http client worker")
+			Msgf("http sender - starting http client worker %d", i)
 		w.g.Go(w.dataSender)
 	}
 

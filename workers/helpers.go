@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -202,6 +203,8 @@ func (w *HttpSender) sendFileDesc(url string, data []byte) (*core.Message, error
 
 // this is not optimal, well... I would refactor the whole worker / sender / receiver design for possible next release
 func (w *HttpSender) dataSender() error {
+	log.Debug().
+		Msg("http sender - dataSender starting")
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -213,7 +216,7 @@ func (w *HttpSender) dataSender() error {
 			if msg.GetFlag() == core.FIN {
 				return nil
 			}
-			//spew.Dump(msg)
+			spew.Dump(msg)
 			url := w.url.String() + "/data"
 			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
