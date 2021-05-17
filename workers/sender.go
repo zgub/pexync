@@ -65,6 +65,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	for _, fd := range msg.GetList() {
 		if fd.State == lfs.Missing && !fd.IsDir {
 			// new file
+			fmt.Println(" ************ MISS **************")
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
@@ -72,6 +73,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
 			// diff file
+			fmt.Println(" ************ DIFF **************")
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
@@ -343,14 +345,14 @@ func (w *HttpSender) Start() error {
 
 	// send
 	url := w.url.String() + "/list"
-	_, err := w.sendJson(url, msg)
+	resp, err := w.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error comunicating with server")
 	}
 
-	err = w.parseRemoteList(msg)
+	err = w.parseRemoteList(resp)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
@@ -371,18 +373,20 @@ func (w *HttpSender) Start() error {
 
 	w.sendDataToReaders()
 
+	fmt.Println("*** stopping readers ***")
 	w.stopReaders()
-
-	// don't forget zee http senderz
-	for i := int64(0); i < 2*w.ccIo; i++ {
-		w.receiver <- core.NewFIN(w.uuid)
-	}
 
 	// end
 	err = w.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "http sender worker failed")
 	}
+
+	// don't forget zee http senderz
+	for i := int64(0); i < 2*w.ccIo; i++ {
+		w.receiver <- core.NewFIN(w.uuid)
+	}
+
 	// do not send FIN to remote workers vi http
 	log.Trace().
 		Msg("http sender - finished")

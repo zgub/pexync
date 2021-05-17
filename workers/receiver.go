@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -294,6 +295,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		msg.SetFlag(core.SUM)
+		spew.Dump(msg)
 		err = respondWithJSON(w, http.StatusOK, msg)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

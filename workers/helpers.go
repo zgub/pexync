@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -74,6 +75,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error
 	if err != nil {
 		return err
 	}
+	spew.Dump(response)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(response)
@@ -214,9 +216,10 @@ func (w *HttpSender) dataSender() error {
 			// if FIN was send, don't send it to the standalone process
 			// but stop
 			if msg.GetFlag() == core.FIN {
+				fmt.Println(" *** FIN *** ")
 				return nil
 			}
-			spew.Dump(msg)
+			//spew.Dump(msg)
 			url := w.url.String() + "/data"
 			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
