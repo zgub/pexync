@@ -369,9 +369,11 @@ func (w *HttpSender) Start() error {
 
 	// send
 	url := w.url.String() + "/list"
-	msg, err := w.sendJson(url, msg)
+	_, err := w.sendJson(url, msg)
 	if err != nil {
-		errors.Wrap(err, "http sender - send failed")
+		log.Fatal().
+			Err(err).
+			Msg("error comunicating with server")
 	}
 
 	err = w.parseRemoteList(msg)

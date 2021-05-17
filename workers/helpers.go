@@ -139,9 +139,14 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 		Str("status:", resp.Status).
 		Msg("http response")
 
+	if resp.StatusCode != http.StatusOK {
+		err = errors.New(resp.Status)
+		return nil, err
+	}
+
 	buf, err = decompress(resp.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading server response")
+		return nil, errors.Wrap(err, "unable to decompress server response")
 	}
 
 	msg = &core.Message{}

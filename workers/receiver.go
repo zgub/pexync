@@ -306,7 +306,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Error().
+		log.Fatal().
 			Err(err).
 			Caller().
 			Msg("internal server error - unknown message")
