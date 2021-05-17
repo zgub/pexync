@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -103,10 +102,8 @@ Loop:
 				// we already are processing this stream
 				// check the sequence
 				dd := msg.GetDataDesc()
-				fmt.Println("checking seq")
 				//spew.Dump(dd)
 				if seq == tmpF.seq {
-					fmt.Println("OKOKOKOK seq in order")
 					err := fw.writeToFile(dd)
 					if err != nil {
 						if err == lfs.ErrEOF {
@@ -118,9 +115,8 @@ Loop:
 							log.Debug().
 								Str("file name", dstPath).
 								Int64("offset chunk", offset).
-								Msg("file writer - xxxxxxxxxxxxxxxxxxxxxx closing temporary file")
+								Msg("file writer - closing temporary file")
 							fw.streams--
-							fmt.Printf("stream still up: %d\n", fw.streams)
 							if fw.streams == 0 {
 								break Loop
 							} else {
@@ -189,14 +185,12 @@ Loop:
 			return errors.Wrap(err, "unable to replace file")
 		}
 	} else {
-		fmt.Printf("++++++++ temp file map size %d\n", len(fw.fileMap))
 		// large file, we need to reconstruct it from several tmp fil
 		nf, err := os.Create(dstPath)
 		if err != nil {
 			return errors.Wrap(err, "unable to open file")
 		}
 		tmpOffsets := make([]int64, 0)
-		fmt.Printf("tmpOffsets len %d fileMap len %d\n", len(tmpOffsets), len(fw.fileMap))
 		for offset := range fw.fileMap {
 			log.Debug().
 				Int64("offset", offset).
@@ -204,14 +198,10 @@ Loop:
 			tmpOffsets = append(tmpOffsets, offset)
 		}
 
-		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
-
 		// they shoudl add sort.Int64() but ... I know that int = int64 on most systems, but I don't like assumptions like that
 		sort.Slice(tmpOffsets, func(i, j int) bool { return tmpOffsets[i] < tmpOffsets[j] })
 
 		bw := bufio.NewWriter(io.Writer(nf))
-
-		fmt.Printf("++++++++ tmpOffsets size %d\n%+v\n", len(tmpOffsets), tmpOffsets)
 
 		for _, offset := range tmpOffsets {
 			tf := fw.fileMap[offset]
@@ -220,7 +210,6 @@ Loop:
 				return errors.Wrap(err, "failed to open temporary file")
 			}
 			br := bufio.NewReader(io.Reader(tf.f))
-			fmt.Printf("merging offset %d into %s\n", offset, dstPath)
 			n, err := io.Copy(bw, br)
 			if err != nil {
 				return errors.Wrap(err, "failed to reconstruct file")
@@ -248,7 +237,9 @@ Loop:
 				Str("filename", tf.path).
 				Msg("file writter - reconstructing")
 		}
-		fmt.Println("merge done")
+		log.Debug().
+			Str("filename", dstPath).
+			Msg("file reconstruction done")
 
 	}
 	return nil
@@ -300,7 +291,6 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
-				fmt.Printf("WRWRWRWRWRW %d bytes copied form reference\n", n)
 				w.Flush()
 			}
 		case lfs.End:

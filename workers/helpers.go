@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -101,38 +99,26 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 		return nil, err
 	}
 
-	deBuf := new(bytes.Buffer)
-	teer := io.TeeReader(gz, deBuf)
-	fmt.Println("teereading")
-	spew.Dump(deBuf.Bytes())
-
-	n, err := io.Copy(buf, teer)
+	_, err = io.Copy(buf, gz)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("decompressed %d bytes\n", n)
 	if err = gz.Close(); err != nil {
 		return nil, err
 	}
-	spew.Dump(buf.Bytes())
 	return buf, nil
 }
 
 func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
-	fmt.Println("*** MSG ***")
-	spew.Dump(msg)
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
 	}
 
-	fmt.Printf("json: %s\n", string(j))
-
 	buf, err := compress(j)
 	if err != nil {
 		return nil, errors.Wrap(err, "error compressing data")
 	}
-	fmt.Printf("compressed data: %d bytes\n", buf.Len())
 
 	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
@@ -143,8 +129,6 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating http request")
 	}
-
-	spew.Dump(req)
 
 	resp, err := w.client.Do(req)
 	if err != nil {

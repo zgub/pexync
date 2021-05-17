@@ -4,14 +4,12 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -271,8 +269,6 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spew.Dump(buf)
-
 	msg := &core.Message{}
 	err = json.NewDecoder(buf).
 		Decode(&msg)
@@ -284,8 +280,6 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 			Msg("internal server error")
 		return
 	}
-
-	spew.Dump(msg)
 
 	switch msg.GetFlag() {
 	case core.INI:
@@ -484,7 +478,6 @@ func (w *LocalReceiver) Start() error {
 					w.writersMap[fi] = fr
 					// send a new message
 					w.fileWriters.Go(fr.Start)
-					fmt.Println("sending first packet")
 					//spew.Dump(dd)
 					fr.inbox <- core.NewWSQ(dd)
 				}
@@ -506,8 +499,6 @@ func (w *LocalReceiver) Start() error {
 			}
 		}
 	*/
-
-	fmt.Println("waiting for writers to return")
 
 	err := w.fileWriters.Wait()
 	if err != nil {
