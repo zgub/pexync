@@ -142,6 +142,8 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 		return nil, errors.Wrap(err, "error creating http request")
 	}
 
+	spew.Dump(req)
+
 	resp, err := w.client.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error connecting server")
