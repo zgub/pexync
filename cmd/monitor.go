@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -64,34 +62,10 @@ func startMonitor() {
 
 	// initial sync done
 
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("unable to initialize fs watcher")
-	}
-
 	mon := workers.NewMonitor()
 
 	eg := new(errgroup.Group)
-	eg.Go(func() error {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return errors.New("an error occurred while watching directory")
-				}
-
-				mon.Eval(event)
-
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return errors.New("an error occurred while watching directory")
-				}
-				return err
-			}
-		}
-	})
+	eg.Go(mon.Start)
 
 	// reading the source dir again, because we have no easy means of getting it from he sender (lazy)
 	srcDir := viper.GetString("source")
@@ -109,7 +83,7 @@ func startMonitor() {
 			Msg("monitor - directory parse failed")
 	}
 
-	err = watcher.Add(path)
+	err = mon.Watch(path)
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -122,7 +96,7 @@ func startMonitor() {
 	for _, fd := range list {
 		if fd.IsDir {
 			path = filepath.Join(fd.Prefix, fd.FileName)
-			err = watcher.Add(path)
+			err = mon.Watch(path)
 			if err != nil {
 				log.Fatal().
 					Err(err).
