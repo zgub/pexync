@@ -62,7 +62,12 @@ func startMonitor() {
 
 	// initial sync done
 
-	mon := workers.NewMonitor()
+	mon, err := workers.NewMonitor()
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("failed to initialize fs watcher")
+	}
 
 	eg := new(errgroup.Group)
 	eg.Go(mon.Start)
@@ -101,7 +106,7 @@ func startMonitor() {
 				log.Fatal().
 					Err(err).
 					Str("path", path).
-					Msg("failed to initialize direcotry watcher")
+					Msg("failed to initialize directory watcher")
 			}
 			log.Trace().
 				Str("path", fd.FileName).
@@ -113,6 +118,6 @@ func startMonitor() {
 	if err != nil {
 		log.Fatal().
 			Err(err).
-			Msg("fsnotify watcher error")
+			Msg("fs watcher error")
 	}
 }

@@ -32,16 +32,17 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	// func TeeReader(r Reader, w Writer) Reader
 	r := io.TeeReader(bufio.NewReader(f), sha1sh)
 	if fd.BlockSize == 0 {
-		log.Fatal().
+		log.Warn().
 			Str("path", filepath.Join(fd.Prefix, fd.FileName)).
-			Msg("unexpected empty file")
+			Msg("empty file")
+		fd.BlockSize = 700
 	}
-	l := size / int64(fd.BlockSize)
+	hashListLen := size / int64(fd.BlockSize)
 	if (size % int64(fd.BlockSize)) != 0 {
-		l++
+		hashListLen++
 	}
 
-	hashList := make([]uint32, l)
+	hashList := make([]uint32, hashListLen)
 
 	for i := 0; ; i++ {
 		//n, err := r.Read(buffer[:cap(buffer)])

@@ -1,6 +1,8 @@
 package workers
 
 import (
+	"fmt"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -18,10 +20,16 @@ type Monitor struct {
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
-func NewMonitor() Monitor {
-	return Monitor{
+func NewMonitor() (Monitor, error) {
+	mon := Monitor{
 		events: make(map[int64]FsEvent),
 	}
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return mon, errors.Wrap(err, "unable to initialize fs watcher")
+	}
+	mon.watcher = w
+	return mon, nil
 }
 
 func (m Monitor) eval(event fsnotify.Event) {
@@ -53,14 +61,6 @@ func (m Monitor) eval(event fsnotify.Event) {
 }
 
 func (m Monitor) Start() error {
-	var err error
-
-	m.watcher, err = fsnotify.NewWatcher()
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("unable to initialize fs watcher")
-	}
 
 	for {
 		select {
@@ -81,5 +81,6 @@ func (m Monitor) Start() error {
 }
 
 func (m Monitor) Watch(path string) error {
+	fmt.Printf("adding to watch: %s\n", path)
 	return m.watcher.Add(path)
 }
