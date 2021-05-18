@@ -143,7 +143,7 @@ Loop:
 								log.Debug().
 									Str("file name", dstPath).
 									Int64("offset chunk", offset).
-									Msg("file writer - cccccccccccccccccccccc closing temporary file")
+									Msg("file writer - closing temporary file")
 								fw.streams--
 								if fw.streams == 0 {
 									break Loop

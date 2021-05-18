@@ -91,14 +91,27 @@ func startMonitor() {
 		for {
 			select {
 			case event, ok := <-watcher.Events:
+				/*
+					Write
+					Remove
+					Rename
+					Chmod
+				*/
 				if !ok {
 					return errors.New("an error occurred while watching directory")
 				}
-
+				log.Trace().
+					Str("Event", event.Name).
+					Msg("new fs event")
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					log.Trace().
-						Str("modified file:", event.Name).
-						Msg("*** write event")
+					log.Debug().
+						Str("modified file", event.Name).
+						Msg("write event")
+				}
+				if event.Op&fsnotify.Remove == fsnotify.Remove {
+					log.Info().
+						Str("file", event.Name).
+						Msg("file removed - ignoring")
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
