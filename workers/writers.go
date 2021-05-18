@@ -158,7 +158,6 @@ Loop:
 						// increase the expected sequence number again
 						tmpF.seq++
 					}
-
 				} else {
 					tmpF.dataBuf[seq] = msg.GetDataDesc()
 					log.Warn().
