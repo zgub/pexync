@@ -68,22 +68,7 @@ func startMonitor() {
 	if err != nil {
 		log.Fatal().
 			Err(err).
-			Msg("unable to initialize")
-	}
-
-	list, err := lfs.ParseDir(viper.GetString("source"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("monitor - direcotry parse failed")
-	}
-
-	for _, fd := range list {
-		if fd.IsDir {
-			log.Trace().
-				Str("path", fd.FileName).
-				Msg("will be monitored")
-		}
+			Msg("unable to initialize fs watcher")
 	}
 
 	mon := workers.NewMonitor()
@@ -108,6 +93,7 @@ func startMonitor() {
 		}
 	})
 
+	// reading the source dir again, because we have no easy means of getting it from he sender (lazy)
 	srcDir := viper.GetString("source")
 	path, err := filepath.Abs(srcDir)
 	if err != nil {
@@ -115,12 +101,40 @@ func startMonitor() {
 			Err(err).
 			Msg("failed to watch directory")
 	}
+
+	list, err := lfs.ParseDir(srcDir)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("monitor - directory parse failed")
+	}
+
 	err = watcher.Add(path)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("unable to add direcotry to watchlist")
 	}
+	log.Info().
+		Str("path", path).
+		Msg("Monitoring")
+
+	for _, fd := range list {
+		if fd.IsDir {
+			path = filepath.Join(fd.Prefix, fd.FileName)
+			err = watcher.Add(path)
+			if err != nil {
+				log.Fatal().
+					Err(err).
+					Str("path", path).
+					Msg("failed to initialize direcotry watcher")
+			}
+			log.Trace().
+				Str("path", fd.FileName).
+				Msg("Monitoring")
+		}
+	}
+
 	err = eg.Wait()
 	if err != nil {
 		log.Fatal().
