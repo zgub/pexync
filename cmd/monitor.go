@@ -2,15 +2,17 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
-	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/zgub/pexync/lfs"
 	"github.com/zgub/pexync/workers"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -18,7 +20,7 @@ var (
 	monitorCmd = &cobra.Command{
 		Use:   "monitor",
 		Short: "synchronize given directory with remote PeXync server and monitor fs changes",
-		Long:  `The client command attempts to connect to a PeXync server and synchronize the directory content in an optimized way and monitor fs change s.`,
+		Long:  `The client command attempts to connect to a PeXync server and synchronize the directory content in an optimized way and monitor fs changes.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			startMonitor()
 		},
@@ -66,20 +68,33 @@ func startMonitor() {
 	if err != nil {
 		log.Fatal().
 			Err(err).
-			Msg("unable to initialize watcher")
+			Msg("unable to initialize")
 	}
 
-	var wg sync.WaitGroup
-	go func() {
+	list, err := lfs.ParseDir(viper.GetString("source"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("monitor - direcotry parse failed")
+	}
+
+	for _, fd := range list {
+		if fd.IsDir {
+			log.Trace().
+				Str("path", fd.FileName).
+				Msg("will be monitored")
+		}
+	}
+
+	eg := new(errgroup.Group)
+	eg.Go(func() error {
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
-					return
+					return errors.New("an error occurred while watching directory")
 				}
-				log.Trace().
-					Str("event:", event.String()).
-					Msg("*** fs event")
+
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					log.Trace().
 						Str("modified file:", event.Name).
@@ -87,15 +102,12 @@ func startMonitor() {
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
-					return
+					return errors.New("an error occurred while watching directory")
 				}
-				log.Fatal().
-					Err(err).
-					Msg("error while monitoring directory")
+				return err
 			}
 		}
-	}()
-	wg.Add(1)
+	})
 
 	srcDir := viper.GetString("source")
 	path, err := filepath.Abs(srcDir)
@@ -110,5 +122,10 @@ func startMonitor() {
 			Err(err).
 			Msg("unable to add direcotry to watchlist")
 	}
-	wg.Wait()
+	err = eg.Wait()
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("fsnotify watcher error")
+	}
 }

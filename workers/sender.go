@@ -45,6 +45,10 @@ func (s *sender) getSrcList() error {
 	for _, fd := range list {
 		if !fd.IsDir {
 			fd.SetBlockSize()
+			// beware of empty files
+			if fd.BlockSize == 0 {
+				fd.BlockSize = 700
+			}
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
