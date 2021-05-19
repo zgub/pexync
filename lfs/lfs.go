@@ -3,6 +3,7 @@ package lfs
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -358,6 +359,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		if err != nil {
 			return errors.Wrap(err, "failed to determine relative file path")
 		}
+		fmt.Printf("filepath.Rel(%s,%s) = %s\n", walkDir, path, relPath)
 		prefix := filepath.Dir(absPath)
 		log.Trace().
 			Int64("file index", idx).
@@ -395,25 +397,29 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	return list, nil
 }
 
+// Scan returns a file descritor struct
 func Scan(path string) (*FileDesc, error) {
-	absPath, err := filepath.Abs(path)
+	// fsnotify provides absolute paths
+
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
+		return nil, errors.Wrapf(err, "unabel to stat file: %s", path)
 	}
 
-	info, err := os.Stat(absPath)
+	srcPath := viper.GetString("source")
+	basePath, err := filepath.Abs(srcPath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unabel to stat file: %s", absPath)
+		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
 	}
+	fmt.Printf("basePath: %s path: %s\n", basePath, path)
 
-	basePath := filepath.Base(absPath)
-
+	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
 	relPath, err := filepath.Rel(basePath, path)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
+		return nil, errors.Wrapf(err, "unable to determine relative path: %s", path)
 	}
 
-	prefix := filepath.Dir(absPath)
+	prefix := filepath.Dir(path)
 	log.Trace().
 		Str("path", path).
 		Str("prefix path", prefix).

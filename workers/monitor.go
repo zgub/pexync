@@ -3,10 +3,12 @@ package workers
 import (
 	"fmt"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
+	"github.com/zgub/pexync/lfs"
 )
 
 // Monitor represents a PeXync file monitor
@@ -29,30 +31,37 @@ func NewMonitor(rrCh, brCh chan *core.Message) (Monitor, error) {
 	return mon, nil
 }
 
-func (m Monitor) eval(mEvent fsnotify.Event) {
-	if mEvent.Op&fsnotify.Write == fsnotify.Write {
+func (m Monitor) eval(event fsnotify.Event) {
+	if event.Op&fsnotify.Write == fsnotify.Write {
 		log.Info().
-			Str("path", mEvent.Name).
+			Str("path", event.Name).
 			Msg("WRT")
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("file stat error")
+		}
+		spew.Dump(fd)
 	}
-	if mEvent.Op&fsnotify.Remove == fsnotify.Remove {
+	if event.Op&fsnotify.Remove == fsnotify.Remove {
 		log.Info().
-			Str("path", mEvent.Name).
+			Str("path", event.Name).
 			Msg("REM")
 	}
-	if mEvent.Op&fsnotify.Chmod == fsnotify.Chmod {
+	if event.Op&fsnotify.Chmod == fsnotify.Chmod {
 		log.Info().
-			Str("path", mEvent.Name).
+			Str("path", event.Name).
 			Msg("CHM")
 	}
-	if mEvent.Op&fsnotify.Create == fsnotify.Create {
+	if event.Op&fsnotify.Create == fsnotify.Create {
 		log.Info().
-			Str("path", mEvent.Name).
+			Str("path", event.Name).
 			Msg("CRT")
 	}
-	if mEvent.Op&fsnotify.Rename == fsnotify.Rename {
+	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
-			Str("path", mEvent.Name).
+			Str("path", event.Name).
 			Msg("MOV")
 	}
 }
