@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -213,7 +212,6 @@ func (w *HttpSender) dataSender() error {
 			// if FIN was send, don't send it to the standalone process
 			// but stop
 			if msg.GetFlag() == core.FIN {
-				fmt.Println(" *** FIN *** ")
 				return nil
 			}
 			url := w.url.String() + "/data"

@@ -44,7 +44,7 @@ func startClient() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	httpSender, err := workers.NewHttpSender(ctx, uuid)
+	httpSender, err := workers.NewHttpSender(ctx, uuid, true)
 	if err != nil {
 		log.Error().
 			Err(err).

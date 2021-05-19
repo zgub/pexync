@@ -14,27 +14,29 @@
 - [x] missing file sender
 - [ ] multicore
 - [ ] remove unnecessary pointers
-- [ ] context.Done should send FIN to all workers
 - [ ] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
-- [ ] contexts
 - [x] switch local / remote
 - [ ] fail when remote host is not specified
-- [ ] validate inputs
-- [ ] do I need fileindex????? (WHOA) seem not
 - [ ] tests!
 - [ ] sender state (reset after aaa)
 - [x] make sure to not send the same file
-- [ ] anonymous helper functions
 - [ ] don't use w for workers as w implies writer
 - [ ] monitor
-- [ ] core.Message constructor (ccio)
+- [x] core.Message constructor (ccio)
+- [ ] delete ref file
+- [ ] add added dir to monitor watcher
 
 ## NOTODO
 
 - [ ] proto checksums?
 - [ ] struct padding adjustment
 - [ ] validation at transfer end
+- [ ] do I need fileindex????? (WHOA) seem not
+- [ ] context.Done should send FIN to all workers
+- [ ] validate inputs
+- [ ] contexts
+- [ ] anonymous helper functions
 
 ## Ideas
 

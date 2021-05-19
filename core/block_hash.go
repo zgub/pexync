@@ -24,19 +24,25 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	buffer := make([]byte, fd.BlockSize)
 	fileInfo, err := f.Stat()
 	if err != nil {
-		return errors.Wrap(err, "file stata error")
+		return errors.Wrap(err, "file stat error")
 	}
 	size := fileInfo.Size()
 
 	sha1sh := sha1.New()
 	// func TeeReader(r Reader, w Writer) Reader
 	r := io.TeeReader(bufio.NewReader(f), sha1sh)
-	l := size / int64(fd.BlockSize)
+	if fd.BlockSize == 0 {
+		log.Warn().
+			Str("path", filepath.Join(fd.Prefix, fd.FileName)).
+			Msg("empty file")
+		fd.BlockSize = 700
+	}
+	hashListLen := size / int64(fd.BlockSize)
 	if (size % int64(fd.BlockSize)) != 0 {
-		l++
+		hashListLen++
 	}
 
-	hashList := make([]uint32, l)
+	hashList := make([]uint32, hashListLen)
 
 	for i := 0; ; i++ {
 		//n, err := r.Read(buffer[:cap(buffer)])
@@ -60,7 +66,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	fd.Sha1 = sha1sh.Sum(nil)[:20]
 	fd.Weak = hashList
 	log.Trace().
-		Str("dst path", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
+		Str("dst path", filepath.Join(fd.Prefix, fd.FileName)).
 		Int("checksums added", len(hashList)).
 		Msg("checksums calculated")
 	return nil

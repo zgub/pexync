@@ -1,16 +1,12 @@
 package workers
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha1"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -45,6 +41,10 @@ func (s *sender) getSrcList() error {
 	for _, fd := range list {
 		if !fd.IsDir {
 			fd.SetBlockSize()
+			// beware of empty files
+			if fd.BlockSize == 0 {
+				fd.BlockSize = 700
+			}
 			log.Trace().
 				Str("file name", fd.FileName).
 				Int64("file size", int64(fd.FileSize)).
@@ -78,23 +78,29 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
-				sha1sh := sha1.New()
-				p := filepath.Join(fd.Prefix, fd.FileName)
-				mf, err := os.Open(p)
-				if err != nil {
-					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-				}
-				r := io.Reader(mf)
-				br := bufio.NewReader(r)
-				_, err = io.Copy(sha1sh, br)
-				if err != nil {
-					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-				}
+				/*
+					sha1sh := sha1.New()
+					p := filepath.Join(fd.Prefix, fd.FileName)
+					mf, err := os.Open(p)
+					if err != nil {
+						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+					}
+					defer mf.Close()
+					r := io.Reader(mf)
+					br := bufio.NewReader(r)
+					_, err = io.Copy(sha1sh, br)
+					if err != nil {
+						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+					}
+				*/
 				rSha1 := fd.Sha1
-				lSha1 := sha1sh.Sum(nil)[:20]
+				lSha1, err := fd.GetSha1()
+				if err != nil {
+					return errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", filepath.Join(fd.Prefix, fd.FileName))
+				}
 				if bytes.Equal(rSha1, lSha1) {
 					log.Trace().
-						Msgf("sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+						Msgf("sender - file: %s has matching SHA1 digest, skipping", filepath.Join(fd.Prefix, fd.FileName))
 					continue
 				}
 			}
@@ -146,25 +152,25 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.diffList {
 
 		if fd.FileSize > splitSize && s.ccIo > 1 {
-			chunkSize := int64(fd.FileSize / s.ccIo)
+			chunkSize := fd.FileSize / s.ccIo
 			log.Debug().
-				Int64("file size", int64(fd.FileSize)).
+				Int64("file size", fd.FileSize).
 				Int64("chunk size", chunkSize).
 				Int64("io_concurency", s.ccIo).
 				Msg("sender - using paralel reading")
 
 			for chunk := int64(0); chunk < s.ccIo; chunk++ {
-				limit := chunkSize * (int64(chunk) + 1)
-				if limit > int64(fd.FileSize) {
-					limit = int64(fd.FileSize)
+				limit := chunkSize * (chunk + 1)
+				if limit > fd.FileSize {
+					limit = fd.FileSize
 				}
 				// data stream count = s.ccIo
-				s.rrCh <- core.NewRSQ(s.uuid, fd, int64(chunk)*chunkSize, limit, s.ccIo)
+				s.rrCh <- core.NewRSQ(s.uuid, fd, chunk*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
 			// data streams count = 1
-			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, int64(fd.FileSize), 1)
+			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 		}
 	}
 
@@ -206,6 +212,8 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: receiver,
+			rrCh:     make(chan *core.Message, ccIo),
+			brCh:     make(chan *core.Message, ccIo),
 			ccIo:     int64(ccIo),
 		},
 		inbox: in,
@@ -241,8 +249,6 @@ func (w *LocalSender) Start() error {
 	}
 
 	// prepare for transfer
-	w.rrCh = make(chan *core.Message, w.ccIo)
-	w.brCh = make(chan *core.Message, w.ccIo)
 	w.g = new(errgroup.Group)
 
 	w.spawnReaders()
@@ -271,12 +277,14 @@ func (w *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	url    *url.URL
-	client *http.Client
+	url      *url.URL
+	client   *http.Client
+	syncOnce bool
 	sender
 }
 
-func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
+// NewHttpSender returns a http sender instance, syncOnce set to false makes it stop after all the initial files are synced
+func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSender, error) {
 
 	// first, prepare http client
 	host := viper.GetString("remote_host")
@@ -316,12 +324,15 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 	}
 
 	s := &HttpSender{
-		url:    url,
-		client: c,
+		url:      url,
+		client:   c,
+		syncOnce: syncOnce,
 		sender: sender{
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: make(chan *core.Message),
+			rrCh:     make(chan *core.Message, ccIo),
+			brCh:     make(chan *core.Message, ccIo),
 			ccIo:     int64(ccIo),
 		},
 	}
@@ -329,70 +340,74 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 	return s, nil
 }
 
-func (w *HttpSender) Start() error {
+func (hs *HttpSender) Start() error {
 
-	if err := w.getSrcList(); err != nil {
+	if err := hs.getSrcList(); err != nil {
 		return err
 	}
 
 	// create a new message for the other side
-	msg := core.NewINI(w.uuid, w.srcList)
+	msg := core.NewINI(hs.uuid, hs.srcList)
 
 	// send
-	url := w.url.String() + "/list"
-	resp, err := w.sendJson(url, msg)
+	url := hs.url.String() + "/list"
+	resp, err := hs.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error comunicating with server")
 	}
 
-	err = w.parseRemoteList(resp)
+	err = hs.parseRemoteList(resp)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
-	// prepare for transfer
-	w.rrCh = make(chan *core.Message, w.ccIo)
-	w.brCh = make(chan *core.Message, w.ccIo)
 	// one errorgroup for readers and data senders
-	w.g = new(errgroup.Group)
+	hs.g = new(errgroup.Group)
 
-	// another, independent one for http senders
+	// another, independent one, just for http senders
 	eg := new(errgroup.Group)
 
 	// starting http senders
-	for i := int64(0); i < 2*w.ccIo; i++ {
+	for i := int64(0); i < 2*hs.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		eg.Go(w.dataSender)
+		eg.Go(hs.dataSender)
 	}
 
-	w.spawnReaders()
+	hs.spawnReaders()
 
-	w.sendDataToReaders()
+	hs.sendDataToReaders()
 
-	w.stopReaders()
+	// stop the readers if in sync once mode
+	if hs.syncOnce {
+		hs.stopReaders()
 
-	// end
-	err = w.g.Wait()
-	if err != nil {
-		return errors.Wrap(err, "http sender worker failed")
+		err = hs.g.Wait()
+		if err != nil {
+			return errors.Wrap(err, "http sender worker failed")
+		}
+
+		// don't forget to stop http senders in sync_once mode
+		for i := int64(0); i < 2*hs.ccIo; i++ {
+			hs.receiver <- core.NewFIN(hs.uuid)
+		}
+
+		err = eg.Wait()
+		if err != nil {
+			return errors.Wrap(err, "http reader failed")
+		}
+
+		log.Trace().
+			Msg("http sender - initial sync finished")
+
 	}
-
-	// don't forget zee http senderz
-	for i := int64(0); i < 2*w.ccIo; i++ {
-		w.receiver <- core.NewFIN(w.uuid)
-	}
-
-	err = eg.Wait()
-	if err != nil {
-		return errors.Wrap(err, "http reader failed")
-	}
-
-	// do not send FIN to remote workers vi http
-	log.Trace().
-		Msg("http sender - finished")
 
 	return nil
+}
+
+// GetChannles returns reader channels to be used during monitor operation
+func (hs *HttpSender) GetChannels() (rrCh, brCh chan *core.Message) {
+	return hs.rrCh, hs.brCh
 }

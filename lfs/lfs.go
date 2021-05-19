@@ -1,8 +1,12 @@
 package lfs
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -303,7 +307,24 @@ func (fd *FileDesc) SetBlockSize() {
 	if fd.FileSize < 700 {
 		fd.BlockSize = int64(fd.FileSize)
 	}
+}
 
+// AddSha1 adds a SHA1 digest to the file descriptor struct
+func (fd *FileDesc) GetSha1() ([]byte, error) {
+	p := filepath.Join(fd.Prefix, fd.FileName)
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", p)
+	}
+	defer f.Close()
+	br := bufio.NewReader(io.Reader(f))
+	sha1sh := sha1.New()
+	_, err = io.Copy(sha1sh, br)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", p)
+	}
+	sum := sha1sh.Sum(nil)[:20]
+	return sum, nil
 }
 
 func ParseDir(walkDir string) ([]*FileDesc, error) {
@@ -358,6 +379,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		if err != nil {
 			return errors.Wrap(err, "failed to determine relative file path")
 		}
+		//fmt.Printf("filepath.Rel(%s,%s) = %s\n", walkDir, path, relPath)
 		prefix := filepath.Dir(absPath)
 		log.Trace().
 			Int64("file index", idx).
@@ -393,4 +415,47 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	}
 
 	return list, nil
+}
+
+// Scan returns a file descritor struct
+func Scan(path string) (*FileDesc, error) {
+	// fsnotify provides absolute paths
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unabel to stat file: %s", path)
+	}
+
+	srcPath := viper.GetString("source")
+	basePath, err := filepath.Abs(srcPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
+	}
+	fmt.Printf("basePath: %s path: %s\n", basePath, path)
+
+	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
+	relPath, err := filepath.Rel(basePath, path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to determine relative path: %s", path)
+	}
+
+	prefix := filepath.Dir(path)
+	log.Trace().
+		Str("path", path).
+		Str("prefix path", prefix).
+		Bool("is dir", info.IsDir()).
+		Msg("file stat")
+
+	fd := &FileDesc{
+		IsDir:    info.IsDir(),
+		RelPath:  relPath,
+		Prefix:   prefix,
+		FileName: info.Name(),
+		FileSize: info.Size(),
+		Modified: info.ModTime(),
+		Mode:     info.Mode(),
+		//Uid: stat.Uid,
+		//Gid: stat.Gid.
+	}
+	return fd, nil
 }

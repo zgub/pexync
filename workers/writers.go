@@ -143,7 +143,7 @@ Loop:
 								log.Debug().
 									Str("file name", dstPath).
 									Int64("offset chunk", offset).
-									Msg("file writer - cccccccccccccccccccccc closing temporary file")
+									Msg("file writer - closing temporary file")
 								fw.streams--
 								if fw.streams == 0 {
 									break Loop
@@ -158,7 +158,6 @@ Loop:
 						// increase the expected sequence number again
 						tmpF.seq++
 					}
-
 				} else {
 					tmpF.dataBuf[seq] = msg.GetDataDesc()
 					log.Warn().
@@ -265,11 +264,13 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
-			_, err := io.CopyN(w, br, header.Len)
+			n, err := io.CopyN(w, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
 			w.Flush()
+			log.Trace().
+				Msgf("file writer - %d bytes written", n)
 		case lfs.Index:
 			// indexes
 			hIndex := make([]int64, header.Len)
@@ -291,6 +292,8 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 					return errors.Wrap(err, "error writing referenced data")
 				}
 				w.Flush()
+				log.Trace().
+					Msgf("file writer - %d bytes copied", n)
 			}
 		case lfs.End:
 			return lfs.ErrEOF
@@ -311,7 +314,7 @@ func (fw FileWriter) newTempFile(offset int64) error {
 		Str("file name", tmpF.Name()).
 		Int64("offset", offset).
 		Int("temp files count", len(fw.fileMap)).
-		Msg("file writer - DIFF opening temporary file ++++++++++++++++++++++++++++++++++++++")
+		Msg("file writer - DIFF opening temporary file")
 
 	fw.fileMap[offset] = &tmpFile{
 		path:    tmpF.Name(),
