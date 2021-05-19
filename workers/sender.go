@@ -150,25 +150,25 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.diffList {
 
 		if fd.FileSize > splitSize && s.ccIo > 1 {
-			chunkSize := int64(fd.FileSize / s.ccIo)
+			chunkSize := fd.FileSize / s.ccIo
 			log.Debug().
-				Int64("file size", int64(fd.FileSize)).
+				Int64("file size", fd.FileSize).
 				Int64("chunk size", chunkSize).
 				Int64("io_concurency", s.ccIo).
 				Msg("sender - using paralel reading")
 
 			for chunk := int64(0); chunk < s.ccIo; chunk++ {
-				limit := chunkSize * (int64(chunk) + 1)
-				if limit > int64(fd.FileSize) {
-					limit = int64(fd.FileSize)
+				limit := chunkSize * (chunk + 1)
+				if limit > fd.FileSize {
+					limit = fd.FileSize
 				}
 				// data stream count = s.ccIo
-				s.rrCh <- core.NewRSQ(s.uuid, fd, int64(chunk)*chunkSize, limit, s.ccIo)
+				s.rrCh <- core.NewRSQ(s.uuid, fd, chunk*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
 			// data streams count = 1
-			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, int64(fd.FileSize), 1)
+			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
 		}
 	}
 
