@@ -47,7 +47,7 @@ func startMonitor() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	httpSender, err := workers.NewHttpSender(ctx, uuid)
+	httpSender, err := workers.NewHttpSender(ctx, uuid, false)
 	if err != nil {
 		log.Fatal().
 			Err(err).

@@ -210,6 +210,8 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: receiver,
+			rrCh:     make(chan *core.Message, ccIo),
+			brCh:     make(chan *core.Message, ccIo),
 			ccIo:     int64(ccIo),
 		},
 		inbox: in,
@@ -245,8 +247,6 @@ func (w *LocalSender) Start() error {
 	}
 
 	// prepare for transfer
-	w.rrCh = make(chan *core.Message, w.ccIo)
-	w.brCh = make(chan *core.Message, w.ccIo)
 	w.g = new(errgroup.Group)
 
 	w.spawnReaders()
@@ -275,12 +275,14 @@ func (w *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	url    *url.URL
-	client *http.Client
+	url      *url.URL
+	client   *http.Client
+	syncOnce bool
 	sender
 }
 
-func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
+// NewHttpSender returns a http sender instance, syncOnce set to false makes it stop after all the initial files are synced
+func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSender, error) {
 
 	// first, prepare http client
 	host := viper.GetString("remote_host")
@@ -320,12 +322,15 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID) (*HttpSender, error) {
 	}
 
 	s := &HttpSender{
-		url:    url,
-		client: c,
+		url:      url,
+		client:   c,
+		syncOnce: syncOnce,
 		sender: sender{
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: make(chan *core.Message),
+			rrCh:     make(chan *core.Message, ccIo),
+			brCh:     make(chan *core.Message, ccIo),
 			ccIo:     int64(ccIo),
 		},
 	}
@@ -356,13 +361,10 @@ func (w *HttpSender) Start() error {
 		return errors.Wrap(err, "local sender")
 	}
 
-	// prepare for transfer
-	w.rrCh = make(chan *core.Message, w.ccIo)
-	w.brCh = make(chan *core.Message, w.ccIo)
 	// one errorgroup for readers and data senders
 	w.g = new(errgroup.Group)
 
-	// another, independent one for http senders
+	// another, independent one, just for http senders
 	eg := new(errgroup.Group)
 
 	// starting http senders
