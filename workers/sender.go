@@ -338,57 +338,62 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 	return s, nil
 }
 
-func (w *HttpSender) Start() error {
+func (hs *HttpSender) Start() error {
 
-	if err := w.getSrcList(); err != nil {
+	if err := hs.getSrcList(); err != nil {
 		return err
 	}
 
 	// create a new message for the other side
-	msg := core.NewINI(w.uuid, w.srcList)
+	msg := core.NewINI(hs.uuid, hs.srcList)
 
 	// send
-	url := w.url.String() + "/list"
-	resp, err := w.sendJson(url, msg)
+	url := hs.url.String() + "/list"
+	resp, err := hs.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error comunicating with server")
 	}
 
-	err = w.parseRemoteList(resp)
+	err = hs.parseRemoteList(resp)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// one errorgroup for readers and data senders
-	w.g = new(errgroup.Group)
+	hs.g = new(errgroup.Group)
 
 	// another, independent one, just for http senders
 	eg := new(errgroup.Group)
 
 	// starting http senders
-	for i := int64(0); i < 2*w.ccIo; i++ {
+	for i := int64(0); i < 2*hs.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		eg.Go(w.dataSender)
+		eg.Go(hs.dataSender)
 	}
 
-	w.spawnReaders()
+	hs.spawnReaders()
 
-	w.sendDataToReaders()
+	hs.sendDataToReaders()
 
-	w.stopReaders()
+	// stop the readers if in sync once mode
+	if hs.syncOnce {
+		hs.stopReaders()
+	}
 
 	// end
-	err = w.g.Wait()
+	err = hs.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "http sender worker failed")
 	}
 
-	// don't forget zee http senderz
-	for i := int64(0); i < 2*w.ccIo; i++ {
-		w.receiver <- core.NewFIN(w.uuid)
+	// don't forget to stop http senders in sync_once mode
+	if hs.syncOnce {
+		for i := int64(0); i < 2*hs.ccIo; i++ {
+			hs.receiver <- core.NewFIN(hs.uuid)
+		}
 	}
 
 	err = eg.Wait()
@@ -401,4 +406,9 @@ func (w *HttpSender) Start() error {
 		Msg("http sender - finished")
 
 	return nil
+}
+
+// GetChannles returns reader channels to be used during monitor operation
+func (hs *HttpSender) GetChannels() (rrCh, brCh chan *core.Message) {
+	return hs.rrCh, hs.brCh
 }
