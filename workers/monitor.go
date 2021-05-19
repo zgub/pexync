@@ -124,8 +124,9 @@ func (m Monitor) eval(event fsnotify.Event) {
 			// let's ignore errors, too may untested edge cases
 			return
 		}
-		err = core.AddChecksums(efd)
+		// to calculate checksum we need to determine the block size first
 		efd.SetBlockSize()
+		err = core.AddChecksums(efd)
 		if err != nil {
 			log.Error().
 				Err(err).
