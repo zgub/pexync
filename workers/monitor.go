@@ -125,6 +125,7 @@ func (m Monitor) eval(event fsnotify.Event) {
 			return
 		}
 		err = core.AddChecksums(efd)
+		efd.SetBlockSize()
 		if err != nil {
 			log.Error().
 				Err(err).
