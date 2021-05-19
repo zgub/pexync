@@ -17,6 +17,7 @@ type Monitor struct {
 	watcher    *fsnotify.Watcher
 	watchMap   map[string]*lfs.FileDesc
 	rrCh, brCh chan *core.Message
+	idx        int64
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
@@ -36,6 +37,9 @@ func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monit
 		err = core.AddChecksums(fd)
 		if !fd.IsDir {
 			fd.SetBlockSize()
+		}
+		if fd.Idx > mon.idx {
+			mon.idx = fd.Idx
 		}
 		if err != nil {
 			return mon, errors.Wrapf(err, "failed to calculate checksums - file: %s", filepath.Join(fd.Prefix, fd.FileName))
@@ -136,6 +140,9 @@ func (m Monitor) eval(event fsnotify.Event) {
 }
 
 func (m Monitor) Start() error {
+	log.Info().
+		Int64("last file index", m.idx).
+		Msg("MONITOR - Starting")
 
 	for {
 		select {
