@@ -1,9 +1,12 @@
 package lfs
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -304,7 +307,24 @@ func (fd *FileDesc) SetBlockSize() {
 	if fd.FileSize < 700 {
 		fd.BlockSize = int64(fd.FileSize)
 	}
+}
 
+// AddSha1 adds a SHA1 digest to the file descriptor struct
+func (fd *FileDesc) GetSha1() ([]byte, error) {
+	p := filepath.Join(fd.Prefix, fd.FileName)
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", p)
+	}
+	defer f.Close()
+	br := bufio.NewReader(io.Reader(f))
+	sha1sh := sha1.New()
+	_, err = io.Copy(sha1sh, br)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", p)
+	}
+	sum := sha1sh.Sum(nil)[:20]
+	return sum, nil
 }
 
 func ParseDir(walkDir string) ([]*FileDesc, error) {

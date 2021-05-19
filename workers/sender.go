@@ -88,6 +88,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				if err != nil {
 					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
 				}
+				defer mf.Close()
 				r := io.Reader(mf)
 				br := bufio.NewReader(r)
 				_, err = io.Copy(sha1sh, br)
