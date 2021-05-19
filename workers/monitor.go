@@ -18,7 +18,7 @@ type Monitor struct {
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
-func NewMonitor(rrCh, brCh chan *core.Message) (Monitor, error) {
+func NewMonitor(rrCh, brCh chan *core.Message, list []*lfs.FileDesc) (Monitor, error) {
 	mon := Monitor{
 		rrCh: rrCh,
 		brCh: brCh,

@@ -41,6 +41,15 @@ func startMonitor() {
 
 	uuid := uuid.New()
 
+	srcDir := viper.GetString("source")
+
+	watchList, err := lfs.ParseDir(srcDir)
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Msg("monitor - directory parse failed")
+	}
+
 	ctx := context.Background()
 	log.Info().
 		Msg("starting remote sync")
@@ -63,7 +72,7 @@ func startMonitor() {
 	// get the reader channels
 	rrCh, brCh := httpSender.GetChannels()
 
-	mon, err := workers.NewMonitor(rrCh, brCh)
+	mon, err := workers.NewMonitor(rrCh, brCh, watchList)
 	if err != nil {
 		log.Fatal().
 			Err(err).
@@ -73,20 +82,11 @@ func startMonitor() {
 	eg := new(errgroup.Group)
 	eg.Go(mon.Start)
 
-	// reading the source dir again, because we have no easy means of getting it from he sender (lazy)
-	srcDir := viper.GetString("source")
 	path, err := filepath.Abs(srcDir)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("failed to watch directory")
-	}
-
-	list, err := lfs.ParseDir(srcDir)
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Msg("monitor - directory parse failed")
 	}
 
 	err = mon.Watch(path)
@@ -99,7 +99,7 @@ func startMonitor() {
 		Str("path", path).
 		Msg("Monitoring")
 
-	for _, fd := range list {
+	for _, fd := range watchList {
 		if fd.IsDir {
 			path = filepath.Join(fd.Prefix, fd.FileName)
 			err = mon.Watch(path)
