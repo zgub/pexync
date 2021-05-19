@@ -394,3 +394,42 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 
 	return list, nil
 }
+
+func Scan(path string) (*FileDesc, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unabel to stat file: %s", absPath)
+	}
+
+	basePath := filepath.Base(absPath)
+
+	relPath, err := filepath.Rel(basePath, path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
+	}
+
+	prefix := filepath.Dir(absPath)
+	log.Trace().
+		Str("path", path).
+		Str("prefix path", prefix).
+		Bool("is dir", info.IsDir()).
+		Msg("file stat")
+
+	fd := &FileDesc{
+		IsDir:    info.IsDir(),
+		RelPath:  relPath,
+		Prefix:   prefix,
+		FileName: info.Name(),
+		FileSize: info.Size(),
+		Modified: info.ModTime(),
+		Mode:     info.Mode(),
+		//Uid: stat.Uid,
+		//Gid: stat.Gid.
+	}
+	return fd, nil
+}
