@@ -8,22 +8,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// FsEvent is a wrapper struct aroutn fsnotify event
-type FsEvent struct {
-	fsnotify.Event
-}
-
 // Monitor represents a PeXync file monitor
 type Monitor struct {
-	events  map[int64]FsEvent
 	watcher *fsnotify.Watcher
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
 func NewMonitor() (Monitor, error) {
-	mon := Monitor{
-		events: make(map[int64]FsEvent),
-	}
+	mon := Monitor{}
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return mon, errors.Wrap(err, "unable to initialize fs watcher")
@@ -32,30 +24,30 @@ func NewMonitor() (Monitor, error) {
 	return mon, nil
 }
 
-func (m Monitor) eval(event fsnotify.Event) {
-	if event.Op&fsnotify.Write == fsnotify.Write {
+func (m Monitor) eval(mEvent fsnotify.Event) {
+	if mEvent.Op&fsnotify.Write == fsnotify.Write {
 		log.Info().
-			Str("path", event.Name).
+			Str("path", mEvent.Name).
 			Msg("WRT")
 	}
-	if event.Op&fsnotify.Remove == fsnotify.Remove {
+	if mEvent.Op&fsnotify.Remove == fsnotify.Remove {
 		log.Info().
-			Str("path", event.Name).
+			Str("path", mEvent.Name).
 			Msg("REM")
 	}
-	if event.Op&fsnotify.Chmod == fsnotify.Chmod {
+	if mEvent.Op&fsnotify.Chmod == fsnotify.Chmod {
 		log.Info().
-			Str("path", event.Name).
-			Msg("CHD")
+			Str("path", mEvent.Name).
+			Msg("CHM")
 	}
-	if event.Op&fsnotify.Create == fsnotify.Create {
+	if mEvent.Op&fsnotify.Create == fsnotify.Create {
 		log.Info().
-			Str("path", event.Name).
+			Str("path", mEvent.Name).
 			Msg("CRT")
 	}
-	if event.Op&fsnotify.Rename == fsnotify.Rename {
+	if mEvent.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
-			Str("path", event.Name).
+			Str("path", mEvent.Name).
 			Msg("MOV")
 	}
 }
