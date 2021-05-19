@@ -66,7 +66,7 @@ func AddChecksums(fd *lfs.FileDesc) error {
 	fd.Sha1 = sha1sh.Sum(nil)[:20]
 	fd.Weak = hashList
 	log.Trace().
-		Str("dst path", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
+		Str("dst path", filepath.Join(fd.Prefix, fd.FileName)).
 		Int("checksums added", len(hashList)).
 		Msg("checksums calculated")
 	return nil

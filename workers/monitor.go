@@ -1,10 +1,10 @@
 package workers
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -31,7 +31,15 @@ func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monit
 		return mon, errors.Wrap(err, "unable to initialize fs watcher")
 	}
 
+	// determine block size and add weak block Adler32 hashlist and Sha1 digest
 	for _, fd := range watchList {
+		err = core.AddChecksums(fd)
+		if !fd.IsDir {
+			fd.SetBlockSize()
+		}
+		if err != nil {
+			return mon, errors.Wrapf(err, "failed to calculate checksums - file: %s", filepath.Join(fd.Prefix, fd.FileName))
+		}
 		mon.watchMap[filepath.Join(fd.Prefix, fd.FileName)] = fd
 	}
 
@@ -43,34 +51,87 @@ func (m Monitor) eval(event fsnotify.Event) {
 	if event.Op&fsnotify.Write == fsnotify.Write {
 		log.Info().
 			Str("path", event.Name).
-			Msg("WRT")
-		fd, err := lfs.Scan(event.Name)
+			Msg("WRITE - event detected")
+		// event file descriptor
+		efd, err := lfs.Scan(event.Name)
 		if err != nil {
 			log.Error().
 				Err(err).
 				Msg("file stat error")
+			// let's ignore errors, too may untested edge cases
+			return
 		}
-		spew.Dump(fd)
+		if fd, ok := m.watchMap[event.Name]; ok {
+			// write event on a known file
+			if fd.FileSize == efd.FileSize {
+				// size did not change, let's then calculate SHA1 digests
+				efd.Sha1, err = efd.GetSha1()
+				if err != nil {
+					log.Error().
+						Err(err).
+						Str("filename", event.Name).
+						Msg("failed to calulate SHA1 digest")
+					return
+				}
+				if bytes.Equal(efd.Sha1, fd.Sha1) {
+					// digests are equal, ignore
+					log.Info().
+						Str("filename", event.Name).
+						Msg("WRITE - file has not changed")
+					return
+				} else {
+					// digests are not equal - send changes
+					log.Info().
+						Str("filename", event.Name).
+						Msg("WRITE - file has changed")
+				}
+			} else {
+				// sizes are different - send changes
+				log.Info().
+					Str("filename", event.Name).
+					Msg("WRITE - file size change")
+			}
+		} else {
+			log.Warn().
+				Str("filename", event.Name).
+				Msg("WRITE - event on unknown file, ignoring")
+			return
+		}
 	}
 	if event.Op&fsnotify.Remove == fsnotify.Remove {
 		log.Info().
 			Str("path", event.Name).
-			Msg("REM")
+			Msg("REMOVE - event detected, ignoring")
 	}
 	if event.Op&fsnotify.Chmod == fsnotify.Chmod {
 		log.Info().
 			Str("path", event.Name).
-			Msg("CHM")
+			Msg("CHMOD - event detected, ignoring")
 	}
 	if event.Op&fsnotify.Create == fsnotify.Create {
 		log.Info().
 			Str("path", event.Name).
-			Msg("CRT")
+			Msg("CRETAE - event detected")
+		efd, err := lfs.Scan(event.Name)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("file stat error")
+			// let's ignore errors, too may untested edge cases
+			return
+		}
+		err = core.AddChecksums(efd)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Msg("failed to calculate cjecksums")
+			return
+		}
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
 			Str("path", event.Name).
-			Msg("MOV")
+			Msg("RENAME - event detected")
 	}
 }
 
