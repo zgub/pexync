@@ -381,29 +381,26 @@ func (hs *HttpSender) Start() error {
 	// stop the readers if in sync once mode
 	if hs.syncOnce {
 		hs.stopReaders()
-	}
 
-	// end
-	err = hs.g.Wait()
-	if err != nil {
-		return errors.Wrap(err, "http sender worker failed")
-	}
+		err = hs.g.Wait()
+		if err != nil {
+			return errors.Wrap(err, "http sender worker failed")
+		}
 
-	// don't forget to stop http senders in sync_once mode
-	if hs.syncOnce {
+		// don't forget to stop http senders in sync_once mode
 		for i := int64(0); i < 2*hs.ccIo; i++ {
 			hs.receiver <- core.NewFIN(hs.uuid)
 		}
-	}
 
-	err = eg.Wait()
-	if err != nil {
-		return errors.Wrap(err, "http reader failed")
-	}
+		err = eg.Wait()
+		if err != nil {
+			return errors.Wrap(err, "http reader failed")
+		}
 
-	// do not send FIN to remote workers vi http
-	log.Trace().
-		Msg("http sender - finished")
+		log.Trace().
+			Msg("http sender - initial sync finished")
+
+	}
 
 	return nil
 }

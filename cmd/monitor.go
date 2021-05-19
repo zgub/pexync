@@ -60,9 +60,10 @@ func startMonitor() {
 			Msg("unable to start http sender")
 	}
 
-	// initial sync done
+	// get the reader channels
+	rrCh, brCh := httpSender.GetChannels()
 
-	mon, err := workers.NewMonitor()
+	mon, err := workers.NewMonitor(rrCh, brCh)
 	if err != nil {
 		log.Fatal().
 			Err(err).

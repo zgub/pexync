@@ -6,16 +6,21 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/zgub/pexync/core"
 )
 
 // Monitor represents a PeXync file monitor
 type Monitor struct {
-	watcher *fsnotify.Watcher
+	watcher    *fsnotify.Watcher
+	rrCh, brCh chan *core.Message
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
-func NewMonitor() (Monitor, error) {
-	mon := Monitor{}
+func NewMonitor(rrCh, brCh chan *core.Message) (Monitor, error) {
+	mon := Monitor{
+		rrCh: rrCh,
+		brCh: brCh,
+	}
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return mon, errors.Wrap(err, "unable to initialize fs watcher")
