@@ -128,9 +128,11 @@ func (m Monitor) eval(event fsnotify.Event) {
 		if err != nil {
 			log.Error().
 				Err(err).
-				Msg("failed to calculate cjecksums")
+				Msg("failed to calculate checksums")
 			return
 		}
+		m.idx++
+		efd.Idx = m.idx
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
