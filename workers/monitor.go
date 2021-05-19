@@ -2,6 +2,7 @@ package workers
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
@@ -14,19 +15,26 @@ import (
 // Monitor represents a PeXync file monitor
 type Monitor struct {
 	watcher    *fsnotify.Watcher
+	watchMap   map[string]*lfs.FileDesc
 	rrCh, brCh chan *core.Message
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
-func NewMonitor(rrCh, brCh chan *core.Message, list []*lfs.FileDesc) (Monitor, error) {
+func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monitor, error) {
 	mon := Monitor{
-		rrCh: rrCh,
-		brCh: brCh,
+		rrCh:     rrCh,
+		brCh:     brCh,
+		watchMap: make(map[string]*lfs.FileDesc),
 	}
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return mon, errors.Wrap(err, "unable to initialize fs watcher")
 	}
+
+	for _, fd := range watchList {
+		mon.watchMap[filepath.Join(fd.Prefix, fd.FileName)] = fd
+	}
+
 	mon.watcher = w
 	return mon, nil
 }
