@@ -1,16 +1,12 @@
 package workers
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha1"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -82,24 +78,29 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
-				sha1sh := sha1.New()
-				p := filepath.Join(fd.Prefix, fd.FileName)
-				mf, err := os.Open(p)
-				if err != nil {
-					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-				}
-				defer mf.Close()
-				r := io.Reader(mf)
-				br := bufio.NewReader(r)
-				_, err = io.Copy(sha1sh, br)
-				if err != nil {
-					return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-				}
+				/*
+					sha1sh := sha1.New()
+					p := filepath.Join(fd.Prefix, fd.FileName)
+					mf, err := os.Open(p)
+					if err != nil {
+						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+					}
+					defer mf.Close()
+					r := io.Reader(mf)
+					br := bufio.NewReader(r)
+					_, err = io.Copy(sha1sh, br)
+					if err != nil {
+						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+					}
+				*/
 				rSha1 := fd.Sha1
-				lSha1 := sha1sh.Sum(nil)[:20]
+				lSha1, err := fd.GetSha1()
+				if err != nil {
+					return errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", filepath.Join(fd.Prefix, fd.FileName))
+				}
 				if bytes.Equal(rSha1, lSha1) {
 					log.Trace().
-						Msgf("sender - file: %s has matching SHA1 digest, skipping", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
+						Msgf("sender - file: %s has matching SHA1 digest, skipping", filepath.Join(fd.Prefix, fd.FileName))
 					continue
 				}
 			}
