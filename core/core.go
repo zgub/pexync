@@ -1,8 +1,6 @@
 package core
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 	"github.com/zgub/pexync/lfs"
 )
@@ -79,7 +77,6 @@ func NewFIN(uuid uuid.UUID) *Message {
 }
 
 func NewHashRequest(fd *lfs.FileDesc) *Message {
-	fmt.Println("DUH")
 	return &Message{
 		Flag:     HSH,
 		FileDesc: fd,

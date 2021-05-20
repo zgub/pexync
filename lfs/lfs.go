@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -431,7 +430,6 @@ func Scan(path string) (*FileDesc, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
 	}
-	fmt.Printf("basePath: %s path: %s\n", basePath, path)
 
 	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
 	relPath, err := filepath.Rel(basePath, path)

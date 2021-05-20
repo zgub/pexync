@@ -416,7 +416,6 @@ func (w *HashReader) Start() error {
 					Msg("hash reader - received FIN")
 				return nil
 			case core.HSH:
-				fmt.Println("HSH")
 				fd := msg.GetFileDesc()
 				if !fd.IsDir {
 					err := core.AddChecksums(msg.GetFileDesc())
