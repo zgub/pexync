@@ -41,6 +41,7 @@ func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monit
 			if fd.BlockSize == 0 {
 				fd.BlockSize = 700
 			}
+			fmt.Println("watchlist")
 			err = core.AddChecksums(fd)
 			if err != nil {
 				return mon, errors.Wrapf(err, "Monitor init - failed to calculate checksums - file: %s", filepath.Join(fd.Prefix, fd.FileName))
@@ -142,6 +143,7 @@ func (m Monitor) eval(event fsnotify.Event) {
 			if efd.BlockSize == 0 {
 				efd.BlockSize = 700
 			}
+			fmt.Println("event")
 			err = core.AddChecksums(efd)
 			if err != nil {
 				log.Error().

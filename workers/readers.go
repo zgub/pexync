@@ -416,9 +416,13 @@ func (w *HashReader) Start() error {
 					Msg("hash reader - received FIN")
 				return nil
 			case core.HSH:
-				err := core.AddChecksums(msg.GetFileDesc())
-				if err != nil {
-					return errors.Wrap(err, "error calculating initial hash array")
+				fmt.Println("HSH")
+				fd := msg.GetFileDesc()
+				if !fd.IsDir {
+					err := core.AddChecksums(msg.GetFileDesc())
+					if err != nil {
+						return errors.Wrap(err, "error calculating initial hash array")
+					}
 				}
 			default:
 				return errors.New("hash reader - unknown message")

@@ -12,6 +12,7 @@
             "program": "${workspaceFolder}",
             "args": [
                 "server",
+                "-R /home/zgub/test",
             ]
         },
         {
