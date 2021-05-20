@@ -17,6 +17,7 @@ const (
 	SUM             // checksum data from receiver
 	RSQ             // read sequence
 	WSQ             // write sequence
+	ADD             // new file in monitor mode
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
@@ -29,6 +30,7 @@ var messageTypes = [...]string{
 	"SUM",
 	"RSQ",
 	"WSQ",
+	"ADD",
 	"ERR",
 	"FIN",
 	"ACK",
@@ -50,6 +52,14 @@ type Message struct {
 func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
 	return &Message{
 		Flag:     INI,
+		Uuid:     uuid,
+		FileList: list,
+	}
+}
+
+func NewADD(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
+	return &Message{
+		Flag:     ADD,
 		Uuid:     uuid,
 		FileList: list,
 	}

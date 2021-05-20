@@ -2,9 +2,11 @@ package workers
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
@@ -13,6 +15,7 @@ import (
 
 // Monitor represents a PeXync file monitor
 type Monitor struct {
+	uuid       uuid.UUID
 	watcher    *fsnotify.Watcher
 	watchMap   map[string]*lfs.FileDesc
 	rrCh, brCh chan *core.Message
@@ -22,6 +25,7 @@ type Monitor struct {
 // NewMonitor creates a new instance of PeXync filesystem monitor
 func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monitor, error) {
 	mon := Monitor{
+		uuid:     uuid.New(),
 		rrCh:     rrCh,
 		brCh:     brCh,
 		watchMap: make(map[string]*lfs.FileDesc),
@@ -152,6 +156,9 @@ func (m Monitor) eval(event fsnotify.Event) {
 		m.idx++
 		efd.Idx = m.idx
 		m.watchMap[event.Name] = efd
+
+		fmt.Println("sending")
+		m.brCh <- core.NewRSQ(m.uuid, efd, 0, efd.FileSize, 1)
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
