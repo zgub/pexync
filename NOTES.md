@@ -26,6 +26,7 @@
 - [x] core.Message constructor (ccio)
 - [ ] delete ref file
 - [ ] add added dir to monitor watcher
+- [ ] renaming
 
 ## NOTODO
 
