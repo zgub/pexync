@@ -147,7 +147,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				srcFd.State = lfs.Skip
 				log.Debug().
 					Str("path", p).
-					Msg("receiver comparing -  updating metadata")
+					Msg("receiver comparing -  updating metadata if necessary")
 			} else {
 				log.Debug().
 					Str("sender path", srcFd.RelPath).

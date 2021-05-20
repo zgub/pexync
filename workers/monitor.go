@@ -38,6 +38,10 @@ func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monit
 		if !fd.IsDir {
 			fd.SetBlockSize()
 		}
+		// beware of empty files
+		if fd.BlockSize == 0 {
+			fd.BlockSize = 700
+		}
 		err = core.AddChecksums(fd)
 		if fd.Idx > mon.idx {
 			mon.idx = fd.Idx
@@ -132,6 +136,10 @@ func (m Monitor) eval(event fsnotify.Event) {
 		// to calculate checksum we need to determine the block size first
 
 		efd.SetBlockSize()
+		// beware of empty files
+		if efd.BlockSize == 0 {
+			efd.BlockSize = 700
+		}
 		err = core.AddChecksums(efd)
 		if err != nil {
 			log.Error().
