@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -222,7 +223,8 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					Msg("receiver comparing - creating directory")
 				if _, err := os.Stat(p); os.IsNotExist(err) {
 					// create one
-					os.Mkdir(p, os.ModeDir)
+					spew.Dump(srcFd)
+					os.Mkdir(p, srcFd.Mode)
 				} else if err != nil {
 					return nil, errors.Wrapf(err, "%s - unable to create directory", p)
 				}
