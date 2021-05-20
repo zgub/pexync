@@ -72,6 +72,9 @@ func startMonitor() {
 	// get the reader channels
 	rrCh, brCh := httpSender.GetChannels()
 
+	log.Info().
+		Msg("Monitor - initializing")
+
 	mon, err := workers.NewMonitor(rrCh, brCh, watchList)
 	if err != nil {
 		log.Fatal().

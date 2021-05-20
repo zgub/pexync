@@ -35,10 +35,10 @@ func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monit
 
 	// determine block size and add weak block Adler32 hashlist and Sha1 digest
 	for _, fd := range watchList {
-		err = core.AddChecksums(fd)
 		if !fd.IsDir {
 			fd.SetBlockSize()
 		}
+		err = core.AddChecksums(fd)
 		if fd.Idx > mon.idx {
 			mon.idx = fd.Idx
 		}

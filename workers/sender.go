@@ -298,7 +298,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 	log.Debug().
 		Str("remote host", host).
 		Int("port", port).
-		Msg("destiantion set")
+		Msg("destination set")
 
 	defaultTimeout := viper.GetDuration("timeout")
 	ccIo := viper.GetInt("io_concurrency")

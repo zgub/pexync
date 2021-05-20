@@ -39,7 +39,7 @@ type receiver struct {
 	fileWriters *errgroup.Group // writters error group
 }
 
-// parseSenderList parses a file list from sender and updates it with the information from destiantion
+// parseSenderList parses a file list from sender and updates it with the information from destination
 func (rc receiver) parseSenderList(msg *core.Message) error {
 	rc.senderUUID = msg.GetUuid()
 	log.Trace().
@@ -99,7 +99,7 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	return nil
 }
 
-// compare is the main function comparing sender dir listing with destiantion directory listing
+// compare is the main function comparing sender dir listing with destination directory listing
 func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
 	// pull from config
