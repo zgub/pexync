@@ -13,7 +13,6 @@
 - still a lot of duplicate code, especially between local and http receiver / sender as local sender / receiver were developed first to test concepts
 - few benchmarks were performed to decide what readers to use, best compromise was to use buffered readers even with the section reader beneath
 - the httpSender -(spawn)-> readers -(spawn)-> http sender goroutine design is cause by the initial local sender design, I would have to rewrite the local sender OR write a new dedicated sender as those readers expect a receiver channel, that's why there is another worker responsible just for the http clients. However I expect the disk I/o to be the slowest part on both sides, so this should not impact the performance much. It's just not very elegant, readable...
-- monitor is ignoring empty files
 
 ## Stretch goals / what could be added
 

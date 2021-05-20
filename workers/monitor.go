@@ -37,17 +37,18 @@ func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monit
 	for _, fd := range watchList {
 		if !fd.IsDir {
 			fd.SetBlockSize()
+			// beware of empty files
+			if fd.BlockSize == 0 {
+				fd.BlockSize = 700
+			}
+			err = core.AddChecksums(fd)
+			if err != nil {
+				return mon, errors.Wrapf(err, "Monitor init - failed to calculate checksums - file: %s", filepath.Join(fd.Prefix, fd.FileName))
+			}
 		}
-		// beware of empty files
-		if fd.BlockSize == 0 {
-			fd.BlockSize = 700
-		}
-		err = core.AddChecksums(fd)
+		// for new file indexes
 		if fd.Idx > mon.idx {
 			mon.idx = fd.Idx
-		}
-		if err != nil {
-			return mon, errors.Wrapf(err, "failed to calculate checksums - file: %s", filepath.Join(fd.Prefix, fd.FileName))
 		}
 		mon.watchMap[filepath.Join(fd.Prefix, fd.FileName)] = fd
 	}
@@ -135,18 +136,21 @@ func (m Monitor) eval(event fsnotify.Event) {
 		spew.Dump(efd)
 		// to calculate checksum we need to determine the block size first
 
-		efd.SetBlockSize()
-		// beware of empty files
-		if efd.BlockSize == 0 {
-			efd.BlockSize = 700
+		if !efd.IsDir {
+			efd.SetBlockSize()
+			// beware of empty files
+			if efd.BlockSize == 0 {
+				efd.BlockSize = 700
+			}
+			err = core.AddChecksums(efd)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Msg("Monitor event - failed to calculate checksums")
+				return
+			}
 		}
-		err = core.AddChecksums(efd)
-		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("failed to calculate checksums")
-			return
-		}
+
 		m.idx++
 		efd.Idx = m.idx
 		m.watchMap[event.Name] = efd
