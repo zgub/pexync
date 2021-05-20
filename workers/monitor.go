@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -134,7 +133,7 @@ func (m Monitor) eval(event fsnotify.Event) {
 			// let's ignore errors, too may untested edge cases
 			return
 		}
-		spew.Dump(efd)
+		//spew.Dump(efd)
 		// to calculate checksum we need to determine the block size first
 
 		if !efd.IsDir {

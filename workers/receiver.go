@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -223,7 +222,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					Msg("receiver comparing - creating directory")
 				if _, err := os.Stat(p); os.IsNotExist(err) {
 					// create one
-					spew.Dump(srcFd)
+					//spew.Dump(srcFd)
 					os.Mkdir(p, srcFd.Mode)
 				} else if err != nil {
 					return nil, errors.Wrapf(err, "%s - unable to create directory", p)
@@ -240,6 +239,16 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 						return nil, errors.Wrapf(err, "%s - unable to create file", p)
 					}
 					file.Close()
+
+					// new file, fix permissions and ownership
+					err = os.Chmod(p, srcFd.Mode.Perm())
+					if err != nil {
+						return nil, errors.Wrapf(err, "%s - unable to modify permissions", p)
+					}
+					err = os.Chown(p, int(srcFd.Uid), int(srcFd.Gid))
+					if err != nil {
+						return nil, errors.Wrapf(err, "%s - unable to modify ownership", p)
+					}
 
 					// TODO fix metadata on new empty file
 					srcFd.State = lfs.Skip
