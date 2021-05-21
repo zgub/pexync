@@ -350,9 +350,11 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 						Msg("creating empty file")
 					f, err := os.Create(p)
 					err = os.Chmod(p, fd.Mode.Perm())
-					log.Error().
-						Err(err).
-						Msg("failed to modify permissions")
+					if err != nil {
+						log.Error().
+							Err(err).
+							Msg("failed to modify permissions")
+					}
 					if err != nil {
 						http.Error(w, err.Error(), http.StatusInternalServerError)
 						log.Error().
