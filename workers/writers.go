@@ -60,13 +60,16 @@ func (fw FileWriter) Start() error {
 		// first rename the old file
 		refName := dstPath + ".ref"
 		err = os.Rename(dstPath, refName)
+		if err != nil {
+			return errors.Wrapf(err, "unable to rename file %s", refName)
+		}
 		log.Trace().
 			Str("existing file name", dstPath).
 			Str("renamed to", refName).
 			Msg("file writer - DIFF opening destination file for reference")
 		fw.ref, err = os.Open(refName)
 		if err != nil {
-			errors.Wrap(err, "unable to open file for writer reference")
+			return errors.Wrapf(err, "unable to open reference file %s", refName)
 		}
 		fw.rr = io.Reader(fw.ref)
 		defer fw.ref.Close()

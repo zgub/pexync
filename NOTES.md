@@ -29,6 +29,7 @@
 - [ ] renaming
 - [x] don't mon send directories
 - [ ] add log destination switch
+- [ ] check for return errors missing return
 
 ## NOTODO
 
