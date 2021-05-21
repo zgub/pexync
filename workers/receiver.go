@@ -262,7 +262,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 	return diffMap, nil
 }
 
-func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
+func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 
 	buf, err := decompress(r.Body)
 	if err != nil {
@@ -565,7 +565,7 @@ func (w *HttpReceiver) Start() error {
 
 	// routes
 	r.Route("/list", func(r chi.Router) {
-		r.Post("/", w.processList)
+		r.Post("/", w.processMeta)
 	})
 
 	r.Route("/data", func(r chi.Router) {
