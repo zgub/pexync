@@ -315,70 +315,106 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 			Str("sender UUID", msg.GetID().String()).
 			Msg("receiver - ADD message")
 
-		// store the announced file descriptor
-		for _, fd := range msg.GetList() {
-			if _, exists := rc.srcList[fd.Idx]; exists {
-				err := errors.New("file id collision")
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				log.Error().
-					Err(err).
-					Msg("internal server error")
-				return
-			} else {
-				rc.srcList[fd.Idx] = fd
-				fd.State = lfs.Missing
-				// take care of empty files and directories
-				if fd.IsDir == true {
-					dstDir := viper.GetString("destination")
-					p := filepath.Join(dstDir, fd.RelPath)
-					log.Trace().
-						Str("path", p).
-						Msg("creating directory")
-					if _, err := os.Stat(p); os.IsNotExist(err) {
-						// create one
-						//spew.Dump(srcFd)
-						os.Mkdir(p, fd.Mode)
-					} else if err != nil {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						log.Error().
-							Err(err).
-							Msg("internal server error")
-						return
-					}
-				} else if fd.FileSize == 0 {
-					dstDir := viper.GetString("destination")
-					p := filepath.Join(dstDir, fd.RelPath)
-					log.Trace().
-						Str("path", p).
-						Msg("creating empty file")
-					f, err := os.Create(p)
-					err = os.Chmod(p, fd.Mode.Perm())
-					if err != nil {
-						log.Error().
-							Err(err).
-							Msg("failed to modify permissions")
-					}
-					if err != nil {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						log.Error().
-							Err(err).
-							Msg("internal server error")
-						return
-					}
-					f.Close()
+			// store the announced file descriptor
+		fd := msg.GetFileDesc()
+		if fd == nil {
+			panic("invalid message")
+		}
+		if _, exists := rc.srcList[fd.Idx]; exists {
+			err := errors.New("file id collision")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Msg("internal server error")
+			return
+		} else {
+			rc.srcList[fd.Idx] = fd
+			fd.State = lfs.Missing
+			// take care of empty files and directories
+			if fd.IsDir == true {
+				dstDir := viper.GetString("destination")
+				p := filepath.Join(dstDir, fd.RelPath)
+				log.Trace().
+					Str("path", p).
+					Msg("creating directory")
+				if _, err := os.Stat(p); os.IsNotExist(err) {
+					// create one
+					//spew.Dump(srcFd)
+					os.Mkdir(p, fd.Mode)
+				} else if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					log.Error().
+						Err(err).
+						Msg("internal server error")
+					return
 				}
-			}
-			msg.SetFlag(core.ACK)
-			err = respondWithJSON(w, http.StatusOK, msg)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				log.Error().
-					Err(err).
-					Caller().
-					Msg("internal server error")
-				return
+			} else if fd.FileSize == 0 {
+				dstDir := viper.GetString("destination")
+				p := filepath.Join(dstDir, fd.RelPath)
+				log.Trace().
+					Str("path", p).
+					Msg("creating empty file")
+				f, err := os.Create(p)
+				err = os.Chmod(p, fd.Mode.Perm())
+				if err != nil {
+					log.Error().
+						Err(err).
+						Msg("failed to modify permissions")
+				}
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					log.Error().
+						Err(err).
+						Msg("internal server error")
+					return
+				}
+				f.Close()
 			}
 		}
+		msg.SetFlag(core.ACK)
+		err = respondWithJSON(w, http.StatusOK, msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+	case core.UPD:
+		log.Trace().
+			Str("sender UUID", msg.GetID().String()).
+			Msg("receiver - UPD message")
+
+			// store the announced file descriptor
+		fd := msg.GetFileDesc()
+		if fd == nil {
+			panic("invalid message")
+		}
+		log.Trace().
+			Str("filename", fd.FileName).
+			Int64("file index", fd.Idx).
+			Msg("receicer - updatind remote meta")
+
+		srcFd := rc.srcList[fd.Idx]
+		srcFd.BlockSize = fd.BlockSize
+		srcFd.FileSize = fd.FileSize
+		srcFd.State = lfs.Diff
+
+		// send updated fd, with hashMap
+		msg.SetFlag(core.ACK)
+		msg.SetFileDesc(srcFd)
+
+		err = respondWithJSON(w, http.StatusOK, msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -412,11 +448,13 @@ func (rc *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	if fileWriter, ok := rc.fileWrittersMap[fi]; ok {
 		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!! found a filewriter")
 		fileWriter.inbox <- core.NewWSQ(dd)
+		fmt.Println("!!!!! data packet sent")
 	} else {
 		//spew.Dump(dd)
 		// new file, new writer
 		log.Debug().
 			Str("filename", rc.srcList[dd.FileIndex()].FileName).
+			Int64("file index", fi).
 			Msg("receiver - starting new writter")
 
 		streams := dd.GetStreamCount()
@@ -426,7 +464,7 @@ func (rc *receiver) processData(w http.ResponseWriter, r *http.Request) {
 			panic("zero stream count")
 		}
 
-		inbox := make(chan *core.Message)
+		inbox := make(chan *core.Message, streams*2)
 		// create new file writer worker
 
 		fr := NewFileWriter(rc.ctx, rc.senderUUID, streams, rc.srcList[dd.FileIndex()], inbox, rc.RemWritter)
@@ -461,6 +499,7 @@ func (rc *receiver) processData(w http.ResponseWriter, r *http.Request) {
 
 // AddWritter adds a new writter to receiver shared map
 func (rc *receiver) AddWritter(fileIndex int64, w *FileWriter) {
+	fmt.Printf("++++++++++ adding filewriter for fileindex %d\n", fileIndex)
 	rc.fileWrittersMux.Lock()
 	rc.fileWrittersMap[fileIndex] = w
 	rc.fileWrittersMux.Unlock()
@@ -473,6 +512,7 @@ func (rc *receiver) RemWritter(fileIndex int64) {
 	rc.fileWrittersMux.Lock()
 	delete(rc.fileWrittersMap, fileIndex)
 	rc.fileWrittersMux.Unlock()
+	fmt.Printf("======= writter stats %+v\n", rc.fileWrittersMap)
 }
 
 // LocalSender represents blah balh

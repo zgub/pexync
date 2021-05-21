@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -18,6 +20,8 @@ import (
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
+
+var idCnt int
 
 type tmpFile struct {
 	f       *os.File
@@ -37,9 +41,11 @@ type FileWriter struct {
 	fileMap   map[int64]*tmpFile
 	streams   int64 // number of incomming streams
 	closeFunc func(fi int64)
+	myId      int
 }
 
 func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.FileDesc, inbox chan *core.Message, cf func(fi int64)) *FileWriter {
+	idCnt++
 	return &FileWriter{
 		ctx:       ctx,
 		streams:   streams,
@@ -48,6 +54,7 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.F
 		senderID:  uuid,
 		fileMap:   make(map[int64]*tmpFile),
 		closeFunc: cf,
+		myId:      idCnt,
 	}
 }
 
@@ -78,7 +85,8 @@ func (fw FileWriter) Start() error {
 	}
 
 Loop:
-	for {
+	for t := 0; ; t++ {
+		fmt.Printf("***** %d *****\n", t)
 		select {
 		case <-fw.ctx.Done():
 			log.Debug().
@@ -109,12 +117,14 @@ Loop:
 				dd := msg.GetDataDesc()
 				if seq == tmpF.seq {
 					err := fw.writeToFile(dd)
+					fmt.Printf("+++++++ seq: %d written directly, streams %d\n", seq, fw.streams)
 					if err != nil {
+						fmt.Println("hmmmfn")
 						if err == lfs.ErrEOF {
 							// end of chink, close tmp file
 							err = tmpF.f.Close()
 							if err != nil {
-								errors.Wrap(err, "unable to close file")
+								return errors.Wrap(err, "unable to close file")
 							}
 							log.Debug().
 								Str("file name", dstPath).
@@ -122,13 +132,20 @@ Loop:
 								Msg("file writer - closing temporary file")
 							fw.streams--
 							if fw.streams == 0 {
+								fmt.Println("zero streams")
 								break Loop
 							} else {
+								fmt.Println("?????????????? continue")
 								continue
 							}
 						}
+						fmt.Println("hmfffn 2")
+						log.Error().
+							Err(err).
+							Msg("error writing file")
 						return errors.Wrap(err, "unable to write file")
 					}
+					fmt.Println("------------NOERR------------")
 					// increase the sequence counter
 					tmpF.seq++
 
@@ -139,6 +156,7 @@ Loop:
 
 					for haveCached() {
 						err = fw.writeToFile(tmpF.dataBuf[tmpF.seq])
+						fmt.Printf("+++++++ seq: %d written from cache\n", seq)
 						if err != nil {
 							if err == lfs.ErrEOF {
 								err = tmpF.f.Close()
@@ -170,9 +188,13 @@ Loop:
 						Int64("expecting", tmpF.seq).
 						Msg("out of order - caching")
 				}
+				fmt.Printf("+++++++ seq: %d written end\n", seq)
+
 			default:
 				return errors.New("file writer - invalide message type")
 			}
+		case <-time.After(3 * time.Second):
+			fmt.Println("???????????????? timeout 2")
 		}
 	}
 
@@ -297,6 +319,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
+				fmt.Printf("Seek(%d, io.SeekStart)", v*fw.srcFd.BlockSize)
 				_, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")

@@ -71,8 +71,11 @@ func (hs *HttpSender) Watch(path string) error {
 	return hs.watcher.Add(path)
 }
 
-func (hs *HttpSender) eval(event fsnotify.Event) {
+func (hs *HttpSender) eval(event fsnotify.Event) error {
 
+	/***************
+	 * Write event *
+	 ***************/
 	if event.Op&fsnotify.Write == fsnotify.Write {
 		log.Info().
 			Str("path", event.Name).
@@ -80,11 +83,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		// event file descriptor
 		efd, err := lfs.Scan(event.Name)
 		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("file stat error")
-			// let's ignore errors, too may untested edge cases
-			return
+			return errors.Wrap(err, "file stat error")
 		}
 		spew.Dump(hs.watchMap)
 		if fd, ok := hs.watchMap[event.Name]; ok {
@@ -93,18 +92,14 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 				// size did not change, let's then calculate SHA1 digests
 				efd.Sha1, err = efd.GetSha1()
 				if err != nil {
-					log.Error().
-						Err(err).
-						Str("filename", event.Name).
-						Msg("failed to calulate SHA1 digest")
-					return
+					return errors.Wrap(err, "failed to calculate SHA1 digets")
 				}
 				if bytes.Equal(efd.Sha1, fd.Sha1) {
 					// digests are equal, ignore
 					log.Info().
 						Str("filename", event.Name).
 						Msg("WRITE - file has not changed")
-					return
+					return nil
 				} else {
 					// digests are not equal - send changes
 					log.Info().
@@ -120,11 +115,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 
 			efd, err := lfs.Scan(event.Name)
 			if err != nil {
-				log.Error().
-					Err(err).
-					Msg("file stat error")
-				// let's ignore errors, too may untested edge cases
-				return
+				return errors.Wrap(err, "file stat error")
 			}
 			//spew.Dump(efd)
 			// to calculate checksum we need to determine the block size first
@@ -135,41 +126,63 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 				if efd.BlockSize == 0 {
 					efd.BlockSize = 700
 				}
-				err = core.AddChecksums(efd)
-				if err != nil {
-					log.Error().
-						Err(err).
-						Msg("Monitor event - failed to calculate checksums")
-					return
-				}
 			}
 			// set the correct file index and state
 			efd.State = lfs.Diff
 			efd.Idx = fd.Idx
+			efd.Sha1 = fd.Sha1
+
+			// first announce the update
+			msg := core.NewUPD(hs.id, efd)
+			url := hs.url.String() + "/meta"
+
+			resp, err := hs.sendJson(url, msg)
+			if err != nil {
+				return errors.Wrap(err, "failed to communicate with remote")
+			}
+
+			if resp.GetFlag() != core.ACK {
+				return errors.New("invalid server response")
+			}
+			spew.Dump(efd)
+
+			dstFd := resp.FileDesc
+			if dstFd == nil {
+				panic("invalid response")
+			}
 
 			// send the changes
 			if efd.IsDir == false && efd.FileSize != 0 {
 				fmt.Println("sending file to roll reader")
-				hs.rrCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
+				hs.rrCh <- core.NewRSQ(hs.id, dstFd, 0, dstFd.FileSize, 1)
 				fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
 			}
 		} else {
 			log.Warn().
 				Str("filename", event.Name).
 				Msg("WRITE - event on unknown file, ignoring")
-			return
+			return nil
 		}
 	}
+	/****************
+	 * Remove event *
+	 ****************/
 	if event.Op&fsnotify.Remove == fsnotify.Remove {
 		log.Info().
 			Str("path", event.Name).
 			Msg("REMOVE - event detected, ignoring")
 	}
+	/***************
+	 * Chmod event *
+	 ***************/
 	if event.Op&fsnotify.Chmod == fsnotify.Chmod {
 		log.Info().
 			Str("path", event.Name).
 			Msg("CHMOD - event detected, ignoring")
 	}
+	/****************
+	 * Cretae event *
+	 ****************/
 	if event.Op&fsnotify.Create == fsnotify.Create {
 		log.Info().
 			Str("path", event.Name).
@@ -177,11 +190,8 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 
 		efd, err := lfs.Scan(event.Name)
 		if err != nil {
-			log.Error().
-				Err(err).
-				Msg("file stat error")
 			// let's ignore errors, too may untested edge cases
-			return
+			return errors.Wrap(err, "file state error")
 		}
 		//spew.Dump(efd)
 		// to calculate checksum we need to determine the block size first
@@ -194,10 +204,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 			}
 			err = core.AddChecksums(efd)
 			if err != nil {
-				log.Error().
-					Err(err).
-					Msg("Monitor event - failed to calculate checksums")
-				return
+				return errors.Wrap(err, "failed adding checksum")
 			}
 		}
 
@@ -207,10 +214,9 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		hs.watchMap[event.Name] = efd
 
 		// first announce the file
-		fdList := []*lfs.FileDesc{efd}
-		msg := core.NewADD(hs.id, fdList)
-
+		msg := core.NewADD(hs.id, efd)
 		url := hs.url.String() + "/meta"
+
 		fmt.Println("sending meta data")
 		resp, err := hs.sendJson(url, msg)
 		if err != nil {
@@ -224,8 +230,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 				Str("filename", event.Name).
 				Msg("Monitor - file META sent")
 		} else {
-			log.Error().
-				Msg("error sending META data")
+			return errors.New("invalid response")
 		}
 
 		//spew.Dump(efd)
@@ -237,10 +242,13 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 			fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
 		}
 	}
+	/****************
+	 * Rename event *
+	 ****************/
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
 			Str("path", event.Name).
 			Msg("RENAME - event detected")
 	}
-
+	return nil
 }

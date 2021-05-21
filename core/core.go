@@ -20,6 +20,7 @@ const (
 	RSQ             // read sequence
 	WSQ             // write sequence
 	ADD             // new file in monitor mode
+	UPD             // update existing file
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
@@ -33,6 +34,7 @@ var messageTypes = [...]string{
 	"RSQ",
 	"WSQ",
 	"ADD",
+	"UPD",
 	"ERR",
 	"FIN",
 	"ACK",
@@ -59,12 +61,21 @@ func NewINI(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
 	}
 }
 
-func NewADD(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
+func NewADD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
 	return &Message{
 		Flag:     ADD,
 		SenderID: senderID,
-		FileList: list,
+		FileDesc: fd,
 	}
+}
+
+func NewUPD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
+	return &Message{
+		Flag:     UPD,
+		SenderID: senderID,
+		FileDesc: fd,
+	}
+
 }
 
 func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
@@ -120,6 +131,10 @@ func NewACK() *Message {
 
 func (m *Message) SetFlag(f Flag) {
 	m.Flag = f
+}
+
+func (m *Message) SetFileDesc(fd *lfs.FileDesc) {
+	m.FileDesc = fd
 }
 
 func (m *Message) GetFlag() Flag {
