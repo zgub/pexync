@@ -4,11 +4,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -31,12 +33,13 @@ const (
 )
 
 type receiver struct {
-	ctx         context.Context
-	state       senderState // not sure if needed, or if I ever implement this
-	senderUUID  uuid.UUID   // same here
-	srcList     map[int64]*lfs.FileDesc
-	writersMap  map[int64]FileWriter
-	fileWriters *errgroup.Group // writters error group
+	ctx            context.Context
+	state          senderState // not sure if needed, or if I ever implement this
+	senderUUID     uuid.UUID   // same here
+	srcList        map[int64]*lfs.FileDesc
+	writersMap     map[int64]FileWriter
+	fileWriters    *errgroup.Group // writters error group
+	fileWritersMux sync.Mutex
 }
 
 // parseSenderList parses a file list from sender and updates it with the information from destination
@@ -403,10 +406,11 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 
 	// write
 	dd, err := lfs.Deserialize(buf.Bytes())
-
 	fi := dd.FileIndex()
+	fmt.Printf("got data for file at index %d\n", fi)
 
 	if fileWriter, ok := rc.writersMap[fi]; ok {
+		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!! found a filewriter")
 		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
 		//spew.Dump(dd)
