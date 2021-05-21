@@ -350,7 +350,7 @@ func (hs *HttpSender) Start() error {
 	msg := core.NewINI(hs.uuid, hs.srcList)
 
 	// send
-	url := hs.url.String() + "/list"
+	url := hs.url.String() + "/meta"
 	resp, err := hs.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().

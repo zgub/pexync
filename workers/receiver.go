@@ -564,7 +564,7 @@ func (w *HttpReceiver) Start() error {
 	r.Use(middleware.Timeout(timeoutValue))
 
 	// routes
-	r.Route("/list", func(r chi.Router) {
+	r.Route("/meta", func(r chi.Router) {
 		r.Post("/", w.processMeta)
 	})
 
