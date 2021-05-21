@@ -409,7 +409,7 @@ func (rc *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	fi := dd.FileIndex()
 	fmt.Printf("got data for file at index %d\n", fi)
 
-	if fileWriter, ok := rc.writersMap[fi]; ok {
+	if fileWriter, ok := rc.fileWrittersMap[fi]; ok {
 		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!! found a filewriter")
 		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
@@ -428,11 +428,12 @@ func (rc *receiver) processData(w http.ResponseWriter, r *http.Request) {
 
 		inbox := make(chan *core.Message)
 		// create new file writer worker
-		fr := NewFileWriter(rc.ctx, rc.senderUUID, streams, rc.srcList[dd.FileIndex()], inbox)
+
+		fr := NewFileWriter(rc.ctx, rc.senderUUID, streams, rc.srcList[dd.FileIndex()], inbox, rc.RemWritter)
 		// add it to the lookup map
-		rc.writersMap[fi] = fr
+		rc.AddWritter(fi, fr)
 		// send a new message
-		rc.fileWriters.Go(fr.Start)
+		rc.fileWritters.Go(fr.Start)
 		fr.inbox <- core.NewWSQ(dd)
 	}
 
@@ -482,18 +483,18 @@ type LocalReceiver struct {
 func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		receiver: receiver{
-			ctx:         ctx,
-			state:       RST,
-			srcList:     make(map[int64]*lfs.FileDesc),
-			writersMap:  make(map[int64]FileWriter),
-			fileWriters: new(errgroup.Group),
+			ctx:             ctx,
+			state:           RST,
+			srcList:         make(map[int64]*lfs.FileDesc),
+			fileWrittersMap: make(map[int64]*FileWriter),
+			fileWritters:    new(errgroup.Group),
 		},
 		inbox:  in,
 		sender: sender,
 	}
 }
 
-func (w *LocalReceiver) Start() error {
+func (lr *LocalReceiver) Start() error {
 
 	finSent := false
 
@@ -501,7 +502,7 @@ func (w *LocalReceiver) Start() error {
 		if !finSent {
 			return false
 		}
-		for _, fw := range w.writersMap {
+		for _, fw := range lr.fileWrittersMap {
 			if !fw.IsAlive() {
 				return false
 			}
@@ -511,25 +512,25 @@ func (w *LocalReceiver) Start() error {
 
 	for !writtersDone() {
 		select {
-		case <-w.ctx.Done():
+		case <-lr.ctx.Done():
 			log.Debug().
 				Msg("receiver - closing, context done")
 			// send fin to all readers
 			return errors.New("context done")
-		case msg := <-w.inbox:
+		case msg := <-lr.inbox:
 			// received a message that is not a FIN
 			switch msg.GetFlag() {
 			// initialization
 			case core.INI:
 				// update msg with local directory state(s)
-				err := w.parseSenderList(msg)
-				w.senderUUID = msg.GetID()
+				err := lr.parseSenderList(msg)
+				lr.senderUUID = msg.GetID()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
 				msg.SetFlag(core.SUM)
 
-				err = sendWithTimeout(msg, w.sender)
+				err = sendWithTimeout(msg, lr.sender)
 				if err != nil {
 					return errors.Wrap(err, "failed to respond to sender")
 				}
@@ -549,17 +550,17 @@ func (w *LocalReceiver) Start() error {
 				 * end of detour       *
 				 ***********************/
 				log.Trace().
-					Str("filename", w.srcList[dd.FileIndex()].FileName).
+					Str("filename", lr.srcList[dd.FileIndex()].FileName).
 					Int64("data sequence", dd.Seq()).
 					Msg("receiver - data received")
 				fi := dd.FileIndex()
-				if fileWritter, ok := w.writersMap[fi]; ok {
+				if fileWritter, ok := lr.fileWrittersMap[fi]; ok {
 					// new message, already existing writer
 					fileWritter.inbox <- core.NewWSQ(dd)
 				} else {
 					// new file, new writer
 					log.Debug().
-						Str("filename", w.srcList[dd.FileIndex()].FileName).
+						Str("filename", lr.srcList[dd.FileIndex()].FileName).
 						Msg("receiver - starting new writter")
 
 					streams := dd.GetStreamCount()
@@ -571,11 +572,11 @@ func (w *LocalReceiver) Start() error {
 
 					inbox := make(chan *core.Message, streams)
 					// create new file writer worker
-					fr := NewFileWriter(w.ctx, w.senderUUID, streams, w.srcList[dd.FileIndex()], inbox)
+					fr := NewFileWriter(lr.ctx, lr.senderUUID, streams, lr.srcList[dd.FileIndex()], inbox, lr.RemWritter)
 					// add it to the lookup map
-					w.writersMap[fi] = fr
+					lr.AddWritter(fi, fr)
 					// send a new message
-					w.fileWriters.Go(fr.Start)
+					lr.fileWritters.Go(fr.Start)
 					fr.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
@@ -596,7 +597,7 @@ func (w *LocalReceiver) Start() error {
 		}
 	*/
 
-	err := w.fileWriters.Wait()
+	err := lr.fileWritters.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error writing files")
 	}
@@ -613,11 +614,11 @@ type HttpReceiver struct {
 func NewHttpReceiver(ctx context.Context) *HttpReceiver {
 	return &HttpReceiver{
 		receiver: receiver{
-			ctx:         ctx,
-			state:       RST,
-			srcList:     make(map[int64]*lfs.FileDesc),
-			writersMap:  make(map[int64]FileWriter),
-			fileWriters: new(errgroup.Group),
+			ctx:             ctx,
+			state:           RST,
+			srcList:         make(map[int64]*lfs.FileDesc),
+			fileWrittersMap: make(map[int64]*FileWriter),
+			fileWritters:    new(errgroup.Group),
 		},
 	}
 }
@@ -658,6 +659,6 @@ func (w *HttpReceiver) Start() error {
 		return errors.Wrapf(err, "unable to listen on %s", address)
 	}
 
-	err = w.fileWriters.Wait()
+	err = w.fileWritters.Wait()
 	return err
 }

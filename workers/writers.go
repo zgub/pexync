@@ -28,24 +28,26 @@ type tmpFile struct {
 }
 
 type FileWriter struct {
-	ctx      context.Context
-	inbox    chan *core.Message
-	senderID uuid.UUID
-	srcFd    *lfs.FileDesc
-	ref      *os.File
-	rr       io.Reader // reference file reader
-	fileMap  map[int64]*tmpFile
-	streams  int64 // number of incomming streams
+	ctx       context.Context
+	inbox     chan *core.Message
+	senderID  uuid.UUID
+	srcFd     *lfs.FileDesc
+	ref       *os.File
+	rr        io.Reader // reference file reader
+	fileMap   map[int64]*tmpFile
+	streams   int64 // number of incomming streams
+	closeFunc func(fi int64)
 }
 
-func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.FileDesc, inbox chan *core.Message) FileWriter {
-	return FileWriter{
-		ctx:      ctx,
-		streams:  streams,
-		srcFd:    fd,
-		inbox:    inbox,
-		senderID: uuid,
-		fileMap:  make(map[int64]*tmpFile),
+func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.FileDesc, inbox chan *core.Message, cf func(fi int64)) *FileWriter {
+	return &FileWriter{
+		ctx:       ctx,
+		streams:   streams,
+		srcFd:     fd,
+		inbox:     inbox,
+		senderID:  uuid,
+		fileMap:   make(map[int64]*tmpFile),
+		closeFunc: cf,
 	}
 }
 
@@ -252,6 +254,9 @@ Loop:
 			errors.Wrap(err, "unable to remove reference file")
 		}
 	}
+
+	// call the close function to clean the id from writters map
+	fw.closeFunc(fw.srcFd.Idx)
 
 	return nil
 }
