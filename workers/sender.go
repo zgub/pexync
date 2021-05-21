@@ -30,6 +30,7 @@ type sender struct {
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
 	ccIo                 int64 // this gets used so may times, it deserves an instance var
+	syncOnce             bool  // valid for http sender only, however it's required here due file readers
 	lastFileIdx          int
 }
 
@@ -128,7 +129,7 @@ func (s *sender) spawnReaders() {
 	dCtx := context.Context(s.ctx)
 
 	// spawn readers if we have diff files
-	if len(s.diffList) > 0 {
+	if len(s.diffList) > 0 || !s.syncOnce {
 		log.Debug().
 			Msg("sender - spawning roll readers")
 
@@ -139,7 +140,7 @@ func (s *sender) spawnReaders() {
 	}
 
 	// spawn missing file senders if we have missing files
-	if len(s.missList) > 0 {
+	if len(s.missList) > 0 || !s.syncOnce {
 		log.Debug().
 			Int64("io concurrency", s.ccIo).
 			Msg("sender - spawning bytes readers")
@@ -285,7 +286,6 @@ func (ls *LocalSender) Start() error {
 type HttpSender struct {
 	url      *url.URL
 	client   *http.Client
-	syncOnce bool
 	watcher  *fsnotify.Watcher
 	watchMap map[string]*lfs.FileDesc
 	sender
@@ -332,10 +332,10 @@ func NewHttpSender(ctx context.Context, senderID uuid.UUID, syncOnce bool) (*Htt
 	}
 
 	s := &HttpSender{
-		url:      url,
-		client:   c,
-		syncOnce: syncOnce,
+		url:    url,
+		client: c,
 		sender: sender{
+			syncOnce: syncOnce,
 			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
 			id:       senderID,

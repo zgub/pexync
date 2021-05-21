@@ -165,7 +165,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		}
 
 		hs.lastFileIdx++
-		efd.Idx = int64(hs.idx)
+		efd.Idx = int64(hs.lastFileIdx)
 		log.Printf("got new file: %+v\n", efd)
 		hs.watchMap[event.Name] = efd
 
@@ -196,6 +196,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		// then send the data
 		fmt.Println("sending")
 		hs.brCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
+		fmt.Println("sent")
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().

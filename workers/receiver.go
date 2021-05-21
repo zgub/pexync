@@ -346,6 +346,8 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
+	log.Trace().
+		Msg("++++++++++ got new data package")
 	buf, err := decompress(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
