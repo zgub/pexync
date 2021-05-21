@@ -411,3 +411,8 @@ func (hs *HttpSender) Start() error {
 func (hs *HttpSender) GetChannels() (rrCh, brCh chan *core.Message) {
 	return hs.rrCh, hs.brCh
 }
+
+// GetUsr returns te parsed url of the http sender
+func (hs *HttpSender) GetUrl() *url.URL {
+	return hs.url
+}

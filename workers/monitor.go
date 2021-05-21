@@ -3,6 +3,7 @@ package workers
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
@@ -23,7 +24,7 @@ type Monitor struct {
 }
 
 // NewMonitor creates a new instance of PeXync filesystem monitor
-func NewMonitor(rrCh, brCh chan *core.Message, watchList []*lfs.FileDesc) (Monitor, error) {
+func NewMonitor(rrCh, brCh chan *core.Message, url *url.URL, watchList []*lfs.FileDesc) (Monitor, error) {
 	mon := Monitor{
 		uuid:     uuid.New(),
 		rrCh:     rrCh,
@@ -157,6 +158,9 @@ func (m Monitor) eval(event fsnotify.Event) {
 		efd.Idx = m.idx
 		m.watchMap[event.Name] = efd
 
+		// first announce the new file
+
+		// then send the data
 		fmt.Println("sending")
 		m.brCh <- core.NewRSQ(m.uuid, efd, 0, efd.FileSize, 1)
 	}

@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -357,7 +356,7 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 	if fileWriter, ok := rc.writersMap[fi]; ok {
 		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
-		spew.Dump(dd)
+		//spew.Dump(dd)
 		// new file, new writer
 		log.Debug().
 			Str("filename", rc.srcList[dd.FileIndex()].FileName).
