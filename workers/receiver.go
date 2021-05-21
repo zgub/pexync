@@ -464,10 +464,12 @@ func (rc *receiver) AddWritter(fileIndex int64, w *FileWriter) {
 	rc.fileWrittersMux.Lock()
 	rc.fileWrittersMap[fileIndex] = w
 	rc.fileWrittersMux.Unlock()
+	fmt.Printf("======= writter stats %+v\n", rc.fileWrittersMap)
 }
 
 // RemWritter removes a writter when the writter finishes its job
 func (rc *receiver) RemWritter(fileIndex int64) {
+	fmt.Printf("----------- removing filewriter for fileindex %d\n", fileIndex)
 	rc.fileWrittersMux.Lock()
 	delete(rc.fileWrittersMap, fileIndex)
 	rc.fileWrittersMux.Unlock()
