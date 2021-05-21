@@ -134,8 +134,8 @@ func (s *sender) spawnReaders() {
 			Msg("sender - spawning roll readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
-			rr := NewRollReader(dCtx, s.rrCh, s.receiver)
-			s.g.Go(rr.Start)
+			rrw := NewRollReader(dCtx, s.rrCh, s.receiver)
+			s.g.Go(rrw.Start)
 		}
 	}
 
@@ -146,8 +146,8 @@ func (s *sender) spawnReaders() {
 			Msg("sender - spawning bytes readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
-			br := NewBytesReader(dCtx, s.brCh, s.receiver)
-			s.g.Go(br.Start)
+			brw := NewBytesReader(dCtx, s.brCh, s.receiver)
+			s.g.Go(brw.Start)
 		}
 	}
 }
@@ -227,54 +227,54 @@ func NewLocalSender(ctx context.Context, senderID uuid.UUID, in <-chan *core.Mes
 	}
 }
 
-func (ls *LocalSender) Start() error {
+func (lsw *LocalSender) Start() error {
 
-	if err := ls.genSrcList(); err != nil {
+	if err := lsw.genSrcList(); err != nil {
 		return err
 	}
 
 	// prepare a message for the receiver
-	msg := core.NewINI(ls.id, ls.srcList)
+	msg := core.NewINI(lsw.id, lsw.srcList)
 
 	log.Debug().
-		Msgf("local sender - source file list, length: %d", len(ls.srcList))
+		Msgf("local sender - source file list, length: %d", len(lsw.srcList))
 
-	err := sendWithTimeout(msg, ls.receiver)
+	err := sendWithTimeout(msg, lsw.receiver)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// receive the filelist with checksums
-	msg, err = recvWithTimeout(ls.inbox)
+	msg, err = recvWithTimeout(lsw.inbox)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
-	err = ls.parseRemoteList(msg)
+	err = lsw.parseRemoteList(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed parsong remote file listing")
 	}
 
 	// prepare for transfer
-	ls.g = new(errgroup.Group)
+	lsw.g = new(errgroup.Group)
 
-	ls.spawnReaders()
+	lsw.spawnReaders()
 
-	ls.sendDataToReaders()
+	lsw.sendDataToReaders()
 
-	ls.stopReaders()
+	lsw.stopReaders()
 
 	// validate ???
 
 	// end
-	err = ls.g.Wait()
+	err = lsw.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "local sender worker failed")
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = core.NewFIN(ls.id)
-	err = sendWithTimeout(msg, ls.receiver)
+	msg = core.NewFIN(lsw.id)
+	err = sendWithTimeout(msg, lsw.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
@@ -349,58 +349,58 @@ func NewHttpSender(ctx context.Context, senderID uuid.UUID, syncOnce bool) (*Htt
 	return s, nil
 }
 
-func (hs *HttpSender) Start() error {
+func (hsw *HttpSender) Start() error {
 
-	if err := hs.genSrcList(); err != nil {
+	if err := hsw.genSrcList(); err != nil {
 		return err
 	}
 
 	// create a new message for the other side
-	msg := core.NewINI(hs.id, hs.srcList)
+	msg := core.NewINI(hsw.id, hsw.srcList)
 
 	// send
-	url := hs.url.String() + "/meta"
-	resp, err := hs.sendJson(url, msg)
+	url := hsw.url.String() + "/meta"
+	resp, err := hsw.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error comunicating with server")
 	}
 
-	err = hs.parseRemoteList(resp)
+	err = hsw.parseRemoteList(resp)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// one errorgroup for readers and data senders
-	hs.g = new(errgroup.Group)
+	hsw.g = new(errgroup.Group)
 
 	// another, independent one, just for http senders
 	eg := new(errgroup.Group)
 
 	// starting http senders
-	for i := int64(0); i < 2*hs.ccIo; i++ {
+	for i := int64(0); i < 2*hsw.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		eg.Go(hs.dataSender)
+		eg.Go(hsw.dataSender)
 	}
 
-	hs.spawnReaders()
+	hsw.spawnReaders()
 
-	hs.sendDataToReaders()
+	hsw.sendDataToReaders()
 
 	// stop the readers if in sync once mode
-	if hs.syncOnce {
-		hs.stopReaders()
+	if hsw.syncOnce {
+		hsw.stopReaders()
 
-		err = hs.g.Wait()
+		err = hsw.g.Wait()
 		if err != nil {
 			return errors.Wrap(err, "http sender worker failed")
 		}
 
 		// don't forget to stop http senders in sync_once mode
-		for i := int64(0); i < 2*hs.ccIo; i++ {
-			hs.receiver <- core.NewFIN(hs.id)
+		for i := int64(0); i < 2*hsw.ccIo; i++ {
+			hsw.receiver <- core.NewFIN(hsw.id)
 		}
 
 		err = eg.Wait()

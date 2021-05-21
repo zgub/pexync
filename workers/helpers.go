@@ -110,7 +110,7 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func (hs *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
+func (hsw *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
@@ -121,7 +121,7 @@ func (hs *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, er
 		return nil, errors.Wrap(err, "error compressing data")
 	}
 
-	req, err := http.NewRequestWithContext(hs.ctx, http.MethodPost, url, buf)
+	req, err := http.NewRequestWithContext(hsw.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -131,7 +131,7 @@ func (hs *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, er
 		return nil, errors.Wrap(err, "error creating http request")
 	}
 
-	resp, err := hs.client.Do(req)
+	resp, err := hsw.client.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error connecting server")
 	}
@@ -160,14 +160,14 @@ func (hs *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, er
 	return msg, nil
 }
 
-func (w *HttpSender) sendData(url string, data []byte) (*core.Message, error) {
+func (hsw *HttpSender) sendData(url string, data []byte) (*core.Message, error) {
 
 	buf, err := compress(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "error compressing data")
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
+	req, err := http.NewRequestWithContext(hsw.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -177,7 +177,7 @@ func (w *HttpSender) sendData(url string, data []byte) (*core.Message, error) {
 		return nil, errors.Wrap(err, "error creating http request")
 	}
 
-	resp, err := w.client.Do(req)
+	resp, err := hsw.client.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error connecting server")
 	}
@@ -202,26 +202,26 @@ func (w *HttpSender) sendData(url string, data []byte) (*core.Message, error) {
 }
 
 // this is not optimal, well... I would refactor the whole worker / sender / receiver design for possible next release
-func (w *HttpSender) dataSender() error {
+func (hsw *HttpSender) dataSender() error {
 	log.Debug().
 		Msg("http sender - dataSender starting")
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-hsw.ctx.Done():
 			log.Debug().
 				Msgf("http client worker - closing, context done")
-		case msg := <-w.receiver:
+		case msg := <-hsw.receiver:
 			// if FIN was send, don't send it to the standalone process
 			// but stop
 			if msg.GetFlag() == core.FIN {
 				return nil
 			}
-			url := w.url.String() + "/data"
+			url := hsw.url.String() + "/data"
 			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
 				return errors.Wrap(err, "failed to serialize data")
 			}
-			resp, err := w.sendData(url, data)
+			resp, err := hsw.sendData(url, data)
 			if err != nil {
 				return errors.Wrap(err, "failed to send data")
 			}

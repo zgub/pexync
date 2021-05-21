@@ -58,7 +58,7 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.F
 	}
 }
 
-func (fw FileWriter) Start() error {
+func (fw *FileWriter) Start() error {
 	var err error
 
 	dstDir := viper.GetString("destination")
@@ -347,7 +347,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	return nil
 }
 
-func (fw FileWriter) newTempFile(offset int64) error {
+func (fw *FileWriter) newTempFile(offset int64) error {
 	dstDir := viper.GetString("destination")
 	tmpF, err := ioutil.TempFile(dstDir, fw.srcFd.RelPath+".*."+fw.senderID.String())
 	if err != nil {
@@ -369,7 +369,7 @@ func (fw FileWriter) newTempFile(offset int64) error {
 	return nil
 }
 
-func (fw FileWriter) IsAlive() bool {
+func (fw *FileWriter) IsAlive() bool {
 	if fw.streams == 0 {
 		return false
 	}

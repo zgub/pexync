@@ -41,37 +41,37 @@ func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver cha
 	}
 }
 
-func (w *RollReader) Start() error {
+func (rrw *RollReader) Start() error {
 
 	for {
 		// wait for file (or a section)
 		select {
-		case <-w.ctx.Done():
+		case <-rrw.ctx.Done():
 			log.Debug().
-				Msgf("roll reader %d - closing, context done", w.myID)
+				Msgf("roll reader %d - closing, context done", rrw.myID)
 			return nil
-		case msg := <-w.inbox:
+		case msg := <-rrw.inbox:
 			switch msg.GetFlag() {
 			case core.RSQ: // read sequence
 				log.Debug().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("roll reader %d - file received", w.myID)
-				err := w.rollV3(msg)
+					Msgf("roll reader %d - file received", rrw.myID)
+				err := rrw.rollV3(msg)
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
 				}
 				log.Debug().
 					Str("file name", msg.GetFileDesc().FileName).
-					Int64("indexes", w.indexCnt).
-					Int64("data", w.dataCnt).
-					Int64("messages", w.msgCnt).
-					Msgf("roll reader %d - stats", w.myID)
+					Int64("indexes", rrw.indexCnt).
+					Int64("data", rrw.dataCnt).
+					Int64("messages", rrw.msgCnt).
+					Msgf("roll reader %d - stats", rrw.myID)
 			case core.FIN:
 				log.Trace().
-					Msgf("roll reader %d - received FIN", w.myID)
+					Msgf("roll reader %d - received FIN", rrw.myID)
 				return nil
 			default:
-				s := fmt.Sprintf("roll reader %d - unknown message received", w.myID)
+				s := fmt.Sprintf("roll reader %d - unknown message received", rrw.myID)
 				return errors.New(s)
 			}
 		}
@@ -82,7 +82,7 @@ func (w *RollReader) Start() error {
 // compares it with the hashMap and sends instruction to build the file
 // on the receiver side
 // 3rd implementation of the rolling hash reader
-func (w *RollReader) rollV3(msg *core.Message) error {
+func (rrw *RollReader) rollV3(msg *core.Message) error {
 
 	// sanity check
 	streams := msg.GetStreamCount()
@@ -93,10 +93,10 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 	// open the file
 	srcFilePath := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
 	log.Trace().
-		Msgf("roll reader %d - start reading: %s", w.myID, srcFilePath)
+		Msgf("roll reader %d - start reading: %s", rrw.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
 	if err != nil {
-		return errors.Wrapf(err, "roll reader %d - unable to open file for reading: %s", w.myID, srcFilePath)
+		return errors.Wrapf(err, "roll reader %d - unable to open file for reading: %s", rrw.myID, srcFilePath)
 	}
 	defer f.Close()
 
@@ -109,9 +109,9 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 	br := bufio.NewReader(sr)
 
 	// create a hash map for faster sum lookup
-	w.hMap = make(map[uint32]int)
+	rrw.hMap = make(map[uint32]int)
 	for i, h := range msg.GetFileDesc().Weak {
-		w.hMap[h] = i
+		rrw.hMap[h] = i
 	}
 
 	// initialize the rolling hash by copying first block of data
@@ -149,11 +149,11 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 				Int64("datadesc len", int64(dd.Len())).
 				Int64("block size", msg.GetFileDesc().BlockSize).
 				Int64("seq", dd.Seq()).
-				Msgf("roll reader %d - sending data", w.myID)
+				Msgf("roll reader %d - sending data", rrw.myID)
 
 			// send
-			err = sendWithTimeout(dMsg, w.receiver)
-			w.msgCnt++
+			err = sendWithTimeout(dMsg, rrw.receiver)
+			rrw.msgCnt++
 			if err != nil {
 				return errors.Wrap(err, "error sending data")
 			}
@@ -162,7 +162,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			dd = lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
 		}
 
-		if hIndex, ok := w.hMap[rSum]; ok {
+		if hIndex, ok := rrw.hMap[rSum]; ok {
 
 			/*********
 			 * MATCH *
@@ -173,7 +173,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write index data description")
 			}
-			w.indexCnt++
+			rrw.indexCnt++
 			//log.Trace().Msgf("roll reader - BLOCK MATCH seq: %d", seq)
 
 			// we need to load a new block of data, so reset the hash first
@@ -247,7 +247,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 			}
-			w.dataCnt++
+			rrw.dataCnt++
 		}
 
 	}
@@ -260,7 +260,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 			}
-			w.dataCnt++
+			rrw.dataCnt++
 		}
 	}
 	// if there is trailing data in the buffer, append it
@@ -270,7 +270,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 			}
-			w.dataCnt++
+			rrw.dataCnt++
 		}
 	}
 
@@ -281,8 +281,8 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 	}
 	dMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
 
-	err = sendWithTimeout(dMsg, w.receiver)
-	w.msgCnt++
+	err = sendWithTimeout(dMsg, rrw.receiver)
+	rrw.msgCnt++
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
@@ -408,14 +408,14 @@ func NewHashreader(ctx context.Context, inbox <-chan *core.Message) *HashReader 
 	}
 }
 
-func (w *HashReader) Start() error {
+func (hrw *HashReader) Start() error {
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-hrw.ctx.Done():
 			log.Debug().
 				Msg("hash reader - closing, context done")
 			return nil
-		case msg := <-w.inbox:
+		case msg := <-hrw.inbox:
 			switch msg.GetFlag() {
 			case core.FIN:
 				log.Trace().

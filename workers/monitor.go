@@ -13,49 +13,49 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
-func (hs *HttpSender) StartMon() error {
+func (hsw *HttpSender) StartMon() error {
 
 	log.Info().
-		Int("last file index", hs.lastFileIdx).
+		Int("last file index", hsw.lastFileIdx).
 		Msg("MONITOR - Starting")
 
 	var err error
 
 	// add new fsnotify watcher
-	hs.watcher, err = fsnotify.NewWatcher()
+	hsw.watcher, err = fsnotify.NewWatcher()
 	if err != nil {
 		return errors.Wrap(err, "unable to initialize fs watcher")
 	}
 
 	// initialize the watchlist (a map)
-	hs.watchMap = make(map[string]*lfs.FileDesc)
+	hsw.watchMap = make(map[string]*lfs.FileDesc)
 
 	// add whole source direcotory
-	p, err := filepath.Abs(hs.srcDir)
+	p, err := filepath.Abs(hsw.srcDir)
 	if err != nil {
 		return errors.Wrap(err, "failed to determine absolute path")
 	}
-	hs.watcher.Add(p)
+	hsw.watcher.Add(p)
 
 	// add remaining directories
-	for _, fd := range hs.srcList {
+	for _, fd := range hsw.srcList {
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
-			hs.watchMap[p] = fd
-			hs.watcher.Add(p)
+			hsw.watchMap[p] = fd
+			hsw.watcher.Add(p)
 		}
 	}
 
 	for {
 		select {
-		case event, ok := <-hs.watcher.Events:
+		case event, ok := <-hsw.watcher.Events:
 			if !ok {
 				return errors.New("an error occurred while watching directory")
 			}
 
-			hs.eval(event)
+			hsw.eval(event)
 
-		case err, ok := <-hs.watcher.Errors:
+		case err, ok := <-hsw.watcher.Errors:
 			if !ok {
 				return errors.New("an error occurred while watching directory")
 			}
@@ -64,14 +64,14 @@ func (hs *HttpSender) StartMon() error {
 	}
 }
 
-func (hs *HttpSender) Watch(path string) error {
+func (hsw *HttpSender) Watch(path string) error {
 	log.Debug().
 		Str("path", path).
 		Msg("Monitor - adding to watchlist")
-	return hs.watcher.Add(path)
+	return hsw.watcher.Add(path)
 }
 
-func (hs *HttpSender) eval(event fsnotify.Event) error {
+func (hsw *HttpSender) eval(event fsnotify.Event) error {
 
 	/***************
 	 * Write event *
@@ -85,8 +85,8 @@ func (hs *HttpSender) eval(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrap(err, "file stat error")
 		}
-		spew.Dump(hs.watchMap)
-		if fd, ok := hs.watchMap[event.Name]; ok {
+		spew.Dump(hsw.watchMap)
+		if fd, ok := hsw.watchMap[event.Name]; ok {
 			// write event on a known file
 			if fd.FileSize == efd.FileSize {
 				// size did not change, let's then calculate SHA1 digests
@@ -133,10 +133,10 @@ func (hs *HttpSender) eval(event fsnotify.Event) error {
 			efd.Sha1 = fd.Sha1
 
 			// first announce the update
-			msg := core.NewUPD(hs.id, efd)
-			url := hs.url.String() + "/meta"
+			msg := core.NewUPD(hsw.id, efd)
+			url := hsw.url.String() + "/meta"
 
-			resp, err := hs.sendJson(url, msg)
+			resp, err := hsw.sendJson(url, msg)
 			if err != nil {
 				return errors.Wrap(err, "failed to communicate with remote")
 			}
@@ -154,7 +154,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) error {
 			// send the changes
 			if efd.IsDir == false && efd.FileSize != 0 {
 				fmt.Println("sending file to roll reader")
-				hs.rrCh <- core.NewRSQ(hs.id, dstFd, 0, dstFd.FileSize, 1)
+				hsw.rrCh <- core.NewRSQ(hsw.id, dstFd, 0, dstFd.FileSize, 1)
 				fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
 			}
 		} else {
@@ -208,17 +208,17 @@ func (hs *HttpSender) eval(event fsnotify.Event) error {
 			}
 		}
 
-		hs.lastFileIdx++
-		efd.Idx = int64(hs.lastFileIdx)
+		hsw.lastFileIdx++
+		efd.Idx = int64(hsw.lastFileIdx)
 		log.Printf("got new file: %+v\n", efd)
-		hs.watchMap[event.Name] = efd
+		hsw.watchMap[event.Name] = efd
 
 		// first announce the file
-		msg := core.NewADD(hs.id, efd)
-		url := hs.url.String() + "/meta"
+		msg := core.NewADD(hsw.id, efd)
+		url := hsw.url.String() + "/meta"
 
 		fmt.Println("sending meta data")
-		resp, err := hs.sendJson(url, msg)
+		resp, err := hsw.sendJson(url, msg)
 		if err != nil {
 			log.Fatal().
 				Err(err).
@@ -238,7 +238,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) error {
 		// then send the data
 		if efd.IsDir == false && efd.FileSize != 0 {
 			fmt.Println("sending byte data")
-			hs.brCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
+			hsw.brCh <- core.NewRSQ(hsw.id, efd, 0, efd.FileSize, 1)
 			fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
 		}
 	}
