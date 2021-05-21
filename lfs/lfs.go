@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -86,7 +85,6 @@ type DataDesc struct {
 	readBuf                *bytes.Buffer // intermediate data buffer
 	data                   *bytes.Buffer
 	streams                int64 // ccIo
-	//len                    int64         //is ths really neccessary?
 }
 
 func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
@@ -258,7 +256,6 @@ func Deserialize(p []byte) (*DataDesc, error) {
 		offset:    header.Offset,
 		seq:       header.Seq,
 		data:      bytes.NewBuffer(p[HeaderSize:]),
-		//len:       header.Len,
 	}
 	return dd, nil
 }
@@ -431,7 +428,6 @@ func Scan(path string) (*FileDesc, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
 	}
-	fmt.Printf("basePath: %s path: %s\n", basePath, path)
 
 	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
 	relPath, err := filepath.Rel(basePath, path)

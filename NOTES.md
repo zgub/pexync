@@ -26,6 +26,10 @@
 - [x] core.Message constructor (ccio)
 - [ ] delete ref file
 - [ ] add added dir to monitor watcher
+- [ ] renaming
+- [x] don't mon send directories
+- [ ] add log destination switch
+- [ ] check for return errors missing return
 
 ## NOTODO
 

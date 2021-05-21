@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/zgub/pexync/lfs"
 )
@@ -17,6 +19,8 @@ const (
 	SUM             // checksum data from receiver
 	RSQ             // read sequence
 	WSQ             // write sequence
+	ADD             // new file in monitor mode
+	UPD             // update existing file
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
@@ -29,6 +33,8 @@ var messageTypes = [...]string{
 	"SUM",
 	"RSQ",
 	"WSQ",
+	"ADD",
+	"UPD",
 	"ERR",
 	"FIN",
 	"ACK",
@@ -41,26 +47,45 @@ func (f Flag) String() string {
 type Message struct {
 	Flag                   Flag            // meta data
 	Offset, Limit, Streams int64           // meta data required for reconstruction
-	Uuid                   uuid.UUID       // meta data
+	SenderID               uuid.UUID       // meta data
 	FileList               []*lfs.FileDesc // meta data
 	FileDesc               *lfs.FileDesc   // meta data
 	DataDesc               *lfs.DataDesc   // binary (actual) data
 }
 
-func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
+func NewINI(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
 	return &Message{
 		Flag:     INI,
-		Uuid:     uuid,
+		SenderID: senderID,
 		FileList: list,
 	}
 }
 
-func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
+func NewADD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
+	return &Message{
+		Flag:     ADD,
+		SenderID: senderID,
+		FileDesc: fd,
+	}
+}
+
+func NewUPD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
+	return &Message{
+		Flag:     UPD,
+		SenderID: senderID,
+		FileDesc: fd,
+	}
+
+}
+
+func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	if streams == 0 {
 		panic("new rsq: zero data streams")
+	} else {
+		fmt.Println("NEW RSQ package")
 	}
 	return &Message{
-		Uuid:     uuid,
+		SenderID: senderID,
 		Flag:     RSQ,
 		Offset:   offset,
 		Limit:    limit,
@@ -69,10 +94,10 @@ func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Mes
 	}
 }
 
-func NewFIN(uuid uuid.UUID) *Message {
+func NewFIN(senderID uuid.UUID) *Message {
 	return &Message{
-		Uuid: uuid,
-		Flag: FIN,
+		SenderID: senderID,
+		Flag:     FIN,
 	}
 }
 
@@ -108,6 +133,10 @@ func (m *Message) SetFlag(f Flag) {
 	m.Flag = f
 }
 
+func (m *Message) SetFileDesc(fd *lfs.FileDesc) {
+	m.FileDesc = fd
+}
+
 func (m *Message) GetFlag() Flag {
 	return m.Flag
 }
@@ -116,8 +145,8 @@ func (m *Message) GetList() []*lfs.FileDesc {
 	return m.FileList
 }
 
-func (m *Message) GetUuid() uuid.UUID {
-	return m.Uuid
+func (m *Message) GetID() uuid.UUID {
+	return m.SenderID
 }
 
 func (m *Message) GetFileDesc() *lfs.FileDesc {

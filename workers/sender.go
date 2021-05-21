@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -22,24 +23,29 @@ const splitSize = int64(536870912)
 
 type sender struct {
 	ctx                  context.Context
+	srcDir               string
 	srcList              []*lfs.FileDesc
-	uuid                 uuid.UUID
+	id                   uuid.UUID
 	diffList, missList   []*lfs.FileDesc
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
 	ccIo                 int64 // this gets used so may times, it deserves an instance var
+	syncOnce             bool  // valid for http sender only, however it's required here due file readers
+	lastFileIdx          int
 }
 
-func (s *sender) getSrcList() error {
+func (s *sender) genSrcList() error {
 	// perform directory listing
-	list, err := lfs.ParseDir(viper.GetString("source"))
+	list, err := lfs.ParseDir(s.srcDir)
 	if err != nil {
 		return errors.Wrap(err, "sender - directory parsing failed")
 	}
+	fmt.Println("=============================== seting idx")
+	s.lastFileIdx = len(list)
 
 	// calculate blocksizes for each file
 	for _, fd := range list {
-		if !fd.IsDir {
+		if fd.IsDir == false {
 			fd.SetBlockSize()
 			// beware of empty files
 			if fd.BlockSize == 0 {
@@ -63,7 +69,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
 	for _, fd := range msg.GetList() {
-		if fd.State == lfs.Missing && !fd.IsDir {
+		if fd.State == lfs.Missing && fd.IsDir == false {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
@@ -123,7 +129,7 @@ func (s *sender) spawnReaders() {
 	dCtx := context.Context(s.ctx)
 
 	// spawn readers if we have diff files
-	if len(s.diffList) > 0 {
+	if len(s.diffList) > 0 || !s.syncOnce {
 		log.Debug().
 			Msg("sender - spawning roll readers")
 
@@ -134,7 +140,7 @@ func (s *sender) spawnReaders() {
 	}
 
 	// spawn missing file senders if we have missing files
-	if len(s.missList) > 0 {
+	if len(s.missList) > 0 || !s.syncOnce {
 		log.Debug().
 			Int64("io concurrency", s.ccIo).
 			Msg("sender - spawning bytes readers")
@@ -165,12 +171,12 @@ func (s *sender) sendDataToReaders() {
 					limit = fd.FileSize
 				}
 				// data stream count = s.ccIo
-				s.rrCh <- core.NewRSQ(s.uuid, fd, chunk*chunkSize, limit, s.ccIo)
+				s.rrCh <- core.NewRSQ(s.id, fd, chunk*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
 			// data streams count = 1
-			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
+			s.rrCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
 		}
 	}
 
@@ -178,7 +184,7 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.missList {
 
 		// data streams count = 1
-		s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
+		s.brCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
 	}
 }
 
@@ -186,12 +192,12 @@ func (s *sender) stopReaders() {
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
-			s.rrCh <- core.NewFIN(s.uuid)
+			s.rrCh <- core.NewFIN(s.id)
 		}
 	}
 	if len(s.missList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
-			s.brCh <- core.NewFIN(s.uuid)
+			s.brCh <- core.NewFIN(s.id)
 		}
 	}
 }
@@ -202,15 +208,16 @@ type LocalSender struct {
 	sender
 }
 
-func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, senderID uuid.UUID, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
 	ccIo := viper.GetInt("io_concurrency")
 	log.Debug().
 		Int("ccio", ccIo).
 		Msg("starting new local sender")
 	return &LocalSender{
 		sender: sender{
+			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
-			uuid:     uuid,
+			id:       senderID,
 			receiver: receiver,
 			rrCh:     make(chan *core.Message, ccIo),
 			brCh:     make(chan *core.Message, ccIo),
@@ -220,54 +227,54 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 	}
 }
 
-func (w *LocalSender) Start() error {
+func (ls *LocalSender) Start() error {
 
-	if err := w.getSrcList(); err != nil {
+	if err := ls.genSrcList(); err != nil {
 		return err
 	}
 
 	// prepare a message for the receiver
-	msg := core.NewINI(w.uuid, w.srcList)
+	msg := core.NewINI(ls.id, ls.srcList)
 
 	log.Debug().
-		Msgf("local sender - source file list, length: %d", len(w.srcList))
+		Msgf("local sender - source file list, length: %d", len(ls.srcList))
 
-	err := sendWithTimeout(msg, w.receiver)
+	err := sendWithTimeout(msg, ls.receiver)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// receive the filelist with checksums
-	msg, err = recvWithTimeout(w.inbox)
+	msg, err = recvWithTimeout(ls.inbox)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
-	err = w.parseRemoteList(msg)
+	err = ls.parseRemoteList(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed parsong remote file listing")
 	}
 
 	// prepare for transfer
-	w.g = new(errgroup.Group)
+	ls.g = new(errgroup.Group)
 
-	w.spawnReaders()
+	ls.spawnReaders()
 
-	w.sendDataToReaders()
+	ls.sendDataToReaders()
 
-	w.stopReaders()
+	ls.stopReaders()
 
 	// validate ???
 
 	// end
-	err = w.g.Wait()
+	err = ls.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "local sender worker failed")
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = core.NewFIN(w.uuid)
-	err = sendWithTimeout(msg, w.receiver)
+	msg = core.NewFIN(ls.id)
+	err = sendWithTimeout(msg, ls.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
@@ -279,12 +286,13 @@ func (w *LocalSender) Start() error {
 type HttpSender struct {
 	url      *url.URL
 	client   *http.Client
-	syncOnce bool
+	watcher  *fsnotify.Watcher
+	watchMap map[string]*lfs.FileDesc
 	sender
 }
 
 // NewHttpSender returns a http sender instance, syncOnce set to false makes it stop after all the initial files are synced
-func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSender, error) {
+func NewHttpSender(ctx context.Context, senderID uuid.UUID, syncOnce bool) (*HttpSender, error) {
 
 	// first, prepare http client
 	host := viper.GetString("remote_host")
@@ -298,7 +306,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 	log.Debug().
 		Str("remote host", host).
 		Int("port", port).
-		Msg("destiantion set")
+		Msg("destination set")
 
 	defaultTimeout := viper.GetDuration("timeout")
 	ccIo := viper.GetInt("io_concurrency")
@@ -324,12 +332,13 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 	}
 
 	s := &HttpSender{
-		url:      url,
-		client:   c,
-		syncOnce: syncOnce,
+		url:    url,
+		client: c,
 		sender: sender{
+			syncOnce: syncOnce,
+			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
-			uuid:     uuid,
+			id:       senderID,
 			receiver: make(chan *core.Message),
 			rrCh:     make(chan *core.Message, ccIo),
 			brCh:     make(chan *core.Message, ccIo),
@@ -342,15 +351,15 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 
 func (hs *HttpSender) Start() error {
 
-	if err := hs.getSrcList(); err != nil {
+	if err := hs.genSrcList(); err != nil {
 		return err
 	}
 
 	// create a new message for the other side
-	msg := core.NewINI(hs.uuid, hs.srcList)
+	msg := core.NewINI(hs.id, hs.srcList)
 
 	// send
-	url := hs.url.String() + "/list"
+	url := hs.url.String() + "/meta"
 	resp, err := hs.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
@@ -391,7 +400,7 @@ func (hs *HttpSender) Start() error {
 
 		// don't forget to stop http senders in sync_once mode
 		for i := int64(0); i < 2*hs.ccIo; i++ {
-			hs.receiver <- core.NewFIN(hs.uuid)
+			hs.receiver <- core.NewFIN(hs.id)
 		}
 
 		err = eg.Wait()
@@ -403,11 +412,5 @@ func (hs *HttpSender) Start() error {
 			Msg("http sender - initial sync finished")
 
 	}
-
 	return nil
-}
-
-// GetChannles returns reader channels to be used during monitor operation
-func (hs *HttpSender) GetChannels() (rrCh, brCh chan *core.Message) {
-	return hs.rrCh, hs.brCh
 }

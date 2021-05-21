@@ -174,7 +174,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 				return errors.Wrap(err, "roll reader - failed to write index data description")
 			}
 			w.indexCnt++
-			log.Trace().Msgf("roll reader - BLOCK MATCH seq: %d", seq)
+			//log.Trace().Msgf("roll reader - BLOCK MATCH seq: %d", seq)
 
 			// we need to load a new block of data, so reset the hash first
 			rh.Reset()
@@ -309,18 +309,19 @@ func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver ch
 	}
 }
 
-func (w *BytesReader) Start() error {
+func (brw *BytesReader) Start() error {
+	log.Debug().Msgf("bytes reader - %d starting", brw.myID)
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-brw.ctx.Done():
 			log.Debug().
-				Msgf("bytes reader %d - closing, context done", w.myID)
+				Msgf("bytes reader %d - closing, context done", brw.myID)
 			return nil
-		case msg := <-w.inbox:
+		case msg := <-brw.inbox:
 			switch msg.GetFlag() {
 			case core.FIN:
 				log.Debug().
-					Msgf("bytes reader %d - received FIN", w.myID)
+					Msgf("bytes reader %d - received FIN", brw.myID)
 				return nil
 			case core.RSQ:
 
@@ -332,7 +333,7 @@ func (w *BytesReader) Start() error {
 
 				log.Trace().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("bytes reader %d - message received", w.myID)
+					Msgf("bytes reader %d - message received", brw.myID)
 				p := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
 				f, err := os.Open(p)
 				if err != nil {
@@ -347,6 +348,7 @@ func (w *BytesReader) Start() error {
 					dd := lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
 
 					n, err := io.ReadFull(br, buf)
+					fmt.Println("READING")
 					if n == 0 {
 						if err == nil {
 							return errors.New("read 0 bytes")
@@ -354,10 +356,11 @@ func (w *BytesReader) Start() error {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
+							fmt.Println("EOF")
 							// end of transmission
 							dd.MarkAsLast()
 							nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
-							err = sendWithTimeout(nMsg, w.receiver)
+							err = sendWithTimeout(nMsg, brw.receiver)
 							if err != nil {
 								return errors.Wrap(err, "error sending data")
 							}
@@ -376,10 +379,13 @@ func (w *BytesReader) Start() error {
 						Int64("block size", int64(msg.GetFileDesc().BlockSize)).
 						Int64("offset", msg.GetOffset()).
 						Int64("seq", seq).
-						Msgf("bytes reader %d - sending pure data", w.myID)
-					err = sendWithTimeout(nMsg, w.receiver)
+						Msgf("bytes reader %d - sending pure data", brw.myID)
+					err = sendWithTimeout(nMsg, brw.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
+					} else {
+						log.Trace().
+							Msgf("bytes reader - %s data sent", brw.myID)
 					}
 				}
 			default:
@@ -416,9 +422,12 @@ func (w *HashReader) Start() error {
 					Msg("hash reader - received FIN")
 				return nil
 			case core.HSH:
-				err := core.AddChecksums(msg.GetFileDesc())
-				if err != nil {
-					return errors.Wrap(err, "error calculating initial hash array")
+				fd := msg.GetFileDesc()
+				if fd.IsDir == false {
+					err := core.AddChecksums(msg.GetFileDesc())
+					if err != nil {
+						return errors.Wrap(err, "error calculating initial hash array")
+					}
 				}
 			default:
 				return errors.New("hash reader - unknown message")
