@@ -171,7 +171,7 @@ Loop:
 		}
 	}
 
-	log.Trace().
+	log.Debug().
 		Str("orig name", fw.srcFd.FileName).
 		Str("merging to", dstPath).
 		Msg("file writer - finished, rebuilding")
@@ -180,7 +180,7 @@ Loop:
 	if len(fw.fileMap) == 1 {
 		err = os.Rename(fw.fileMap[0].f.Name(), dstPath)
 		if err != nil {
-			return errors.Wrap(err, "unable to replace file")
+			return errors.Wrapf(err, "unable to rename %s file to %s", fw.fileMap[0].f.Name(), dstPath)
 		}
 	} else {
 		// large file, we need to reconstruct it from several tmp fil
@@ -238,8 +238,18 @@ Loop:
 		log.Debug().
 			Str("filename", dstPath).
 			Msg("file reconstruction done")
-
 	}
+
+	// remove ref file if exists
+	if fw.srcFd.State == lfs.Diff {
+		// first rename the old file
+		refName := dstPath + ".ref"
+		err = os.Remove(refName)
+		if err != nil {
+			errors.Wrap(err, "unable to remove reference file")
+		}
+	}
+
 	return nil
 }
 
@@ -264,13 +274,13 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 		}
 		switch lfs.Flag(header.Flag) {
 		case lfs.Data:
-			n, err := io.CopyN(w, br, header.Len)
+			_, err := io.CopyN(w, br, header.Len)
 			if err != nil {
 				return errors.Wrap(err, "file write failed")
 			}
 			w.Flush()
-			log.Trace().
-				Msgf("file writer - %d bytes written", n)
+			//log.Trace().
+			//	Msgf("file writer - %d bytes written", n)
 		case lfs.Index:
 			// indexes
 			hIndex := make([]int64, header.Len)
@@ -279,21 +289,23 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				n, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
+				_, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")
 				}
-				log.Trace().
-					Int64("seek", n).
-					Int64("location", v*fw.srcFd.BlockSize).
-					Msg("seek")
-				n, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
+				/*
+					log.Trace().
+						Int64("seek", n).
+						Int64("location", v*fw.srcFd.BlockSize).
+						Msg("seek")
+				*/
+				_, err = io.CopyN(w, fw.rr, fw.srcFd.BlockSize)
 				if err != nil {
 					return errors.Wrap(err, "error writing referenced data")
 				}
 				w.Flush()
-				log.Trace().
-					Msgf("file writer - %d bytes copied", n)
+				//log.Trace().
+				//	Msgf("file writer - %d bytes copied", n)
 			}
 		case lfs.End:
 			return lfs.ErrEOF

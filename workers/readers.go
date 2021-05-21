@@ -174,7 +174,7 @@ func (w *RollReader) rollV3(msg *core.Message) error {
 				return errors.Wrap(err, "roll reader - failed to write index data description")
 			}
 			w.indexCnt++
-			log.Trace().Msgf("roll reader - BLOCK MATCH seq: %d", seq)
+			//log.Trace().Msgf("roll reader - BLOCK MATCH seq: %d", seq)
 
 			// we need to load a new block of data, so reset the hash first
 			rh.Reset()
