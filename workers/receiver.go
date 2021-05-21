@@ -324,6 +324,40 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 			} else {
 				rc.srcList[fd.Idx] = fd
 				fd.State = lfs.Missing
+				// take care of empty files and directories
+				if fd.IsDir {
+					dstDir := viper.GetString("destination")
+					p := filepath.Join(dstDir, fd.RelPath)
+					log.Trace().
+						Str("path", p).
+						Msg("creating directory")
+					if _, err := os.Stat(p); os.IsNotExist(err) {
+						// create one
+						//spew.Dump(srcFd)
+						os.Mkdir(p, fd.Mode)
+					} else if err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						log.Error().
+							Err(err).
+							Msg("internal server error")
+						return
+					}
+				} else if fd.FileSize == 0 {
+					dstDir := viper.GetString("destination")
+					p := filepath.Join(dstDir, fd.RelPath)
+					log.Trace().
+						Str("path", p).
+						Msg("creating empty file")
+					f, err := os.Create(p)
+					if err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						log.Error().
+							Err(err).
+							Msg("internal server error")
+						return
+					}
+					f.Close()
+				}
 			}
 			msg.SetFlag(core.ACK)
 			err = respondWithJSON(w, http.StatusOK, msg)
