@@ -29,7 +29,7 @@ var (
 )
 
 func startLocalSync() {
-	uuid := uuid.New()
+	senderID := uuid.New()
 
 	// silly but it can be changed by viper.Set and it's used like this in tests
 	dstDir := viper.GetString("destination")
@@ -52,7 +52,7 @@ func startLocalSync() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sender := workers.NewLocalSender(ctx, uuid, local, remote)
+	sender := workers.NewLocalSender(ctx, senderID, local, remote)
 
 	g.Go(sender.Start)
 

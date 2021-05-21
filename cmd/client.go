@@ -36,7 +36,7 @@ func init() {
 
 func startClient() {
 
-	uuid := uuid.New()
+	senderID := uuid.New()
 
 	ctx := context.Background()
 	log.Info().
@@ -44,7 +44,7 @@ func startClient() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	httpSender, err := workers.NewHttpSender(ctx, uuid, true)
+	httpSender, err := workers.NewHttpSender(ctx, senderID, true)
 	if err != nil {
 		log.Error().
 			Err(err).

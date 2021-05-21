@@ -108,7 +108,7 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
+func (hs *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
@@ -119,7 +119,7 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 		return nil, errors.Wrap(err, "error compressing data")
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
+	req, err := http.NewRequestWithContext(hs.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -129,7 +129,7 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 		return nil, errors.Wrap(err, "error creating http request")
 	}
 
-	resp, err := w.client.Do(req)
+	resp, err := hs.client.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error connecting server")
 	}

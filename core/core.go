@@ -43,34 +43,34 @@ func (f Flag) String() string {
 type Message struct {
 	Flag                   Flag            // meta data
 	Offset, Limit, Streams int64           // meta data required for reconstruction
-	Uuid                   uuid.UUID       // meta data
+	SenderID               uuid.UUID       // meta data
 	FileList               []*lfs.FileDesc // meta data
 	FileDesc               *lfs.FileDesc   // meta data
 	DataDesc               *lfs.DataDesc   // binary (actual) data
 }
 
-func NewINI(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
+func NewINI(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
 	return &Message{
 		Flag:     INI,
-		Uuid:     uuid,
+		SenderID: senderID,
 		FileList: list,
 	}
 }
 
-func NewADD(uuid uuid.UUID, list []*lfs.FileDesc) *Message {
+func NewADD(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
 	return &Message{
 		Flag:     ADD,
-		Uuid:     uuid,
+		SenderID: senderID,
 		FileList: list,
 	}
 }
 
-func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
+func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	if streams == 0 {
 		panic("new rsq: zero data streams")
 	}
 	return &Message{
-		Uuid:     uuid,
+		SenderID: senderID,
 		Flag:     RSQ,
 		Offset:   offset,
 		Limit:    limit,
@@ -79,10 +79,10 @@ func NewRSQ(uuid uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Mes
 	}
 }
 
-func NewFIN(uuid uuid.UUID) *Message {
+func NewFIN(senderID uuid.UUID) *Message {
 	return &Message{
-		Uuid: uuid,
-		Flag: FIN,
+		SenderID: senderID,
+		Flag:     FIN,
 	}
 }
 
@@ -126,8 +126,8 @@ func (m *Message) GetList() []*lfs.FileDesc {
 	return m.FileList
 }
 
-func (m *Message) GetUuid() uuid.UUID {
-	return m.Uuid
+func (m *Message) GetID() uuid.UUID {
+	return m.SenderID
 }
 
 func (m *Message) GetFileDesc() *lfs.FileDesc {

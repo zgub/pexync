@@ -3,64 +3,16 @@ package workers
 import (
 	"bytes"
 	"fmt"
-	"net/url"
 	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
 
-// Monitor represents a PeXync file monitor
-type Monitor struct {
-	uuid       uuid.UUID
-	watcher    *fsnotify.Watcher
-	watchMap   map[string]*lfs.FileDesc
-	rrCh, brCh chan *core.Message
-	idx        int64
-}
-
-// NewMonitor creates a new instance of PeXync filesystem monitor
-func NewMonitor(rrCh, brCh chan *core.Message, url *url.URL, watchList []*lfs.FileDesc) (Monitor, error) {
-	mon := Monitor{
-		uuid:     uuid.New(),
-		rrCh:     rrCh,
-		brCh:     brCh,
-		watchMap: make(map[string]*lfs.FileDesc),
-	}
-	w, err := fsnotify.NewWatcher()
-	if err != nil {
-		return mon, errors.Wrap(err, "unable to initialize fs watcher")
-	}
-
-	// determine block size and add weak block Adler32 hashlist and Sha1 digest
-	for _, fd := range watchList {
-		if !fd.IsDir {
-			fd.SetBlockSize()
-			// beware of empty files
-			if fd.BlockSize == 0 {
-				fd.BlockSize = 700
-			}
-			err = core.AddChecksums(fd)
-			if err != nil {
-				return mon, errors.Wrapf(err, "Monitor init - failed to calculate checksums - file: %s", filepath.Join(fd.Prefix, fd.FileName))
-			}
-		}
-		// for new file indexes
-		if fd.Idx > mon.idx {
-			mon.idx = fd.Idx
-		}
-		mon.watchMap[filepath.Join(fd.Prefix, fd.FileName)] = fd
-	}
-
-	mon.watcher = w
-	return mon, nil
-}
-
-func (m Monitor) eval(event fsnotify.Event) {
+func (hs HttpSender) eval(event fsnotify.Event) {
 
 	if event.Op&fsnotify.Write == fsnotify.Write {
 		log.Info().
@@ -75,7 +27,7 @@ func (m Monitor) eval(event fsnotify.Event) {
 			// let's ignore errors, too may untested edge cases
 			return
 		}
-		if fd, ok := m.watchMap[event.Name]; ok {
+		if fd, ok := hs.watchMap[event.Name]; ok {
 			// write event on a known file
 			if fd.FileSize == efd.FileSize {
 				// size did not change, let's then calculate SHA1 digests
@@ -98,7 +50,7 @@ func (m Monitor) eval(event fsnotify.Event) {
 					log.Info().
 						Str("filename", event.Name).
 						Msg("WRITE - file has changed")
-					m.watchMap[event.Name] = efd
+					hs.watchMap[event.Name] = efd
 				}
 			} else {
 				// sizes are different - send changes
@@ -154,15 +106,13 @@ func (m Monitor) eval(event fsnotify.Event) {
 			}
 		}
 
-		m.idx++
-		efd.Idx = m.idx
-		m.watchMap[event.Name] = efd
-
-		// first announce the new file
+		hs.idx++
+		efd.Idx = int64(hs.idx)
+		hs.watchMap[event.Name] = efd
 
 		// then send the data
 		fmt.Println("sending")
-		m.brCh <- core.NewRSQ(m.uuid, efd, 0, efd.FileSize, 1)
+		hs.brCh <- core.NewRSQ(hs.uuid, efd, 0, efd.FileSize, 1)
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
@@ -172,21 +122,46 @@ func (m Monitor) eval(event fsnotify.Event) {
 
 }
 
-func (m Monitor) Start() error {
+func (hs HttpSender) StartMon() error {
+
 	log.Info().
-		Int64("last file index", m.idx).
+		Int("last file index", hs.idx).
 		Msg("MONITOR - Starting")
+
+	var err error
+
+	// add new fsnotify watcher
+	hs.watcher, err = fsnotify.NewWatcher()
+	if err != nil {
+		return errors.Wrap(err, "unable to initialize fs watcher")
+	}
+
+	// add whole source direcotory
+	p, err := filepath.Abs(hs.srcDir)
+	if err != nil {
+		return errors.Wrap(err, "failed to determine absolute path")
+	}
+	hs.watcher.Add(p)
+
+	// add remaining directories
+	for _, fd := range hs.srcList {
+		if fd.IsDir {
+			p := filepath.Join(fd.Prefix, fd.FileName)
+			hs.watchMap[p] = fd
+			hs.watcher.Add(p)
+		}
+	}
 
 	for {
 		select {
-		case event, ok := <-m.watcher.Events:
+		case event, ok := <-hs.watcher.Events:
 			if !ok {
 				return errors.New("an error occurred while watching directory")
 			}
 
-			m.eval(event)
+			hs.eval(event)
 
-		case err, ok := <-m.watcher.Errors:
+		case err, ok := <-hs.watcher.Errors:
 			if !ok {
 				return errors.New("an error occurred while watching directory")
 			}
@@ -195,9 +170,9 @@ func (m Monitor) Start() error {
 	}
 }
 
-func (m Monitor) Watch(path string) error {
+func (hs HttpSender) Watch(path string) error {
 	log.Debug().
 		Str("path", path).
 		Msg("Monitor - adding to watchlist")
-	return m.watcher.Add(path)
+	return hs.watcher.Add(path)
 }

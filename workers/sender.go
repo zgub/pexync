@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -22,20 +23,23 @@ const splitSize = int64(536870912)
 
 type sender struct {
 	ctx                  context.Context
+	srcDir               string
 	srcList              []*lfs.FileDesc
 	uuid                 uuid.UUID
 	diffList, missList   []*lfs.FileDesc
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
 	ccIo                 int64 // this gets used so may times, it deserves an instance var
+	idx                  int
 }
 
-func (s *sender) getSrcList() error {
+func (s *sender) genSrcList() error {
 	// perform directory listing
-	list, err := lfs.ParseDir(viper.GetString("source"))
+	list, err := lfs.ParseDir(s.srcDir)
 	if err != nil {
 		return errors.Wrap(err, "sender - directory parsing failed")
 	}
+	s.idx = len(list)
 
 	// calculate blocksizes for each file
 	for _, fd := range list {
@@ -209,6 +213,7 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 		Msg("starting new local sender")
 	return &LocalSender{
 		sender: sender{
+			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: receiver,
@@ -220,54 +225,54 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 	}
 }
 
-func (w *LocalSender) Start() error {
+func (ls *LocalSender) Start() error {
 
-	if err := w.getSrcList(); err != nil {
+	if err := ls.genSrcList(); err != nil {
 		return err
 	}
 
 	// prepare a message for the receiver
-	msg := core.NewINI(w.uuid, w.srcList)
+	msg := core.NewINI(ls.uuid, ls.srcList)
 
 	log.Debug().
-		Msgf("local sender - source file list, length: %d", len(w.srcList))
+		Msgf("local sender - source file list, length: %d", len(ls.srcList))
 
-	err := sendWithTimeout(msg, w.receiver)
+	err := sendWithTimeout(msg, ls.receiver)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// receive the filelist with checksums
-	msg, err = recvWithTimeout(w.inbox)
+	msg, err = recvWithTimeout(ls.inbox)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
-	err = w.parseRemoteList(msg)
+	err = ls.parseRemoteList(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed parsong remote file listing")
 	}
 
 	// prepare for transfer
-	w.g = new(errgroup.Group)
+	ls.g = new(errgroup.Group)
 
-	w.spawnReaders()
+	ls.spawnReaders()
 
-	w.sendDataToReaders()
+	ls.sendDataToReaders()
 
-	w.stopReaders()
+	ls.stopReaders()
 
 	// validate ???
 
 	// end
-	err = w.g.Wait()
+	err = ls.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "local sender worker failed")
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = core.NewFIN(w.uuid)
-	err = sendWithTimeout(msg, w.receiver)
+	msg = core.NewFIN(ls.uuid)
+	err = sendWithTimeout(msg, ls.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
@@ -280,6 +285,8 @@ type HttpSender struct {
 	url      *url.URL
 	client   *http.Client
 	syncOnce bool
+	watcher  *fsnotify.Watcher
+	watchMap map[string]*lfs.FileDesc
 	sender
 }
 
@@ -328,6 +335,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 		client:   c,
 		syncOnce: syncOnce,
 		sender: sender{
+			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
 			uuid:     uuid,
 			receiver: make(chan *core.Message),
@@ -342,7 +350,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 
 func (hs *HttpSender) Start() error {
 
-	if err := hs.getSrcList(); err != nil {
+	if err := hs.genSrcList(); err != nil {
 		return err
 	}
 
@@ -403,16 +411,5 @@ func (hs *HttpSender) Start() error {
 			Msg("http sender - initial sync finished")
 
 	}
-
 	return nil
-}
-
-// GetChannles returns reader channels to be used during monitor operation
-func (hs *HttpSender) GetChannels() (rrCh, brCh chan *core.Message) {
-	return hs.rrCh, hs.brCh
-}
-
-// GetUsr returns te parsed url of the http sender
-func (hs *HttpSender) GetUrl() *url.URL {
-	return hs.url
 }

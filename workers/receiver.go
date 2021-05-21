@@ -41,7 +41,7 @@ type receiver struct {
 
 // parseSenderList parses a file list from sender and updates it with the information from destination
 func (rc receiver) parseSenderList(msg *core.Message) error {
-	rc.senderUUID = msg.GetUuid()
+	rc.senderUUID = msg.GetID()
 	log.Trace().
 		Str("sender uuid", rc.senderUUID.String()).
 		Msgf("receiver list parser - src file list, length: %d", len(msg.GetList()))
@@ -76,7 +76,7 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 		hashChan <- core.NewHashRequest(dstFd)
 	}
 	for i := 0; i < ccIo; i++ {
-		hashChan <- core.NewFIN(msg.GetUuid())
+		hashChan <- core.NewFIN(msg.GetID())
 	}
 	err = hashReaders.Wait()
 	if err != nil {
@@ -309,7 +309,7 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		}
 	case core.ADD:
 		log.Trace().
-			Str("sender UUID", msg.GetUuid().String()).
+			Str("sender UUID", msg.GetID().String()).
 			Msg("receiver - ADD message")
 
 		// store the announced file descriptor
@@ -452,7 +452,7 @@ func (w *LocalReceiver) Start() error {
 			case core.INI:
 				// update msg with local directory state(s)
 				err := w.parseSenderList(msg)
-				w.senderUUID = msg.GetUuid()
+				w.senderUUID = msg.GetID()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
