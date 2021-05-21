@@ -45,7 +45,7 @@ func (s *sender) genSrcList() error {
 
 	// calculate blocksizes for each file
 	for _, fd := range list {
-		if !fd.IsDir {
+		if fd.IsDir == false {
 			fd.SetBlockSize()
 			// beware of empty files
 			if fd.BlockSize == 0 {
@@ -69,7 +69,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
 	for _, fd := range msg.GetList() {
-		if fd.State == lfs.Missing && !fd.IsDir {
+		if fd.State == lfs.Missing && fd.IsDir == false {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).

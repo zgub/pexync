@@ -423,7 +423,7 @@ func (w *HashReader) Start() error {
 				return nil
 			case core.HSH:
 				fd := msg.GetFileDesc()
-				if !fd.IsDir {
+				if fd.IsDir == false {
 					err := core.AddChecksums(msg.GetFileDesc())
 					if err != nil {
 						return errors.Wrap(err, "error calculating initial hash array")

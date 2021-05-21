@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -38,7 +39,7 @@ func (hs *HttpSender) StartMon() error {
 
 	// add remaining directories
 	for _, fd := range hs.srcList {
-		if fd.IsDir {
+		if fd.IsDir == true {
 			p := filepath.Join(fd.Prefix, fd.FileName)
 			hs.watchMap[p] = fd
 			hs.watcher.Add(p)
@@ -149,7 +150,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		//spew.Dump(efd)
 		// to calculate checksum we need to determine the block size first
 
-		if !efd.IsDir {
+		if efd.IsDir == false {
 			efd.SetBlockSize()
 			// beware of empty files
 			if efd.BlockSize == 0 {
@@ -173,31 +174,31 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		fdList := []*lfs.FileDesc{efd}
 		msg := core.NewADD(hs.id, fdList)
 
+		url := hs.url.String() + "/meta"
+		fmt.Println("sending meta data")
+		resp, err := hs.sendJson(url, msg)
+		if err != nil {
+			log.Fatal().
+				Err(err).
+				Msg("error comunicating with server")
+		}
+
+		if resp.GetFlag() == core.ACK {
+			log.Trace().
+				Str("filename", event.Name).
+				Msg("Monitor - file META sent")
+		} else {
+			log.Error().
+				Msg("error sending META data")
+		}
+
+		spew.Dump(efd)
 		// send only if the file is not empty or inf it's not a directory, those have been taken care of already
-		if !efd.IsDir || efd.FileSize != 0 {
-			url := hs.url.String() + "/meta"
-			resp, err := hs.sendJson(url, msg)
-			if err != nil {
-				log.Fatal().
-					Err(err).
-					Msg("error comunicating with server")
-			}
-
-			if resp.GetFlag() == core.ACK {
-				log.Trace().
-					Str("filename", event.Name).
-					Msg("Monitor - file sent")
-			} else {
-				log.Error().
-					Msg("error sending file")
-			}
-
-			//spew.Dump(resp)
-
+		if efd.IsDir == false || efd.FileSize != 0 {
 			// then send the data
-			fmt.Println("sending")
+			fmt.Println("sending byte data")
 			hs.brCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
-			fmt.Println("sent")
+			fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
 		}
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {

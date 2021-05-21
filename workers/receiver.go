@@ -162,7 +162,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// store!
 				rc.srcList[srcFd.Idx] = srcFd
 
-				if !srcFd.IsDir {
+				if srcFd.IsDir == false {
 					// a file that exists and is not dir
 
 					// treat "remote" files smaller than block sizes as missing
@@ -208,7 +208,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 			continue
 		} else {
 			// it does not exist on destination, check if it's a directory
-			if srcFd.IsDir {
+			if srcFd.IsDir == true {
 				// create directory
 				log.Debug().
 					Str("path", p).
@@ -325,7 +325,7 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				rc.srcList[fd.Idx] = fd
 				fd.State = lfs.Missing
 				// take care of empty files and directories
-				if fd.IsDir {
+				if fd.IsDir == true {
 					dstDir := viper.GetString("destination")
 					p := filepath.Join(dstDir, fd.RelPath)
 					log.Trace().
