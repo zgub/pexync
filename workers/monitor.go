@@ -194,8 +194,8 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 
 		spew.Dump(efd)
 		// send only if the file is not empty or inf it's not a directory, those have been taken care of already
-		if efd.IsDir == false || efd.FileSize != 0 {
-			// then send the data
+		// then send the data
+		if efd.IsDir == false && efd.FileSize != 0 {
 			fmt.Println("sending byte data")
 			hs.brCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
 			fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
