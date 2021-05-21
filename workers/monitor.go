@@ -12,10 +12,10 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
-func (hs HttpSender) StartMon() error {
+func (hs *HttpSender) StartMon() error {
 
 	log.Info().
-		Int("last file index", hs.idx).
+		Int("last file index", hs.lastFileIdx).
 		Msg("MONITOR - Starting")
 
 	var err error
@@ -63,14 +63,14 @@ func (hs HttpSender) StartMon() error {
 	}
 }
 
-func (hs HttpSender) Watch(path string) error {
+func (hs *HttpSender) Watch(path string) error {
 	log.Debug().
 		Str("path", path).
 		Msg("Monitor - adding to watchlist")
 	return hs.watcher.Add(path)
 }
 
-func (hs HttpSender) eval(event fsnotify.Event) {
+func (hs *HttpSender) eval(event fsnotify.Event) {
 
 	if event.Op&fsnotify.Write == fsnotify.Write {
 		log.Info().
@@ -164,8 +164,9 @@ func (hs HttpSender) eval(event fsnotify.Event) {
 			}
 		}
 
-		hs.idx++
+		hs.lastFileIdx++
 		efd.Idx = int64(hs.idx)
+		log.Printf("got new file: %+v\n", efd)
 		hs.watchMap[event.Name] = efd
 
 		// first announce the file
@@ -185,7 +186,6 @@ func (hs HttpSender) eval(event fsnotify.Event) {
 			log.Trace().
 				Str("filename", event.Name).
 				Msg("Monitor - file sent")
-			hs.idx++
 		} else {
 			log.Error().
 				Msg("error sending file")

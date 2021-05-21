@@ -30,7 +30,7 @@ type sender struct {
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
 	ccIo                 int64 // this gets used so may times, it deserves an instance var
-	idx                  int
+	lastFileIdx          int
 }
 
 func (s *sender) genSrcList() error {
@@ -39,7 +39,8 @@ func (s *sender) genSrcList() error {
 	if err != nil {
 		return errors.Wrap(err, "sender - directory parsing failed")
 	}
-	s.idx = len(list)
+	fmt.Println("=============================== seting idx")
+	s.lastFileIdx = len(list)
 
 	// calculate blocksizes for each file
 	for _, fd := range list {
