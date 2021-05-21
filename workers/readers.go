@@ -348,7 +348,6 @@ func (brw *BytesReader) Start() error {
 					dd := lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
 
 					n, err := io.ReadFull(br, buf)
-					fmt.Println("READING")
 					if n == 0 {
 						if err == nil {
 							return errors.New("read 0 bytes")
@@ -356,7 +355,6 @@ func (brw *BytesReader) Start() error {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
-							fmt.Println("EOF")
 							// end of transmission
 							dd.MarkAsLast()
 							nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
@@ -385,7 +383,7 @@ func (brw *BytesReader) Start() error {
 						return errors.Wrap(err, "error sending data")
 					} else {
 						log.Trace().
-							Msgf("bytes reader - %s data sent", brw.myID)
+							Msgf("bytes reader - %d data sent", brw.myID)
 					}
 				}
 			default:

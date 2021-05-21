@@ -40,7 +40,6 @@ func (s *sender) genSrcList() error {
 	if err != nil {
 		return errors.Wrap(err, "sender - directory parsing failed")
 	}
-	fmt.Println("=============================== seting idx")
 	s.lastFileIdx = len(list)
 
 	// calculate blocksizes for each file

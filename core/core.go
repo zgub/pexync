@@ -1,8 +1,6 @@
 package core
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 	"github.com/zgub/pexync/lfs"
 )
@@ -81,8 +79,6 @@ func NewUPD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
 func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	if streams == 0 {
 		panic("new rsq: zero data streams")
-	} else {
-		fmt.Println("NEW RSQ package")
 	}
 	return &Message{
 		SenderID: senderID,

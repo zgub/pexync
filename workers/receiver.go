@@ -421,8 +421,6 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
-	log.Trace().
-		Msg("++++++++++ got new data package")
 	buf, err := decompress(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -439,12 +437,10 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	// write
 	dd, err := lfs.Deserialize(buf.Bytes())
 	fi := dd.FileIndex()
-	fmt.Printf("got data for file at index %d\n", fi)
 
 	if fileWriter, ok := rcw.fileWrittersMap[fi]; ok {
 		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!! found a filewriter")
 		fileWriter.inbox <- core.NewWSQ(dd)
-		fmt.Println("!!!!! data packet sent")
 	} else {
 		//spew.Dump(dd)
 		// new file, new writer

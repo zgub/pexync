@@ -103,12 +103,6 @@ func init() {
 // Execute executes the root command.
 func Execute() error {
 
-	if useCores != 1 {
-		runtime.GOMAXPROCS(useCores)
-		log.Info().
-			Msgf("CPU cores set: %v", useCores)
-	}
-
 	return rootCmd.Execute()
 }
 
@@ -141,5 +135,12 @@ func initConfig() {
 		log.Info().
 			Str("log level", level.String()).
 			Msg("LOG")
+	}
+
+	if useCores != 1 {
+		useCores = viper.GetInt("use_cores")
+		runtime.GOMAXPROCS(useCores)
+		log.Info().
+			Msgf("CPU cores set: %v", useCores)
 	}
 }

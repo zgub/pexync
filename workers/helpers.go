@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -20,7 +19,6 @@ import (
 )
 
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
-	fmt.Println("sending with timeout")
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
 	select {

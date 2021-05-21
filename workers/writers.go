@@ -13,6 +13,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -188,12 +189,13 @@ Loop:
 						Int64("expecting", tmpF.seq).
 						Msg("out of order - caching")
 				}
-				fmt.Printf("+++++++ seq: %d written end\n", seq)
 
 			default:
 				return errors.New("file writer - invalide message type")
 			}
 		case <-time.After(3 * time.Second):
+			tmpF := fw.fileMap[0]
+			spew.Dump(tmpF)
 			fmt.Println("???????????????? timeout 2")
 		}
 	}
