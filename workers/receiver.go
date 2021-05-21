@@ -48,15 +48,8 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 		Msgf("receiver list parser - src file list, length: %d", len(msg.GetList()))
 
 	// store source filelist ina a map for future!!!
-	for i, fd := range msg.GetList() {
+	for _, fd := range msg.GetList() {
 		rc.srcList[fd.Idx] = fd
-		if int64(i) != fd.Idx {
-			// TODO: remove index, redundant information
-			log.Warn().
-				Int("slice index", i).
-				Int64("file index", fd.Idx).
-				Msg("WHOA!!!")
-		}
 	}
 
 	// now compare sender and remote directories
@@ -315,9 +308,27 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
+	case core.ADD:
+		log.Trace().
+			Str("sender UUID", msg.GetUuid().String()).
+			Msg("receiver - ADD message")
+
+		// store the announced file descriptor
+		for _, fd := range msg.GetList() {
+			if _, exists := rc.srcList[fd.Idx]; exists {
+				err := errors.New("file id collision")
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				log.Error().
+					Err(err).
+					Msg("internal server error")
+				return
+			} else {
+				rc.srcList[fd.Idx] = fd
+			}
+		}
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		log.Fatal().
+		log.Error().
 			Err(err).
 			Caller().
 			Msg("internal server error - unknown message")
