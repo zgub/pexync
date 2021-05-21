@@ -39,7 +39,7 @@ func (hs *HttpSender) StartMon() error {
 
 	// add remaining directories
 	for _, fd := range hs.srcList {
-		if fd.IsDir == true {
+		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
 			hs.watchMap[p] = fd
 			hs.watcher.Add(p)
@@ -86,6 +86,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 			// let's ignore errors, too may untested edge cases
 			return
 		}
+		spew.Dump(hs.watchMap)
 		if fd, ok := hs.watchMap[event.Name]; ok {
 			// write event on a known file
 			if fd.FileSize == efd.FileSize {
@@ -108,14 +109,91 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 					// digests are not equal - send changes
 					log.Info().
 						Str("filename", event.Name).
-						Msg("WRITE - file has changed")
-					hs.watchMap[event.Name] = efd
+						Msg("WRITE - file content has changed")
+
+					efd, err := lfs.Scan(event.Name)
+					if err != nil {
+						log.Error().
+							Err(err).
+							Msg("file stat error")
+						// let's ignore errors, too may untested edge cases
+						return
+					}
+					//spew.Dump(efd)
+					// to calculate checksum we need to determine the block size first
+
+					if efd.IsDir == false {
+						efd.SetBlockSize()
+						// beware of empty files
+						if efd.BlockSize == 0 {
+							efd.BlockSize = 700
+						}
+						err = core.AddChecksums(efd)
+						if err != nil {
+							log.Error().
+								Err(err).
+								Msg("Monitor event - failed to calculate checksums")
+							return
+						}
+					}
+					// set the correct file index and state
+					spew.Dump(efd)
+					spew.Dump(fd)
+
+					efd.State = lfs.Diff
+					efd.Idx = fd.Idx
+					// send the changes
+					if efd.IsDir == false && efd.FileSize != 0 {
+						fmt.Println("sending file to roll reader")
+						hs.rrCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
+						fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
+					}
 				}
 			} else {
 				// sizes are different - send changes
 				log.Info().
 					Str("filename", event.Name).
-					Msg("WRITE - file size change")
+					Msg("WRITE - file size changed")
+				efd, err := lfs.Scan(event.Name)
+				if err != nil {
+					log.Error().
+						Err(err).
+						Msg("file stat error")
+					// let's ignore errors, too may untested edge cases
+					return
+				}
+				//spew.Dump(efd)
+				// to calculate checksum we need to determine the block size first
+
+				if efd.IsDir == false {
+					efd.SetBlockSize()
+					// beware of empty files
+					if efd.BlockSize == 0 {
+						efd.BlockSize = 700
+					}
+					err = core.AddChecksums(efd)
+					if err != nil {
+						log.Error().
+							Err(err).
+							Msg("Monitor event - failed to calculate checksums")
+						return
+					}
+				}
+
+				// set the correct file index and state
+				spew.Dump(efd)
+				spew.Dump(fd)
+
+				efd.State = lfs.Diff
+				efd.Idx = fd.Idx
+
+				// send the changes
+				if efd.IsDir == false && efd.FileSize != 0 {
+					fmt.Println("sending file to roll reader")
+					hs.rrCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
+					fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
+				}
+
 			}
 		} else {
 			log.Warn().
@@ -192,7 +270,7 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 				Msg("error sending META data")
 		}
 
-		spew.Dump(efd)
+		//spew.Dump(efd)
 		// send only if the file is not empty or inf it's not a directory, those have been taken care of already
 		// then send the data
 		if efd.IsDir == false && efd.FileSize != 0 {

@@ -309,19 +309,19 @@ func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver ch
 	}
 }
 
-func (w *BytesReader) Start() error {
-	log.Debug().Msgf("bytes reader - %d starting", w.myID)
+func (brw *BytesReader) Start() error {
+	log.Debug().Msgf("bytes reader - %d starting", brw.myID)
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-brw.ctx.Done():
 			log.Debug().
-				Msgf("bytes reader %d - closing, context done", w.myID)
+				Msgf("bytes reader %d - closing, context done", brw.myID)
 			return nil
-		case msg := <-w.inbox:
+		case msg := <-brw.inbox:
 			switch msg.GetFlag() {
 			case core.FIN:
 				log.Debug().
-					Msgf("bytes reader %d - received FIN", w.myID)
+					Msgf("bytes reader %d - received FIN", brw.myID)
 				return nil
 			case core.RSQ:
 
@@ -333,7 +333,7 @@ func (w *BytesReader) Start() error {
 
 				log.Trace().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("bytes reader %d - message received", w.myID)
+					Msgf("bytes reader %d - message received", brw.myID)
 				p := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
 				f, err := os.Open(p)
 				if err != nil {
@@ -360,7 +360,7 @@ func (w *BytesReader) Start() error {
 							// end of transmission
 							dd.MarkAsLast()
 							nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
-							err = sendWithTimeout(nMsg, w.receiver)
+							err = sendWithTimeout(nMsg, brw.receiver)
 							if err != nil {
 								return errors.Wrap(err, "error sending data")
 							}
@@ -379,13 +379,13 @@ func (w *BytesReader) Start() error {
 						Int64("block size", int64(msg.GetFileDesc().BlockSize)).
 						Int64("offset", msg.GetOffset()).
 						Int64("seq", seq).
-						Msgf("bytes reader %d - sending pure data", w.myID)
-					err = sendWithTimeout(nMsg, w.receiver)
+						Msgf("bytes reader %d - sending pure data", brw.myID)
+					err = sendWithTimeout(nMsg, brw.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
 					} else {
 						log.Trace().
-							Msgf("bytes reader - %s data sent")
+							Msgf("bytes reader - %s data sent", brw.myID)
 					}
 				}
 			default:
