@@ -27,6 +27,7 @@
 - [ ] delete ref file
 - [ ] add added dir to monitor watcher
 - [ ] renaming
+- [ ] don't mon send directories
 
 ## NOTODO
 

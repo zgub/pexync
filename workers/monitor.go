@@ -173,30 +173,32 @@ func (hs *HttpSender) eval(event fsnotify.Event) {
 		fdList := []*lfs.FileDesc{efd}
 		msg := core.NewADD(hs.id, fdList)
 
-		// send
-		url := hs.url.String() + "/meta"
-		resp, err := hs.sendJson(url, msg)
-		if err != nil {
-			log.Fatal().
-				Err(err).
-				Msg("error comunicating with server")
+		// send only if the file is not empty or inf it's not a directory, those have been taken care of already
+		if !efd.IsDir || efd.FileSize != 0 {
+			url := hs.url.String() + "/meta"
+			resp, err := hs.sendJson(url, msg)
+			if err != nil {
+				log.Fatal().
+					Err(err).
+					Msg("error comunicating with server")
+			}
+
+			if resp.GetFlag() == core.ACK {
+				log.Trace().
+					Str("filename", event.Name).
+					Msg("Monitor - file sent")
+			} else {
+				log.Error().
+					Msg("error sending file")
+			}
+
+			//spew.Dump(resp)
+
+			// then send the data
+			fmt.Println("sending")
+			hs.brCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
+			fmt.Println("sent")
 		}
-
-		if resp.GetFlag() == core.ACK {
-			log.Trace().
-				Str("filename", event.Name).
-				Msg("Monitor - file sent")
-		} else {
-			log.Error().
-				Msg("error sending file")
-		}
-
-		//spew.Dump(resp)
-
-		// then send the data
-		fmt.Println("sending")
-		hs.brCh <- core.NewRSQ(hs.id, efd, 0, efd.FileSize, 1)
-		fmt.Println("sent")
 	}
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().

@@ -310,6 +310,7 @@ func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver ch
 }
 
 func (w *BytesReader) Start() error {
+	log.Debug().Msgf("bytes reader - %d starting", w.myID)
 	for {
 		select {
 		case <-w.ctx.Done():
@@ -347,6 +348,7 @@ func (w *BytesReader) Start() error {
 					dd := lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
 
 					n, err := io.ReadFull(br, buf)
+					fmt.Println("READING")
 					if n == 0 {
 						if err == nil {
 							return errors.New("read 0 bytes")
@@ -354,6 +356,7 @@ func (w *BytesReader) Start() error {
 							return errors.Wrap(err, "error reading file")
 						}
 						if err == io.EOF {
+							fmt.Println("EOF")
 							// end of transmission
 							dd.MarkAsLast()
 							nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
@@ -380,6 +383,9 @@ func (w *BytesReader) Start() error {
 					err = sendWithTimeout(nMsg, w.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
+					} else {
+						log.Trace().
+							Msgf("bytes reader - %s data sent")
 					}
 				}
 			default:
