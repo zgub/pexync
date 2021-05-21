@@ -33,17 +33,17 @@ const (
 )
 
 type receiver struct {
-	ctx            context.Context
-	state          senderState // not sure if needed, or if I ever implement this
-	senderUUID     uuid.UUID   // same here
-	srcList        map[int64]*lfs.FileDesc
-	writersMap     map[int64]FileWriter
-	fileWriters    *errgroup.Group // writters error group
-	fileWritersMux sync.Mutex
+	ctx             context.Context
+	state           senderState // not sure if needed, or if I ever implement this
+	senderUUID      uuid.UUID   // same here
+	srcList         map[int64]*lfs.FileDesc
+	fileWrittersMap map[int64]*FileWriter
+	fileWritters    *errgroup.Group // writters error group
+	fileWrittersMux sync.Mutex
 }
 
 // parseSenderList parses a file list from sender and updates it with the information from destination
-func (rc receiver) parseSenderList(msg *core.Message) error {
+func (rc *receiver) parseSenderList(msg *core.Message) error {
 	rc.senderUUID = msg.GetID()
 	log.Trace().
 		Str("sender uuid", rc.senderUUID.String()).
@@ -388,7 +388,7 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
+func (rc *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	log.Trace().
 		Msg("++++++++++ got new data package")
 	buf, err := decompress(r.Body)
@@ -456,6 +456,20 @@ func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 			Msg("internal server error")
 		return
 	}
+}
+
+// AddWritter adds a new writter to receiver shared map
+func (rc *receiver) AddWritter(fileIndex int64, w *FileWriter) {
+	rc.fileWrittersMux.Lock()
+	rc.fileWrittersMap[fileIndex] = w
+	rc.fileWrittersMux.Unlock()
+}
+
+// RemWritter removes a writter when the writter finishes its job
+func (rc *receiver) RemWritter(fileIndex int64) {
+	rc.fileWrittersMux.Lock()
+	delete(rc.fileWrittersMap, fileIndex)
+	rc.fileWrittersMux.Unlock()
 }
 
 // LocalSender represents blah balh
