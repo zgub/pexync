@@ -323,6 +323,17 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				return
 			} else {
 				rc.srcList[fd.Idx] = fd
+				fd.State = lfs.Missing
+			}
+			msg.SetFlag(core.ACK)
+			err = respondWithJSON(w, http.StatusOK, msg)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				log.Error().
+					Err(err).
+					Caller().
+					Msg("internal server error")
+				return
 			}
 		}
 	default:
@@ -334,7 +345,7 @@ func (rc *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
+func (rc receiver) processData(w http.ResponseWriter, r *http.Request) {
 	buf, err := decompress(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -568,7 +579,7 @@ func (w *HttpReceiver) Start() error {
 	})
 
 	r.Route("/data", func(r chi.Router) {
-		r.Post("/", w.processRemoteData)
+		r.Post("/", w.processData)
 	})
 
 	address := viper.GetString("bind_address")

@@ -25,7 +25,7 @@ type sender struct {
 	ctx                  context.Context
 	srcDir               string
 	srcList              []*lfs.FileDesc
-	uuid                 uuid.UUID
+	id                   uuid.UUID
 	diffList, missList   []*lfs.FileDesc
 	g                    *errgroup.Group
 	rrCh, brCh, receiver chan *core.Message
@@ -169,12 +169,12 @@ func (s *sender) sendDataToReaders() {
 					limit = fd.FileSize
 				}
 				// data stream count = s.ccIo
-				s.rrCh <- core.NewRSQ(s.uuid, fd, chunk*chunkSize, limit, s.ccIo)
+				s.rrCh <- core.NewRSQ(s.id, fd, chunk*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
 			// data streams count = 1
-			s.rrCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
+			s.rrCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
 		}
 	}
 
@@ -182,7 +182,7 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.missList {
 
 		// data streams count = 1
-		s.brCh <- core.NewRSQ(s.uuid, fd, 0, fd.FileSize, 1)
+		s.brCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
 	}
 }
 
@@ -190,12 +190,12 @@ func (s *sender) stopReaders() {
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
-			s.rrCh <- core.NewFIN(s.uuid)
+			s.rrCh <- core.NewFIN(s.id)
 		}
 	}
 	if len(s.missList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
-			s.brCh <- core.NewFIN(s.uuid)
+			s.brCh <- core.NewFIN(s.id)
 		}
 	}
 }
@@ -206,7 +206,7 @@ type LocalSender struct {
 	sender
 }
 
-func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
+func NewLocalSender(ctx context.Context, senderID uuid.UUID, in <-chan *core.Message, receiver chan *core.Message) *LocalSender {
 	ccIo := viper.GetInt("io_concurrency")
 	log.Debug().
 		Int("ccio", ccIo).
@@ -215,7 +215,7 @@ func NewLocalSender(ctx context.Context, uuid uuid.UUID, in <-chan *core.Message
 		sender: sender{
 			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
-			uuid:     uuid,
+			id:       senderID,
 			receiver: receiver,
 			rrCh:     make(chan *core.Message, ccIo),
 			brCh:     make(chan *core.Message, ccIo),
@@ -232,7 +232,7 @@ func (ls *LocalSender) Start() error {
 	}
 
 	// prepare a message for the receiver
-	msg := core.NewINI(ls.uuid, ls.srcList)
+	msg := core.NewINI(ls.id, ls.srcList)
 
 	log.Debug().
 		Msgf("local sender - source file list, length: %d", len(ls.srcList))
@@ -271,7 +271,7 @@ func (ls *LocalSender) Start() error {
 	}
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = core.NewFIN(ls.uuid)
+	msg = core.NewFIN(ls.id)
 	err = sendWithTimeout(msg, ls.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
@@ -291,7 +291,7 @@ type HttpSender struct {
 }
 
 // NewHttpSender returns a http sender instance, syncOnce set to false makes it stop after all the initial files are synced
-func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSender, error) {
+func NewHttpSender(ctx context.Context, senderID uuid.UUID, syncOnce bool) (*HttpSender, error) {
 
 	// first, prepare http client
 	host := viper.GetString("remote_host")
@@ -337,7 +337,7 @@ func NewHttpSender(ctx context.Context, uuid uuid.UUID, syncOnce bool) (*HttpSen
 		sender: sender{
 			srcDir:   viper.GetString("source"),
 			ctx:      ctx,
-			uuid:     uuid,
+			id:       senderID,
 			receiver: make(chan *core.Message),
 			rrCh:     make(chan *core.Message, ccIo),
 			brCh:     make(chan *core.Message, ccIo),
@@ -355,7 +355,7 @@ func (hs *HttpSender) Start() error {
 	}
 
 	// create a new message for the other side
-	msg := core.NewINI(hs.uuid, hs.srcList)
+	msg := core.NewINI(hs.id, hs.srcList)
 
 	// send
 	url := hs.url.String() + "/meta"
@@ -399,7 +399,7 @@ func (hs *HttpSender) Start() error {
 
 		// don't forget to stop http senders in sync_once mode
 		for i := int64(0); i < 2*hs.ccIo; i++ {
-			hs.receiver <- core.NewFIN(hs.uuid)
+			hs.receiver <- core.NewFIN(hs.id)
 		}
 
 		err = eg.Wait()

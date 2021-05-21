@@ -158,7 +158,7 @@ func (hs *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, er
 	return msg, nil
 }
 
-func (w *HttpSender) sendFileDesc(url string, data []byte) (*core.Message, error) {
+func (w *HttpSender) sendData(url string, data []byte) (*core.Message, error) {
 
 	buf, err := compress(data)
 	if err != nil {
@@ -219,7 +219,7 @@ func (w *HttpSender) dataSender() error {
 			if err != nil {
 				return errors.Wrap(err, "failed to serialize data")
 			}
-			resp, err := w.sendFileDesc(url, data)
+			resp, err := w.sendData(url, data)
 			if err != nil {
 				return errors.Wrap(err, "failed to send data")
 			}
