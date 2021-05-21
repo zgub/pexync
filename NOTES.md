@@ -21,7 +21,7 @@
 - [ ] sender state (reset after aaa)
 - [x] make sure to not send the same file
 - [x] don't use w for workers as w implies writer
-- [ ] monitor
+- [x] monitor
 - [x] core.Message constructor (ccio)
 - [x] delete ref file
 - [ ] add added dir to monitor watcher

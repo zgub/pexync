@@ -241,10 +241,6 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					if err != nil {
 						return nil, errors.Wrapf(err, "%s - unable to modify permissions", p)
 					}
-					//err = os.Chown(p, int(srcFd.Uid), int(srcFd.Gid))
-					//if err != nil {
-					//	return nil, errors.Wrapf(err, "%s - unable to modify ownership", p)
-					//}
 
 					// TODO fix metadata on new empty file
 					srcFd.State = lfs.Skip

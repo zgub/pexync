@@ -161,7 +161,7 @@ Loop:
 							if err == lfs.ErrEOF {
 								err = tmpF.f.Close()
 								if err != nil {
-									errors.Wrap(err, "unable to close file")
+									return errors.Wrap(err, "unable to close file")
 								}
 								log.Debug().
 									Str("file name", dstPath).
@@ -273,7 +273,7 @@ Loop:
 		refName := dstPath + ".ref"
 		err = os.Remove(refName)
 		if err != nil {
-			errors.Wrap(err, "unable to remove reference file")
+			return errors.Wrap(err, "unable to remove reference file")
 		}
 	}
 
