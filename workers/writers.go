@@ -13,7 +13,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -103,6 +102,7 @@ Loop:
 				log.Trace().
 					Int64("offset", offset).
 					Int64("seq", seq).
+					Str("filename", dstPath).
 					Msg("file writer -  msg received")
 
 				// check if we;re already oepend a temp file for the paralel stream
@@ -118,9 +118,9 @@ Loop:
 				dd := msg.GetDataDesc()
 				if seq == tmpF.seq {
 					err := fw.writeToFile(dd)
-					fmt.Printf("+++++++ seq: %d written directly, streams %d\n", seq, fw.streams)
+					fmt.Printf("+++++++ %s seq: %d written directly, streams %d\n", dstPath, seq, fw.streams)
 					if err != nil {
-						fmt.Println("hmmmfn")
+						fmt.Printf("---------------------- ERR %s\n", err.Error())
 						if err == lfs.ErrEOF {
 							// end of chink, close tmp file
 							err = tmpF.f.Close()
@@ -140,7 +140,7 @@ Loop:
 								continue
 							}
 						}
-						fmt.Println("hmfffn 2")
+						fmt.Printf("----------------------------- EER2 %s\n", err.Error())
 						log.Error().
 							Err(err).
 							Msg("error writing file")
@@ -157,7 +157,7 @@ Loop:
 
 					for haveCached() {
 						err = fw.writeToFile(tmpF.dataBuf[tmpF.seq])
-						fmt.Printf("+++++++ seq: %d written from cache\n", seq)
+						fmt.Printf("+++++++ %s seq: %d written from cache\n", dstPath, seq)
 						if err != nil {
 							if err == lfs.ErrEOF {
 								err = tmpF.f.Close()
@@ -193,10 +193,10 @@ Loop:
 			default:
 				return errors.New("file writer - invalide message type")
 			}
-		case <-time.After(3 * time.Second):
-			tmpF := fw.fileMap[0]
-			spew.Dump(tmpF)
-			fmt.Println("???????????????? timeout 2")
+		case <-time.After(2 * time.Second):
+			//tmpF := fw.fileMap[0]
+			//spew.Dump(tmpF)
+			fmt.Printf("???????????????? %s timeout 2 filemap len %d\n", dstPath, len(fw.fileMap))
 		}
 	}
 

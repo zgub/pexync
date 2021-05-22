@@ -37,9 +37,9 @@ type receiver struct {
 	state           senderState // not sure if needed, or if I ever implement this
 	senderUUID      uuid.UUID   // same here
 	srcList         map[int64]*lfs.FileDesc
-	fileWrittersMap map[int64]*FileWriter
-	fileWritters    *errgroup.Group // writters error group
-	fileWrittersMux sync.Mutex
+	fileWritersLMap map[int64]*FileWriter
+	fileWriters     *errgroup.Group // writters error group
+	fileWritersMux  sync.Mutex
 }
 
 // parseSenderList parses a file list from sender and updates it with the information from destination
@@ -438,7 +438,7 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	dd, err := lfs.Deserialize(buf.Bytes())
 	fi := dd.FileIndex()
 
-	if fileWriter, ok := rcw.fileWrittersMap[fi]; ok {
+	if fileWriter, ok := rcw.GetWritter(fi); ok {
 		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!! found a filewriter")
 		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
@@ -463,7 +463,7 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 		// add it to the lookup map
 		rcw.AddWritter(fi, frw)
 		// send a new message
-		rcw.fileWritters.Go(frw.Start)
+		rcw.fileWriters.Go(frw.Start)
 		frw.inbox <- core.NewWSQ(dd)
 	}
 
@@ -489,22 +489,30 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// AddWritter adds a new writter to receiver shared map
+// AddWriter adds a new writter to receiver shared map - mutex safe
 func (rcw *receiver) AddWritter(fileIndex int64, w *FileWriter) {
 	fmt.Printf("++++++++++ adding filewriter for fileindex %d\n", fileIndex)
-	rcw.fileWrittersMux.Lock()
-	rcw.fileWrittersMap[fileIndex] = w
-	rcw.fileWrittersMux.Unlock()
-	fmt.Printf("======= writter stats %+v\n", rcw.fileWrittersMap)
+	rcw.fileWritersMux.Lock()
+	rcw.fileWritersLMap[fileIndex] = w
+	rcw.fileWritersMux.Unlock()
+	fmt.Printf("======= writter stats %+v\n", rcw.fileWritersLMap)
 }
 
-// RemWritter removes a writter when the writter finishes its job
+// RemWriter removes a writter when the writter finishes its job - mutex safe
 func (rcw *receiver) RemWritter(fileIndex int64) {
 	fmt.Printf("----------- removing filewriter for fileindex %d\n", fileIndex)
-	rcw.fileWrittersMux.Lock()
-	delete(rcw.fileWrittersMap, fileIndex)
-	rcw.fileWrittersMux.Unlock()
-	fmt.Printf("======= writter stats %+v\n", rcw.fileWrittersMap)
+	rcw.fileWritersMux.Lock()
+	delete(rcw.fileWritersLMap, fileIndex)
+	rcw.fileWritersMux.Unlock()
+	fmt.Printf("======= writter stats %+v\n", rcw.fileWritersLMap)
+}
+
+// GetFileWriter returns a writter if exists, false otherwise - mutex safe
+func (rcw *receiver) GetWritter(fileIndex int64) (*FileWriter, bool) {
+	rcw.fileWritersMux.Lock()
+	fw, ok := rcw.fileWritersLMap[fileIndex]
+	rcw.fileWritersMux.Unlock()
+	return fw, ok
 }
 
 // LocalSender represents blah balh
@@ -520,8 +528,8 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 			ctx:             ctx,
 			state:           RST,
 			srcList:         make(map[int64]*lfs.FileDesc),
-			fileWrittersMap: make(map[int64]*FileWriter),
-			fileWritters:    new(errgroup.Group),
+			fileWritersLMap: make(map[int64]*FileWriter),
+			fileWriters:     new(errgroup.Group),
 		},
 		inbox:  in,
 		sender: sender,
@@ -536,11 +544,13 @@ func (lrw *LocalReceiver) Start() error {
 		if !finSent {
 			return false
 		}
-		for _, fw := range lrw.fileWrittersMap {
+		lrw.fileWritersMux.Lock()
+		for _, fw := range lrw.fileWritersLMap {
 			if !fw.IsAlive() {
 				return false
 			}
 		}
+		lrw.fileWritersMux.Unlock()
 		return true
 	}
 
@@ -588,7 +598,7 @@ func (lrw *LocalReceiver) Start() error {
 					Int64("data sequence", dd.Seq()).
 					Msg("receiver - data received")
 				fi := dd.FileIndex()
-				if fileWritter, ok := lrw.fileWrittersMap[fi]; ok {
+				if fileWritter, ok := lrw.GetWritter(fi); ok {
 					// new message, already existing writer
 					fileWritter.inbox <- core.NewWSQ(dd)
 				} else {
@@ -610,7 +620,7 @@ func (lrw *LocalReceiver) Start() error {
 					// add it to the lookup map
 					lrw.AddWritter(fi, frw)
 					// send a new message
-					lrw.fileWritters.Go(frw.Start)
+					lrw.fileWriters.Go(frw.Start)
 					frw.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
@@ -624,7 +634,7 @@ func (lrw *LocalReceiver) Start() error {
 		}
 	}
 
-	err := lrw.fileWritters.Wait()
+	err := lrw.fileWriters.Wait()
 	if err != nil {
 		return errors.Wrap(err, "error writing files")
 	}
@@ -644,8 +654,8 @@ func NewHttpReceiver(ctx context.Context) *HttpReceiver {
 			ctx:             ctx,
 			state:           RST,
 			srcList:         make(map[int64]*lfs.FileDesc),
-			fileWrittersMap: make(map[int64]*FileWriter),
-			fileWritters:    new(errgroup.Group),
+			fileWritersLMap: make(map[int64]*FileWriter),
+			fileWriters:     new(errgroup.Group),
 		},
 	}
 }
@@ -686,6 +696,6 @@ func (hrw *HttpReceiver) Start() error {
 		return errors.Wrapf(err, "unable to listen on %s", address)
 	}
 
-	err = hrw.fileWritters.Wait()
+	err = hrw.fileWriters.Wait()
 	return err
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/fsnotify/fsnotify"
@@ -12,6 +13,25 @@ import (
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/lfs"
 )
+
+func (hsw *HttpSender) Lock(path string) {
+	if l, ok := hsw.eventLocks[path]; ok {
+		l.Lock()
+	} else {
+		var l sync.Mutex
+		hsw.eventLocks[path] = &l
+		l.Lock()
+	}
+}
+
+func (hsw *HttpSender) Unlock(path string) error {
+	if l, ok := hsw.eventLocks[path]; ok {
+		l.Unlock()
+	} else {
+		return errors.New("invalid path lock")
+	}
+	return nil
+}
 
 func (hsw *HttpSender) StartMon() error {
 
@@ -28,7 +48,8 @@ func (hsw *HttpSender) StartMon() error {
 	}
 
 	// initialize the watchlist (a map)
-	hsw.watchMap = make(map[string]*lfs.FileDesc)
+	hsw.fileWatchMap = make(map[string]*lfs.FileDesc)
+	hsw.eventLocks = make(map[string]*sync.Mutex)
 
 	// add whole source direcotory
 	p, err := filepath.Abs(hsw.srcDir)
@@ -41,16 +62,15 @@ func (hsw *HttpSender) StartMon() error {
 	for _, fd := range hsw.srcList {
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
-			hsw.watchMap[p] = fd
+			hsw.Watch(p, fd)
 			log.Trace().
 				Str("filename", fd.FileName).
 				Int64("filesize", fd.FileSize).
 				Msg("adding to watchlist")
-			hsw.watcher.Add(p)
 		}
 	}
 
-	spew.Dump(hsw.watchMap)
+	spew.Dump(hsw.fileWatchMap)
 
 	for {
 		select {
@@ -59,7 +79,10 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 
+			// zrusit watchitem a nahradit to lockovanim tu!!!
+			hsw.Lock(event.Name)
 			err := hsw.eval(event)
+			hsw.Unlock(event.Name)
 			if err != nil {
 				return errors.Wrap(err, "failed parsing fs event")
 			}
@@ -73,11 +96,25 @@ func (hsw *HttpSender) StartMon() error {
 	}
 }
 
-func (hsw *HttpSender) Watch(path string) error {
+func (hsw *HttpSender) Watch(path string, fd *lfs.FileDesc) error {
 	log.Debug().
 		Str("path", path).
 		Msg("Monitor - adding to watchlist")
-	return hsw.watcher.Add(path)
+	hsw.fileWatchMapMux.Lock()
+	err := hsw.watcher.Add(path)
+	if err != nil {
+		return err
+	}
+	hsw.fileWatchMap[path] = fd
+	hsw.fileWatchMapMux.Unlock()
+	return nil
+}
+
+func (hsw *HttpSender) IsWatched(path string) (*lfs.FileDesc, bool) {
+	hsw.fileWatchMapMux.Lock()
+	fd, ok := hsw.fileWatchMap[path]
+	hsw.fileWatchMapMux.Unlock()
+	return fd, ok
 }
 
 func (hsw *HttpSender) eval(event fsnotify.Event) error {
@@ -95,7 +132,7 @@ func (hsw *HttpSender) eval(event fsnotify.Event) error {
 			return errors.Wrap(err, "file stat error")
 		}
 
-		if fd, ok := hsw.watchMap[event.Name]; ok {
+		if fd, ok := hsw.IsWatched(event.Name); ok {
 			// write event on a known file
 			if fd.FileSize == efd.FileSize {
 				// size did not change, let's then calculate SHA1 digests
@@ -108,6 +145,7 @@ func (hsw *HttpSender) eval(event fsnotify.Event) error {
 					log.Info().
 						Str("filename", event.Name).
 						Msg("WRITE - file has not changed")
+
 					return nil
 				} else {
 					// digests are not equal - send changes
@@ -149,7 +187,7 @@ func (hsw *HttpSender) eval(event fsnotify.Event) error {
 			if resp.GetFlag() != core.ACK {
 				return errors.New("invalid server response")
 			}
-			spew.Dump(efd)
+			//spew.Dump(efd)
 
 			dstFd := resp.FileDesc
 			if dstFd == nil {
@@ -201,6 +239,13 @@ func (hsw *HttpSender) eval(event fsnotify.Event) error {
 		//spew.Dump(efd)
 		// to calculate checksum we need to determine the block size first
 
+		hsw.lastFileIdx++
+		efd.Idx = int64(hsw.lastFileIdx)
+		err = hsw.Watch(event.Name, efd)
+		if err != nil {
+			return errors.Wrap(err, "failed adding file to watchlist")
+		}
+
 		if efd.IsDir == false {
 			efd.SetBlockSize()
 			// beware of empty files
@@ -212,10 +257,6 @@ func (hsw *HttpSender) eval(event fsnotify.Event) error {
 				return errors.Wrap(err, "failed adding checksum")
 			}
 		}
-
-		hsw.lastFileIdx++
-		efd.Idx = int64(hsw.lastFileIdx)
-		hsw.watchMap[event.Name] = efd
 
 		// first announce the file
 		msg := core.NewADD(hsw.id, efd)

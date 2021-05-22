@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
@@ -283,10 +284,12 @@ func (lsw *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	url      *url.URL
-	client   *http.Client
-	watcher  *fsnotify.Watcher
-	watchMap map[string]*lfs.FileDesc
+	url             *url.URL
+	client          *http.Client
+	watcher         *fsnotify.Watcher
+	fileWatchMap    map[string]*lfs.FileDesc
+	fileWatchMapMux sync.Mutex
+	eventLocks      map[string]*sync.Mutex
 	sender
 }
 
