@@ -84,21 +84,6 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
-				/*
-					sha1sh := sha1.New()
-					p := filepath.Join(fd.Prefix, fd.FileName)
-					mf, err := os.Open(p)
-					if err != nil {
-						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-					}
-					defer mf.Close()
-					r := io.Reader(mf)
-					br := bufio.NewReader(r)
-					_, err = io.Copy(sha1sh, br)
-					if err != nil {
-						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-					}
-				*/
 				rSha1 := fd.Sha1
 				lSha1, err := fd.GetSha1()
 				if err != nil {
@@ -129,7 +114,7 @@ func (s *sender) spawnReaders() {
 	dCtx := context.Context(s.ctx)
 
 	// spawn readers if we have diff files
-	if len(s.diffList) > 0 || !s.syncOnce {
+	if len(s.diffList) > 0 || s.syncOnce == false {
 		log.Debug().
 			Msg("sender - spawning roll readers")
 
@@ -140,7 +125,7 @@ func (s *sender) spawnReaders() {
 	}
 
 	// spawn missing file senders if we have missing files
-	if len(s.missList) > 0 || !s.syncOnce {
+	if len(s.missList) > 0 || !s.syncOnce == false {
 		log.Debug().
 			Int64("io concurrency", s.ccIo).
 			Msg("sender - spawning bytes readers")
@@ -189,14 +174,17 @@ func (s *sender) sendDataToReaders() {
 }
 
 func (s *sender) stopReaders() {
+	fmt.Println("stopping readers")
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
+			fmt.Println("----------------------- sending FIN to roll readers")
 			s.rrCh <- core.NewFIN(s.id)
 		}
 	}
 	if len(s.missList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
+			fmt.Println("----------------------- sending FIN to bytes readers")
 			s.brCh <- core.NewFIN(s.id)
 		}
 	}
@@ -264,6 +252,8 @@ func (lsw *LocalSender) Start() error {
 
 	lsw.stopReaders()
 
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>> sent stop to readers")
+
 	// validate ???
 
 	// end
@@ -271,6 +261,7 @@ func (lsw *LocalSender) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "local sender worker failed")
 	}
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>> want to send FIN")
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
 	msg = core.NewFIN(lsw.id)

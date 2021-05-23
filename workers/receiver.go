@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -544,9 +545,11 @@ func (lrw *LocalReceiver) Start() error {
 		if !finSent {
 			return false
 		}
+		fmt.Println("checking writers")
 		lrw.fileWritersMux.Lock()
 		for _, fw := range lrw.fileWritersLMap {
-			if !fw.IsAlive() {
+			if fw.IsAlive() {
+				fmt.Printf("writer alive, active streams: %d\n", fw.streams)
 				return false
 			}
 		}
@@ -625,12 +628,14 @@ func (lrw *LocalReceiver) Start() error {
 				}
 			case core.FIN:
 				log.Debug().
-					Msg("receiver received FIN")
+					Msg("receiver received FIN, setting finSent == true")
 				finSent = true
 				//break Loop
 			default:
 				return errors.New("unknown message received")
 			}
+		case <-time.After(5 * time.Second):
+			fmt.Println("timeout at local receiver")
 		}
 	}
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -402,6 +403,8 @@ func (brw *BytesReader) Start() error {
 			default:
 				return errors.New("BytesReader unknown message")
 			}
+		case <-time.After(3 * time.Second):
+			fmt.Printf("bytes reader %d - timeout\n", brw.myID)
 		}
 	}
 }
