@@ -325,6 +325,9 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		} else {
+			log.Trace().
+				Str("filename", fd.FileName).
+				Msg("adding to source list")
 			rcw.srcList[fd.Idx] = fd
 			fd.State = lfs.Missing
 			// take care of empty files and directories
@@ -345,7 +348,8 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 						Msg("internal server error")
 					return
 				}
-			} else if fd.FileSize == 0 {
+			}
+			/*else if fd.FileSize == 0 {
 				dstDir := viper.GetString("destination")
 				p := filepath.Join(dstDir, fd.RelPath)
 				log.Trace().
@@ -367,6 +371,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				}
 				f.Close()
 			}
+			*/
 		}
 		msg.SetFlag(core.ACK)
 		err = respondWithJSON(w, http.StatusOK, msg)
@@ -545,6 +550,7 @@ func (lrw *LocalReceiver) Start() error {
 		for _, fw := range lrw.fileWritersLMap {
 			if fw.IsAlive() {
 				fmt.Printf("writer alive, active streams: %d\n", fw.streams)
+				lrw.fileWritersMux.Unlock()
 				return false
 			}
 		}
@@ -552,13 +558,16 @@ func (lrw *LocalReceiver) Start() error {
 		return true
 	}
 
+Loop:
 	for !writtersDone() {
+		//for {
 		select {
 		case <-lrw.ctx.Done():
 			log.Debug().
 				Msg("receiver - closing, context done")
 			// send fin to all readers
-			return errors.New("context done")
+			//return errors.New("context done")
+			break Loop
 		case msg := <-lrw.inbox:
 			// received a message that is not a FIN
 			switch msg.GetFlag() {

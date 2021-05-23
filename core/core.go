@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/lfs"
 )
 
@@ -83,6 +84,10 @@ func NewAsyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams in
 	if streams == 0 {
 		panic("new rsq: zero data streams")
 	}
+	log.Trace().
+		Str("filename", fd.FileName).
+		Int64("file size", fd.FileSize).
+		Msg("Async RSQ REQUEST")
 	return &Message{
 		SenderID: senderID,
 		Flag:     RSQ,

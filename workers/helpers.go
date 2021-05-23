@@ -135,9 +135,11 @@ func (hsw *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, e
 	}
 	defer resp.Body.Close()
 
-	log.Trace().
-		Str("status:", resp.Status).
-		Msg("http response")
+	/*
+		log.Trace().
+			Str("status:", resp.Status).
+			Msg("http response")
+	*/
 
 	if resp.StatusCode != http.StatusOK {
 		err = errors.New(resp.Status)
@@ -181,9 +183,11 @@ func (hsw *HttpSender) sendData(url string, data []byte) (*core.Message, error) 
 	}
 	defer resp.Body.Close()
 
-	log.Trace().
-		Str("status:", resp.Status).
-		Msg("http response")
+	/*
+		log.Trace().
+			Str("status:", resp.Status).
+			Msg("http response")
+	*/
 
 	buf, err = decompress(resp.Body)
 	if err != nil {
@@ -225,8 +229,10 @@ func (hsw *HttpSender) dataSender() error {
 			}
 			switch resp.GetFlag() {
 			case core.ACK:
-				log.Trace().
-					Msg("http client worker - received ack")
+				/*
+					log.Trace().
+						Msg("http client worker - received ack")
+				*/
 			default:
 				log.Error().
 					Msgf("http client worker - receives %s", resp.GetFlag().String())

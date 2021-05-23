@@ -438,6 +438,7 @@ func Scan(path string) (*FileDesc, error) {
 	log.Trace().
 		Str("path", path).
 		Str("prefix path", prefix).
+		Int64("filesize", info.Size()).
 		Bool("is dir", info.IsDir()).
 		Msg("file stat")
 

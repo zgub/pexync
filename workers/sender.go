@@ -73,7 +73,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
-				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
+				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
@@ -81,7 +81,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
-				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
+				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
 				rSha1 := fd.Sha1

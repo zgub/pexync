@@ -1,7 +1,7 @@
 package workers
 
 import (
-	"bytes"
+	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -17,15 +17,24 @@ func (hsw *HttpSender) FileLock(path string) *sync.Mutex {
 		l  *sync.Mutex
 		ok bool
 	)
-	log.Trace().
-		Str("filename", path).
-		Msg("XXXXXXXXXXXXXX LOCK XXXXXXXXXXXXX")
 	if l, ok = hsw.fileLocks[path]; ok {
+		log.Trace().
+			Str("filename", path).
+			Msg("XXXXXXXXXXXXXX EXISTING LOCK XXXXXXXXXXXXX")
 		l.Lock()
+		log.Trace().
+			Str("filename", path).
+			Msg("XXXXXXXXXXXXXX LOCKED XXXXXXXXXXXXX")
 	} else {
 		l = new(sync.Mutex)
 		hsw.fileLocks[path] = l
+		log.Trace().
+			Str("filename", path).
+			Msg("XXXXXXXXXXXXXX NEW LOCK XXXXXXXXXXXXX")
 		l.Lock()
+		log.Trace().
+			Str("filename", path).
+			Msg("XXXXXXXXXXXXXX LOCKED XXXXXXXXXXXXX")
 	}
 	return l
 }
@@ -71,7 +80,7 @@ func (hsw *HttpSender) StartMon() error {
 	for _, fd := range hsw.srcList {
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
-			hsw.Watch(p, fd)
+			hsw.AddToMonList(p, fd)
 			log.Trace().
 				Str("filename", fd.FileName).
 				Int64("filesize", fd.FileSize).
@@ -88,7 +97,9 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 
-			err := hsw.evalEvent(event)
+			fmt.Printf("N E W  *** E V E N T %s for %s\n", event.Op.String(), event.Name)
+			fLock := hsw.FileLock(event.Name)
+			err := hsw.evalEvent(event, fLock)
 
 			if err != nil {
 				return errors.Wrap(err, "failed parsing fs event")
@@ -103,7 +114,7 @@ func (hsw *HttpSender) StartMon() error {
 	}
 }
 
-func (hsw *HttpSender) Watch(path string, fd *lfs.FileDesc) error {
+func (hsw *HttpSender) AddToMonList(path string, fd *lfs.FileDesc) error {
 	log.Debug().
 		Str("path", path).
 		Msg("Monitor - adding to watchlist")
@@ -117,140 +128,29 @@ func (hsw *HttpSender) Watch(path string, fd *lfs.FileDesc) error {
 	return nil
 }
 
-func (hsw *HttpSender) IsWatched(path string) (*lfs.FileDesc, bool) {
+func (hsw *HttpSender) IsKnown(path string) (*lfs.FileDesc, bool) {
 	hsw.fileWatchMapMux.Lock()
 	fd, ok := hsw.fileWatchMap[path]
 	hsw.fileWatchMapMux.Unlock()
 	return fd, ok
 }
 
-func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
+func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error {
 
-	/***************
-	 * Write event *
-	 ***************/
-	if event.Op&fsnotify.Write == fsnotify.Write {
-		fLock := hsw.FileLock(event.Name)
-		log.Info().
-			Str("path", event.Name).
-			Msg("WRITE - event detected - locking")
-
-			// TEST
-
-		// event file descriptor
-		efd, err := lfs.Scan(event.Name)
-		if err != nil {
-			return errors.Wrap(err, "file stat error")
-		}
-
-		if fd, ok := hsw.IsWatched(event.Name); ok {
-			// write event on a known file
-			if fd.FileSize == efd.FileSize {
-				// size did not change, let's then calculate SHA1 digests
-				efd.Sha1, err = efd.GetSha1()
-				if err != nil {
-					return errors.Wrap(err, "failed to calculate SHA1 digets")
-				}
-				if bytes.Equal(efd.Sha1, fd.Sha1) {
-					// digests are equal, ignore
-					log.Info().
-						Str("filename", event.Name).
-						Msg("WRITE - file has not changed")
-
-					// unlock!!!
-					fLock.Unlock()
-					return nil
-				} else {
-					// digests are not equal - send changes
-					log.Info().
-						Str("filename", event.Name).
-						Msg("WRITE - file content has changed")
-				}
-			} else {
-				// sizes are different - send changes
-				log.Debug().
-					Str("filename", event.Name).
-					Int64("old size", fd.FileSize).
-					Int64("new size", efd.FileSize).
-					Msg("WRITE - file size changed")
-			}
-
-			// to calculate checksum we need to determine the block size first
-			if efd.IsDir == false {
-				efd.SetBlockSize()
-				// beware of empty files
-				if efd.BlockSize == 0 {
-					efd.BlockSize = 700
-				}
-			}
-			// set the correct file index and state
-			efd.State = lfs.Diff
-			efd.Idx = fd.Idx
-			efd.Sha1 = fd.Sha1
-
-			// first announce the update
-			msg := core.NewUPD(hsw.id, efd)
-			url := hsw.url.String() + "/meta"
-
-			resp, err := hsw.sendJson(url, msg)
-			if err != nil {
-				return errors.Wrap(err, "failed to communicate with remote")
-			}
-
-			if resp.GetFlag() != core.ACK {
-				return errors.New("invalid server response")
-			}
-			//spew.Dump(efd)
-
-			dstFd := resp.FileDesc
-			if dstFd == nil {
-				panic("invalid response")
-			}
-
-			// send the changes
-			if efd.IsDir == false && efd.FileSize != 0 {
-				hsw.rrCh <- core.NewAsyncRSQ(hsw.id, dstFd, 0, dstFd.FileSize, 1, fLock)
-			}
-		} else {
-			log.Warn().
-				Str("filename", event.Name).
-				Msg("WRITE - event on unknown file, ignoring")
-			return nil
-		}
-
-	}
 	/****************
-	 * Remove event *
-	 ****************/
-	if event.Op&fsnotify.Remove == fsnotify.Remove {
-		log.Info().
-			Str("path", event.Name).
-			Msg("REMOVE - event detected, ignoring")
-	}
-	/***************
-	 * Chmod event *
-	 ***************/
-	if event.Op&fsnotify.Chmod == fsnotify.Chmod {
-		log.Info().
-			Str("path", event.Name).
-			Msg("CHMOD - event detected, ignoring")
-	}
-	/****************
-	 * Cretae event *
+	 * Create event *
 	 ****************/
 	if event.Op&fsnotify.Create == fsnotify.Create {
-		fLock := hsw.FileLock(event.Name)
-
 		log.Info().
 			Str("path", event.Name).
-			Msg("CREATE - event detected - locking")
+			Msg("EVAL CREATE")
 
 		// TEST
 		//return nil
 
 		efd, err := lfs.Scan(event.Name)
 		if err != nil {
-			fLock.Unlock()
+			hsw.FileUnlock(event.Name)
 			return errors.Wrap(err, "file state error")
 		}
 
@@ -259,9 +159,10 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
 		hsw.lastFileIdx++
 		efd.Idx = int64(hsw.lastFileIdx)
-		err = hsw.Watch(event.Name, efd)
+		efd.State = lfs.Missing
+		err = hsw.AddToMonList(event.Name, efd)
 		if err != nil {
-			fLock.Unlock()
+			hsw.FileUnlock(event.Name)
 			return errors.Wrap(err, "failed adding file to watchlist")
 		}
 
@@ -271,14 +172,19 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			if efd.BlockSize == 0 {
 				efd.BlockSize = 700
 			}
-			err = core.AddChecksums(efd)
-			if err != nil {
-				fLock.Unlock()
-				return errors.Wrap(err, "failed adding checksum")
-			}
+			/*
+				err = core.AddChecksums(efd)
+				if err != nil {
+					hsw.FileUnlock(event.Name)
+					return errors.Wrap(err, "failed adding checksum")
+				}
+			*/
 		}
 
-		// first announce the file
+		// first announce the filea
+		log.Trace().
+			Str("filename", efd.FileName).
+			Msg("CREATE**************** sending meta")
 		msg := core.NewADD(hsw.id, efd)
 		url := hsw.url.String() + "/meta"
 
@@ -292,22 +198,141 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if resp.GetFlag() == core.ACK {
 			log.Trace().
 				Str("filename", event.Name).
-				Msg("Monitor - file META sent")
+				Msg("Monitor - CREATE new-file META sent")
 		} else {
-			fLock.Unlock()
+			hsw.FileUnlock(event.Name)
 			return errors.New("invalid response")
 		}
 
-		//spew.Dump(efd)
-		// send only if the file is not empty or inf it's not a directory, those have been taken care of already
-		// then send the data
-		if efd.IsDir == false && efd.FileSize != 0 {
-			hsw.brCh <- core.NewAsyncRSQ(hsw.id, efd, 0, efd.FileSize, 1, fLock)
-		} else {
-			// we did not send the data so we need to unlock the file here
-			fLock.Unlock()
-		}
+		hsw.FileUnlock(event.Name)
+		/*
+			//spew.Dump(efd)
+			// send only if the file is not empty or inf it's not a directory, those have been taken care of already
+			// then send the data
+			if efd.IsDir == false && efd.FileSize != 0 {
+				hsw.brCh <- core.NewAsyncRSQ(hsw.id, efd, 0, efd.FileSize, 1, fLock)
+				log.Trace().
+					Str("filename", event.Name).
+					Str("state", efd.State.String()).
+					Msg("CREATE **************** sent data to async reader")
+			} else {
+				// we did not send the data so we need to unlock the file here
+				fmt.Printf("**************** UNLOCKING empty file %s, fize size: %d\n", event.Name, efd.FileSize)
+				hsw.FileUnlock(event.Name)
+			}
+		*/
+	}
+	/***************
+	 * Write event *
+	 ***************/
+	if event.Op&fsnotify.Write == fsnotify.Write {
+		//
+		log.Info().
+			Str("path", event.Name).
+			Msg("EVAL WRITE")
 
+		hsw.FileUnlock(event.Name)
+
+		/*
+			// event file descriptor
+			efd, err := lfs.Scan(event.Name)
+			if err != nil {
+				return errors.Wrap(err, "file stat error")
+			}
+
+			if fd, ok := hsw.IsKnown(event.Name); ok {
+				// write event on a known file
+				if fd.FileSize == efd.FileSize {
+					// size did not change, let's then calculate SHA1 digests
+					efd.Sha1, err = efd.GetSha1()
+					if err != nil {
+						return errors.Wrap(err, "failed to calculate SHA1 digets")
+					}
+					if bytes.Equal(efd.Sha1, fd.Sha1) {
+						// digests are equal, ignore
+						log.Info().
+							Str("filename", event.Name).
+							Msg("WRITE - file has not changed")
+
+						// unlock!!!
+						fLock.Unlock()
+						return nil
+					} else {
+						// digests are not equal - send changes
+						log.Info().
+							Str("filename", event.Name).
+							Msg("WRITE - file content has changed")
+					}
+				} else {
+					// sizes are different - send changes
+					log.Debug().
+						Str("filename", event.Name).
+						Int64("old size", fd.FileSize).
+						Int64("new size", efd.FileSize).
+						Msg("WRITE - file size changed")
+				}
+
+				// to calculate checksum we need to determine the block size first
+				if efd.IsDir == false {
+					efd.SetBlockSize()
+					// beware of empty files
+					if efd.BlockSize == 0 {
+						efd.BlockSize = 700
+					}
+				}
+				// set the correct file index and state
+				efd.State = lfs.Diff
+				efd.Idx = fd.Idx
+				efd.Sha1 = fd.Sha1
+
+				// first announce the update
+				msg := core.NewUPD(hsw.id, efd)
+				url := hsw.url.String() + "/meta"
+
+				resp, err := hsw.sendJson(url, msg)
+				if err != nil {
+					return errors.Wrap(err, "failed to communicate with remote")
+				}
+
+				if resp.GetFlag() != core.ACK {
+					return errors.New("invalid server response")
+				}
+				//spew.Dump(efd)
+
+				dstFd := resp.FileDesc
+				if dstFd == nil {
+					panic("invalid response")
+				}
+
+				// send the changes
+				if efd.IsDir == false && efd.FileSize != 0 {
+					hsw.rrCh <- core.NewAsyncRSQ(hsw.id, dstFd, 0, dstFd.FileSize, 1, fLock)
+				}
+			} else {
+				log.Warn().
+					Str("filename", event.Name).
+					Msg("WRITE - event on unknown file, ignoring")
+				return nil
+			}
+		*/
+	}
+	/****************
+	 * Remove event *
+	 ****************/
+	if event.Op&fsnotify.Remove == fsnotify.Remove {
+		log.Info().
+			Str("path", event.Name).
+			Msg("EVAL REMOVE - ignoring")
+		hsw.FileUnlock(event.Name)
+	}
+	/***************
+	 * Chmod event *
+	 ***************/
+	if event.Op&fsnotify.Chmod == fsnotify.Chmod {
+		log.Info().
+			Str("path", event.Name).
+			Msg("EVAL CHMOD - ignoring")
+		hsw.FileUnlock(event.Name)
 	}
 	/****************
 	 * Rename event *
@@ -315,7 +340,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 	if event.Op&fsnotify.Rename == fsnotify.Rename {
 		log.Info().
 			Str("path", event.Name).
-			Msg("RENAME - event detected")
+			Msg("EVAL RENAME - TODO")
 	}
 	return nil
 }

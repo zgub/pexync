@@ -58,13 +58,6 @@ func (rrw *RollReader) Start() error {
 					Str("filename", msg.GetFileDesc().FileName).
 					Msgf("roll reader %d - file received", rrw.myID)
 				err := rrw.rollV3(msg)
-				// sigh
-				if msg.FileLock != nil {
-					log.Trace().
-						Str("filename", msg.GetFileDesc().FileName).
-						Msg("XXXXXXXXXXXXXX UNLOCK XXXXXXXXXXXXX")
-					msg.FileLock.Unlock()
-				}
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
 				}
@@ -74,6 +67,13 @@ func (rrw *RollReader) Start() error {
 					Int64("data", rrw.dataCnt).
 					Int64("messages", rrw.msgCnt).
 					Msgf("roll reader %d - stats", rrw.myID)
+					// sigh
+				if msg.FileLock != nil {
+					log.Trace().
+						Str("filename", msg.GetFileDesc().FileName).
+						Msgf("XXXXXXXXXXXXXX ROLL READER %d UNLOCK XXXXXXXXXXXXX", rrw.myID)
+					msg.FileLock.Unlock()
+				}
 			case core.FIN:
 				log.Trace().
 					Msgf("roll reader %d - received FIN", rrw.myID)
@@ -152,12 +152,14 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			// new message
 			dMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
 
-			log.Trace().
-				Str("filename", msg.GetFileDesc().FileName).
-				Int64("datadesc len", int64(dd.Len())).
-				Int64("block size", msg.GetFileDesc().BlockSize).
-				Int64("seq", dd.Seq()).
-				Msgf("roll reader %d - sending data", rrw.myID)
+			/*
+				log.Trace().
+					Str("filename", msg.GetFileDesc().FileName).
+					Int64("datadesc len", int64(dd.Len())).
+					Int64("block size", msg.GetFileDesc().BlockSize).
+					Int64("seq", dd.Seq()).
+					Msgf("roll reader %d - sending data", rrw.myID)
+			*/
 
 			// send
 			err = sendWithTimeout(dMsg, rrw.receiver)
@@ -290,10 +292,10 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 	dMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
 
 	err = sendWithTimeout(dMsg, rrw.receiver)
-	rrw.msgCnt++
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
+	rrw.msgCnt++
 
 	return nil
 }
@@ -379,25 +381,29 @@ func (brw *BytesReader) Start() error {
 						return errors.Wrap(err, "error reading file")
 					}
 					nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
-					log.Trace().
-						Str("filename", msg.GetFileDesc().FileName).
-						Int64("dd len", int64(dd.Len())).
-						Int64("block size", int64(msg.GetFileDesc().BlockSize)).
-						Int64("offset", msg.GetOffset()).
-						Int64("seq", seq).
-						Msgf("bytes reader %d - sending pure data", brw.myID)
+					/*
+						log.Trace().
+							Str("filename", msg.GetFileDesc().FileName).
+							Int64("dd len", int64(dd.Len())).
+							Int64("block size", int64(msg.GetFileDesc().BlockSize)).
+							Int64("offset", msg.GetOffset()).
+							Int64("seq", seq).
+							Msgf("bytes reader %d - sending pure data", brw.myID)
+					*/
 					err = sendWithTimeout(nMsg, brw.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
-					} else {
+					}
+					/*
 						log.Trace().
 							Msgf("bytes reader - %d data sent", brw.myID)
-					}
+					*/
+
 				}
 				if msg.FileLock != nil {
 					log.Trace().
 						Str("filename", msg.GetFileDesc().FileName).
-						Msg("XXXXXXXXXXXXXX UNLOCK XXXXXXXXXXXXX")
+						Msg("XXXXXXXXXXXXXX BYTES READER UNLOCK XXXXXXXXXXXXX")
 					msg.FileLock.Unlock()
 				}
 			default:
