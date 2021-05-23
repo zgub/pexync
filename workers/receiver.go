@@ -440,7 +440,6 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	fi := dd.FileIndex()
 
 	if fileWriter, ok := rcw.GetWritter(fi); ok {
-		fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!! found a filewriter")
 		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
 		//spew.Dump(dd)
@@ -492,20 +491,16 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 
 // AddWriter adds a new writter to receiver shared map - mutex safe
 func (rcw *receiver) AddWritter(fileIndex int64, w *FileWriter) {
-	fmt.Printf("++++++++++ adding filewriter for fileindex %d\n", fileIndex)
 	rcw.fileWritersMux.Lock()
 	rcw.fileWritersLMap[fileIndex] = w
 	rcw.fileWritersMux.Unlock()
-	fmt.Printf("======= writter stats %+v\n", rcw.fileWritersLMap)
 }
 
 // RemWriter removes a writter when the writter finishes its job - mutex safe
 func (rcw *receiver) RemWritter(fileIndex int64) {
-	fmt.Printf("----------- removing filewriter for fileindex %d\n", fileIndex)
 	rcw.fileWritersMux.Lock()
 	delete(rcw.fileWritersLMap, fileIndex)
 	rcw.fileWritersMux.Unlock()
-	fmt.Printf("======= writter stats %+v\n", rcw.fileWritersLMap)
 }
 
 // GetFileWriter returns a writter if exists, false otherwise - mutex safe

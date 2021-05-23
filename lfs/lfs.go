@@ -376,7 +376,6 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		if err != nil {
 			return errors.Wrap(err, "failed to determine relative file path")
 		}
-		//fmt.Printf("filepath.Rel(%s,%s) = %s\n", walkDir, path, relPath)
 		prefix := filepath.Dir(absPath)
 		log.Trace().
 			Int64("file index", idx).

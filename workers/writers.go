@@ -86,7 +86,6 @@ func (fw *FileWriter) Start() error {
 
 Loop:
 	for t := 0; ; t++ {
-		fmt.Printf("***** %d *****\n", t)
 		select {
 		case <-fw.ctx.Done():
 			log.Debug().
@@ -118,9 +117,7 @@ Loop:
 				dd := msg.GetDataDesc()
 				if seq == tmpF.seq {
 					err := fw.writeToFile(dd)
-					fmt.Printf("+++++++ %s seq: %d written directly, streams %d\n", dstPath, seq, fw.streams)
 					if err != nil {
-						fmt.Printf("---------------------- ERR %s\n", err.Error())
 						if err == lfs.ErrEOF {
 							// end of chink, close tmp file
 							err = tmpF.f.Close()
@@ -136,17 +133,14 @@ Loop:
 								fmt.Println("zero streams")
 								break Loop
 							} else {
-								fmt.Println("?????????????? continue")
 								continue
 							}
 						}
-						fmt.Printf("----------------------------- EER2 %s\n", err.Error())
 						log.Error().
 							Err(err).
 							Msg("error writing file")
 						return errors.Wrap(err, "unable to write file")
 					}
-					fmt.Println("------------NOERR------------")
 					// increase the sequence counter
 					tmpF.seq++
 
@@ -157,7 +151,6 @@ Loop:
 
 					for haveCached() {
 						err = fw.writeToFile(tmpF.dataBuf[tmpF.seq])
-						fmt.Printf("+++++++ %s seq: %d written from cache\n", dstPath, seq)
 						if err != nil {
 							if err == lfs.ErrEOF {
 								err = tmpF.f.Close()
@@ -321,7 +314,6 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				fmt.Printf("Seek(%d, io.SeekStart)", v*fw.srcFd.BlockSize)
 				_, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")

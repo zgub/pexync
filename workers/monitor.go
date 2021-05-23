@@ -2,7 +2,6 @@ package workers
 
 import (
 	"bytes"
-	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -89,7 +88,6 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 
-			fmt.Printf(">>>>>>>>>>>>>>>>>>>>> event %s - %s\n", event.Op.String(), event.Name)
 			err := hsw.evalEvent(event)
 
 			if err != nil {
@@ -211,9 +209,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
 			// send the changes
 			if efd.IsDir == false && efd.FileSize != 0 {
-				fmt.Println("sending file to roll reader")
 				hsw.rrCh <- core.NewAsyncRSQ(hsw.id, dstFd, 0, dstFd.FileSize, 1, fLock)
-				fmt.Printf("%s sent, file size: %d\n", efd.FileName, efd.FileSize)
 			}
 		} else {
 			log.Warn().
