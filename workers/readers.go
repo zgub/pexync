@@ -57,6 +57,13 @@ func (rrw *RollReader) Start() error {
 					Str("filename", msg.GetFileDesc().FileName).
 					Msgf("roll reader %d - file received", rrw.myID)
 				err := rrw.rollV3(msg)
+				// sigh
+				if msg.FileLock != nil {
+					log.Trace().
+						Str("filename", msg.GetFileDesc().FileName).
+						Msg("XXXXXXXXXXXXXX UNLOCK XXXXXXXXXXXXX")
+					msg.FileLock.Unlock()
+				}
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
 				}
@@ -385,6 +392,12 @@ func (brw *BytesReader) Start() error {
 						log.Trace().
 							Msgf("bytes reader - %d data sent", brw.myID)
 					}
+				}
+				if msg.FileLock != nil {
+					log.Trace().
+						Str("filename", msg.GetFileDesc().FileName).
+						Msg("XXXXXXXXXXXXXX UNLOCK XXXXXXXXXXXXX")
+					msg.FileLock.Unlock()
 				}
 			default:
 				return errors.New("BytesReader unknown message")
