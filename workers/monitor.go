@@ -1,7 +1,6 @@
 package workers
 
 import (
-	"bytes"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -242,8 +241,8 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 				}
 
 				fmt.Println("received")
-				//dstFd := resp.GetFileDesc()
-				//spew.Dump(dstFd)
+				dstFd := resp.GetFileDesc()
+				spew.Dump(dstFd)
 			}
 			// update the cached state
 			fd = efd
@@ -252,83 +251,84 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 			panic("unknown unmonitored file")
 		}
 
-		hsw.FileUnlock(event.Name)
+		//hsw.FileUnlock(event.Name)
 
-		if fd, ok := hsw.IsKnown(event.Name); ok {
-			// write event on a known file
-			if fd.FileSize == efd.FileSize {
-				// size did not change, let's then calculate SHA1 digests
-				efd.Sha1, err = efd.GetSha1()
-				if err != nil {
-					return errors.Wrap(err, "failed to calculate SHA1 digets")
-				}
-				if bytes.Equal(efd.Sha1, fd.Sha1) {
-					// digests are equal, ignore
-					log.Info().
-						Str("filename", event.Name).
-						Msg("CLOSE WRITE - file has not changed")
+		/*
+			if fd, ok := hsw.IsKnown(event.Name); ok {
+				// write event on a known file
+				if fd.FileSize == efd.FileSize {
+					// size did not change, let's then calculate SHA1 digests
+					efd.Sha1, err = efd.GetSha1()
+					if err != nil {
+						return errors.Wrap(err, "failed to calculate SHA1 digets")
+					}
+					if bytes.Equal(efd.Sha1, fd.Sha1) {
+						// digests are equal, ignore
+						log.Info().
+							Str("filename", event.Name).
+							Msg("CLOSE WRITE - file has not changed")
 
-					// unlock!!!
-					fLock.Unlock()
-					return nil
+						// unlock!!!
+						fLock.Unlock()
+						return nil
+					} else {
+						// digests are not equal - send changes
+						log.Info().
+							Str("filename", event.Name).
+							Msg("CLOSE WRITE - file content has changed")
+					}
 				} else {
-					// digests are not equal - send changes
-					log.Info().
+					// sizes are different - send changes
+					log.Debug().
 						Str("filename", event.Name).
-						Msg("CLOSE WRITE - file content has changed")
+						Int64("old size", fd.FileSize).
+						Int64("new size", efd.FileSize).
+						Msg("CLOSE WRITE - file size changed")
+				}
+
+				// to calculate checksum we need to determine the block size first
+				if efd.IsDir == false {
+					efd.SetBlockSize()
+					// beware of empty files
+					if efd.BlockSize == 0 {
+						efd.BlockSize = 700
+					}
+				}
+				// set the correct file index and state
+				efd.State = lfs.Diff
+				efd.Idx = fd.Idx
+				efd.Sha1 = fd.Sha1
+
+				// first announce the update
+				msg := core.NewUPD(hsw.id, efd)
+				url := hsw.url.String() + "/meta"
+
+				resp, err := hsw.sendJson(url, msg)
+				if err != nil {
+					return errors.Wrap(err, "failed to communicate with remote")
+				}
+
+				if resp.GetFlag() != core.ACK {
+					return errors.New("invalid server response")
+				}
+				//spew.Dump(efd)
+
+				dstFd := resp.FileDesc
+				if dstFd == nil {
+					panic("invalid response")
+				}
+
+				// send the changes
+				if efd.IsDir == false && efd.FileSize != 0 {
+					hsw.rrCh <- core.NewAsyncRSQ(hsw.id, dstFd, 0, dstFd.FileSize, 1, fLock)
 				}
 			} else {
-				// sizes are different - send changes
-				log.Debug().
+				log.Warn().
 					Str("filename", event.Name).
-					Int64("old size", fd.FileSize).
-					Int64("new size", efd.FileSize).
-					Msg("CLOSE WRITE - file size changed")
+					Msg("CLOSE WRITE - event on unknown file, ignoring")
+				return nil
 			}
-
-			// to calculate checksum we need to determine the block size first
-			if efd.IsDir == false {
-				efd.SetBlockSize()
-				// beware of empty files
-				if efd.BlockSize == 0 {
-					efd.BlockSize = 700
-				}
-			}
-			// set the correct file index and state
-			efd.State = lfs.Diff
-			efd.Idx = fd.Idx
-			efd.Sha1 = fd.Sha1
-
-			// first announce the update
-			msg := core.NewUPD(hsw.id, efd)
-			url := hsw.url.String() + "/meta"
-
-			resp, err := hsw.sendJson(url, msg)
-			if err != nil {
-				return errors.Wrap(err, "failed to communicate with remote")
-			}
-
-			if resp.GetFlag() != core.ACK {
-				return errors.New("invalid server response")
-			}
-			//spew.Dump(efd)
-
-			dstFd := resp.FileDesc
-			if dstFd == nil {
-				panic("invalid response")
-			}
-
-			// send the changes
-			if efd.IsDir == false && efd.FileSize != 0 {
-				hsw.rrCh <- core.NewAsyncRSQ(hsw.id, dstFd, 0, dstFd.FileSize, 1, fLock)
-			}
-		} else {
-			log.Warn().
-				Str("filename", event.Name).
-				Msg("CLOSE WRITE - event on unknown file, ignoring")
-			return nil
-		}
-
+		*/
 	}
 	/********************
 	 * Write event *
