@@ -327,6 +327,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Trace().
 				Str("filename", fd.FileName).
+				Int64("file index", fd.Idx).
 				Msg("adding to source list")
 			rcw.srcList[fd.Idx] = fd
 			fd.State = lfs.Missing
@@ -349,29 +350,6 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			/*else if fd.FileSize == 0 {
-				dstDir := viper.GetString("destination")
-				p := filepath.Join(dstDir, fd.RelPath)
-				log.Trace().
-					Str("path", p).
-					Msg("creating empty file")
-				f, err := os.Create(p)
-				err = os.Chmod(p, fd.Mode.Perm())
-				if err != nil {
-					log.Error().
-						Err(err).
-						Msg("failed to modify permissions")
-				}
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					log.Error().
-						Err(err).
-						Msg("internal server error")
-					return
-				}
-				f.Close()
-			}
-			*/
 		}
 		msg.SetFlag(core.ACK)
 		err = respondWithJSON(w, http.StatusOK, msg)
@@ -402,6 +380,11 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		srcFd.BlockSize = fd.BlockSize
 		srcFd.FileSize = fd.FileSize
 		srcFd.State = lfs.Diff
+		fmt.Println("old hash list")
+		//spew.Dump(srcFd.Weak)
+		core.AddChecksums(srcFd)
+		fmt.Println("new hash list")
+		//spew.Dump(srcFd.Weak)
 
 		// send updated fd, with hashMap
 		msg.SetFlag(core.ACK)

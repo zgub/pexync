@@ -10,12 +10,13 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/fsnotify/fsnotify"
+	//"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
+	"github.com/zgub/pexync/fsnotify"
 	"github.com/zgub/pexync/lfs"
 	"golang.org/x/sync/errgroup"
 )
