@@ -8,13 +8,15 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sync"
 
-	"github.com/fsnotify/fsnotify"
+	//"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
+	"github.com/zgub/pexync/fsnotify"
 	"github.com/zgub/pexync/lfs"
 	"golang.org/x/sync/errgroup"
 )
@@ -40,7 +42,6 @@ func (s *sender) genSrcList() error {
 	if err != nil {
 		return errors.Wrap(err, "sender - directory parsing failed")
 	}
-	fmt.Println("=============================== seting idx")
 	s.lastFileIdx = len(list)
 
 	// calculate blocksizes for each file
@@ -73,7 +74,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
-				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
+				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			miss = append(miss, fd)
 		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
@@ -81,24 +82,9 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
-				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
+				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
 				Msgf("sender %s", fd.State.String())
 			if fd.State == lfs.Meta {
-				/*
-					sha1sh := sha1.New()
-					p := filepath.Join(fd.Prefix, fd.FileName)
-					mf, err := os.Open(p)
-					if err != nil {
-						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-					}
-					defer mf.Close()
-					r := io.Reader(mf)
-					br := bufio.NewReader(r)
-					_, err = io.Copy(sha1sh, br)
-					if err != nil {
-						return errors.Wrapf(err, "unable to read file: %s", filepath.FromSlash(fd.Prefix+"/"+fd.FileName))
-					}
-				*/
 				rSha1 := fd.Sha1
 				lSha1, err := fd.GetSha1()
 				if err != nil {
@@ -129,25 +115,25 @@ func (s *sender) spawnReaders() {
 	dCtx := context.Context(s.ctx)
 
 	// spawn readers if we have diff files
-	if len(s.diffList) > 0 || !s.syncOnce {
+	if len(s.diffList) > 0 || s.syncOnce == false {
 		log.Debug().
 			Msg("sender - spawning roll readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
-			rr := NewRollReader(dCtx, s.rrCh, s.receiver)
-			s.g.Go(rr.Start)
+			rrw := NewRollReader(dCtx, s.rrCh, s.receiver)
+			s.g.Go(rrw.Start)
 		}
 	}
 
 	// spawn missing file senders if we have missing files
-	if len(s.missList) > 0 || !s.syncOnce {
+	if len(s.missList) > 0 || !s.syncOnce == false {
 		log.Debug().
 			Int64("io concurrency", s.ccIo).
 			Msg("sender - spawning bytes readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
-			br := NewBytesReader(dCtx, s.brCh, s.receiver)
-			s.g.Go(br.Start)
+			brw := NewBytesReader(dCtx, s.brCh, s.receiver)
+			s.g.Go(brw.Start)
 		}
 	}
 }
@@ -171,12 +157,12 @@ func (s *sender) sendDataToReaders() {
 					limit = fd.FileSize
 				}
 				// data stream count = s.ccIo
-				s.rrCh <- core.NewRSQ(s.id, fd, chunk*chunkSize, limit, s.ccIo)
+				s.rrCh <- core.NewSyncRSQ(s.id, fd, chunk*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
 			// data streams count = 1
-			s.rrCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
+			s.rrCh <- core.NewSyncRSQ(s.id, fd, 0, fd.FileSize, 1)
 		}
 	}
 
@@ -184,19 +170,22 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.missList {
 
 		// data streams count = 1
-		s.brCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
+		s.brCh <- core.NewSyncRSQ(s.id, fd, 0, fd.FileSize, 1)
 	}
 }
 
 func (s *sender) stopReaders() {
+	fmt.Println("stopping readers")
 	// all data sent, stop zee workerz
 	if len(s.diffList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
+			fmt.Println("----------------------- sending FIN to roll readers")
 			s.rrCh <- core.NewFIN(s.id)
 		}
 	}
 	if len(s.missList) > 0 {
 		for i := int64(0); i < s.ccIo; i++ {
+			fmt.Println("----------------------- sending FIN to bytes readers")
 			s.brCh <- core.NewFIN(s.id)
 		}
 	}
@@ -227,54 +216,57 @@ func NewLocalSender(ctx context.Context, senderID uuid.UUID, in <-chan *core.Mes
 	}
 }
 
-func (ls *LocalSender) Start() error {
+func (lsw *LocalSender) Start() error {
 
-	if err := ls.genSrcList(); err != nil {
+	if err := lsw.genSrcList(); err != nil {
 		return err
 	}
 
 	// prepare a message for the receiver
-	msg := core.NewINI(ls.id, ls.srcList)
+	msg := core.NewINI(lsw.id, lsw.srcList)
 
 	log.Debug().
-		Msgf("local sender - source file list, length: %d", len(ls.srcList))
+		Msgf("local sender - source file list, length: %d", len(lsw.srcList))
 
-	err := sendWithTimeout(msg, ls.receiver)
+	err := sendWithTimeout(msg, lsw.receiver)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// receive the filelist with checksums
-	msg, err = recvWithTimeout(ls.inbox)
+	msg, err = recvWithTimeout(lsw.inbox)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
-	err = ls.parseRemoteList(msg)
+	err = lsw.parseRemoteList(msg)
 	if err != nil {
 		return errors.Wrap(err, "failed parsong remote file listing")
 	}
 
 	// prepare for transfer
-	ls.g = new(errgroup.Group)
+	lsw.g = new(errgroup.Group)
 
-	ls.spawnReaders()
+	lsw.spawnReaders()
 
-	ls.sendDataToReaders()
+	lsw.sendDataToReaders()
 
-	ls.stopReaders()
+	lsw.stopReaders()
+
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>> sent stop to readers")
 
 	// validate ???
 
 	// end
-	err = ls.g.Wait()
+	err = lsw.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "local sender worker failed")
 	}
+	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>> want to send FIN")
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
-	msg = core.NewFIN(ls.id)
-	err = sendWithTimeout(msg, ls.receiver)
+	msg = core.NewFIN(lsw.id)
+	err = sendWithTimeout(msg, lsw.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
@@ -284,10 +276,12 @@ func (ls *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	url      *url.URL
-	client   *http.Client
-	watcher  *fsnotify.Watcher
-	watchMap map[string]*lfs.FileDesc
+	url             *url.URL
+	client          *http.Client
+	watcher         *fsnotify.Watcher
+	fileWatchMap    map[string]*lfs.FileDesc
+	fileWatchMapMux sync.Mutex
+	fileLocks       map[string]*sync.Mutex
 	sender
 }
 
@@ -349,58 +343,58 @@ func NewHttpSender(ctx context.Context, senderID uuid.UUID, syncOnce bool) (*Htt
 	return s, nil
 }
 
-func (hs *HttpSender) Start() error {
+func (hsw *HttpSender) Start() error {
 
-	if err := hs.genSrcList(); err != nil {
+	if err := hsw.genSrcList(); err != nil {
 		return err
 	}
 
 	// create a new message for the other side
-	msg := core.NewINI(hs.id, hs.srcList)
+	msg := core.NewINI(hsw.id, hsw.srcList)
 
 	// send
-	url := hs.url.String() + "/meta"
-	resp, err := hs.sendJson(url, msg)
+	url := hsw.url.String() + "/meta"
+	resp, err := hsw.sendJson(url, msg)
 	if err != nil {
 		log.Fatal().
 			Err(err).
 			Msg("error comunicating with server")
 	}
 
-	err = hs.parseRemoteList(resp)
+	err = hsw.parseRemoteList(resp)
 	if err != nil {
 		return errors.Wrap(err, "local sender")
 	}
 
 	// one errorgroup for readers and data senders
-	hs.g = new(errgroup.Group)
+	hsw.g = new(errgroup.Group)
 
 	// another, independent one, just for http senders
 	eg := new(errgroup.Group)
 
 	// starting http senders
-	for i := int64(0); i < 2*hs.ccIo; i++ {
+	for i := int64(0); i < 2*hsw.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		eg.Go(hs.dataSender)
+		eg.Go(hsw.dataSender)
 	}
 
-	hs.spawnReaders()
+	hsw.spawnReaders()
 
-	hs.sendDataToReaders()
+	hsw.sendDataToReaders()
 
 	// stop the readers if in sync once mode
-	if hs.syncOnce {
-		hs.stopReaders()
+	if hsw.syncOnce {
+		hsw.stopReaders()
 
-		err = hs.g.Wait()
+		err = hsw.g.Wait()
 		if err != nil {
 			return errors.Wrap(err, "http sender worker failed")
 		}
 
 		// don't forget to stop http senders in sync_once mode
-		for i := int64(0); i < 2*hs.ccIo; i++ {
-			hs.receiver <- core.NewFIN(hs.id)
+		for i := int64(0); i < 2*hsw.ccIo; i++ {
+			hsw.receiver <- core.NewFIN(hsw.id)
 		}
 
 		err = eg.Wait()

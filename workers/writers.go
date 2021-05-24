@@ -58,7 +58,7 @@ func NewFileWriter(ctx context.Context, uuid uuid.UUID, streams int64, fd *lfs.F
 	}
 }
 
-func (fw FileWriter) Start() error {
+func (fw *FileWriter) Start() error {
 	var err error
 
 	dstDir := viper.GetString("destination")
@@ -86,7 +86,6 @@ func (fw FileWriter) Start() error {
 
 Loop:
 	for t := 0; ; t++ {
-		fmt.Printf("***** %d *****\n", t)
 		select {
 		case <-fw.ctx.Done():
 			log.Debug().
@@ -102,6 +101,7 @@ Loop:
 				log.Trace().
 					Int64("offset", offset).
 					Int64("seq", seq).
+					Str("filename", dstPath).
 					Msg("file writer -  msg received")
 
 				// check if we;re already oepend a temp file for the paralel stream
@@ -117,9 +117,7 @@ Loop:
 				dd := msg.GetDataDesc()
 				if seq == tmpF.seq {
 					err := fw.writeToFile(dd)
-					fmt.Printf("+++++++ seq: %d written directly, streams %d\n", seq, fw.streams)
 					if err != nil {
-						fmt.Println("hmmmfn")
 						if err == lfs.ErrEOF {
 							// end of chink, close tmp file
 							err = tmpF.f.Close()
@@ -135,17 +133,14 @@ Loop:
 								fmt.Println("zero streams")
 								break Loop
 							} else {
-								fmt.Println("?????????????? continue")
 								continue
 							}
 						}
-						fmt.Println("hmfffn 2")
 						log.Error().
 							Err(err).
 							Msg("error writing file")
 						return errors.Wrap(err, "unable to write file")
 					}
-					fmt.Println("------------NOERR------------")
 					// increase the sequence counter
 					tmpF.seq++
 
@@ -156,12 +151,11 @@ Loop:
 
 					for haveCached() {
 						err = fw.writeToFile(tmpF.dataBuf[tmpF.seq])
-						fmt.Printf("+++++++ seq: %d written from cache\n", seq)
 						if err != nil {
 							if err == lfs.ErrEOF {
 								err = tmpF.f.Close()
 								if err != nil {
-									errors.Wrap(err, "unable to close file")
+									return errors.Wrap(err, "unable to close file")
 								}
 								log.Debug().
 									Str("file name", dstPath).
@@ -188,13 +182,14 @@ Loop:
 						Int64("expecting", tmpF.seq).
 						Msg("out of order - caching")
 				}
-				fmt.Printf("+++++++ seq: %d written end\n", seq)
 
 			default:
 				return errors.New("file writer - invalide message type")
 			}
-		case <-time.After(3 * time.Second):
-			fmt.Println("???????????????? timeout 2")
+		case <-time.After(2 * time.Second):
+			//tmpF := fw.fileMap[0]
+			//spew.Dump(tmpF)
+			fmt.Printf("???????????????? %s timeout 2 filemap len %d\n", dstPath, len(fw.fileMap))
 		}
 	}
 
@@ -273,7 +268,7 @@ Loop:
 		refName := dstPath + ".ref"
 		err = os.Remove(refName)
 		if err != nil {
-			errors.Wrap(err, "unable to remove reference file")
+			return errors.Wrap(err, "unable to remove reference file")
 		}
 	}
 
@@ -319,7 +314,6 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 				return errors.Wrap(err, "error reading data")
 			}
 			for _, v := range hIndex {
-				fmt.Printf("Seek(%d, io.SeekStart)", v*fw.srcFd.BlockSize)
 				_, err := fw.ref.Seek(v*fw.srcFd.BlockSize, io.SeekStart)
 				if err != nil {
 					return errors.Wrap(err, "failed to seek")
@@ -347,7 +341,7 @@ func (fw *FileWriter) writeToFile(dd *lfs.DataDesc) error {
 	return nil
 }
 
-func (fw FileWriter) newTempFile(offset int64) error {
+func (fw *FileWriter) newTempFile(offset int64) error {
 	dstDir := viper.GetString("destination")
 	tmpF, err := ioutil.TempFile(dstDir, fw.srcFd.RelPath+".*."+fw.senderID.String())
 	if err != nil {
@@ -369,7 +363,7 @@ func (fw FileWriter) newTempFile(offset int64) error {
 	return nil
 }
 
-func (fw FileWriter) IsAlive() bool {
+func (fw *FileWriter) IsAlive() bool {
 	if fw.streams == 0 {
 		return false
 	}

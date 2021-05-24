@@ -8,31 +8,31 @@
 - [x] test the checksums
 - [x] test various readers with paralelism
 - [x] decide when use single file send, single goroutine send, multiple goroutine send
-- [ ] receiver should stop all go routines at RST
 - [x] do not create cfg file automaticaly, add a command **confgen**
-- [ ] permissions / ownership / sha1 receiver comparison
+- [x] permissions / ownership / sha1 receiver comparison
 - [x] missing file sender
 - [ ] multicore
-- [ ] remove unnecessary pointers
-- [ ] change only meta if only meta was changed add **META** flag!!!
+- [x] remove unnecessary pointers
+- [X] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
 - [x] switch local / remote
 - [ ] fail when remote host is not specified
 - [ ] tests!
 - [ ] sender state (reset after aaa)
 - [x] make sure to not send the same file
-- [ ] don't use w for workers as w implies writer
-- [ ] monitor
+- [x] don't use w for workers as w implies writer
+- [x] monitor
 - [x] core.Message constructor (ccio)
-- [ ] delete ref file
+- [x] delete ref file
 - [ ] add added dir to monitor watcher
 - [ ] renaming
 - [x] don't mon send directories
 - [ ] add log destination switch
-- [ ] check for return errors missing return
+- [x] check for return errors missing return
 
 ## NOTODO
 
+- [ ] receiver should stop all go routines at RST
 - [ ] proto checksums?
 - [ ] struct padding adjustment
 - [ ] validation at transfer end

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -16,7 +17,6 @@ import (
 
 func main() {
 
-	//runtime.GOMAXPROCS(12)
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("PXS")
 	replacer := strings.NewReplacer(".", "_")
@@ -27,7 +27,17 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	// TODO #1
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	logFile, err := ioutil.TempFile(".", "PeXync.*.log")
+	if err != nil {
+		// Can we log an error before we have our logger? :)
+		log.Error().Err(err).Msg("there was an error creating a temporary file four our log")
+	}
+	defer logFile.Close()
+	//log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	consoleWriter := zerolog.ConsoleWriter{Out: os.Stdout}
+	multi := zerolog.MultiLevelWriter(consoleWriter, logFile)
+	log.Logger = log.Output(multi)
+	//logger := zerolog.New(multi).With().Timestamp().Logger()
 
 	log.Info().
 		Str("version", cmd.Version).

@@ -1,9 +1,10 @@
 package core
 
 import (
-	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/lfs"
 )
 
@@ -51,6 +52,7 @@ type Message struct {
 	FileList               []*lfs.FileDesc // meta data
 	FileDesc               *lfs.FileDesc   // meta data
 	DataDesc               *lfs.DataDesc   // binary (actual) data
+	FileLock               *sync.Mutex
 }
 
 func NewINI(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
@@ -78,11 +80,28 @@ func NewUPD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
 
 }
 
-func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
+func NewAsyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64, fLock *sync.Mutex) *Message {
 	if streams == 0 {
 		panic("new rsq: zero data streams")
-	} else {
-		fmt.Println("NEW RSQ package")
+	}
+	log.Trace().
+		Str("filename", fd.FileName).
+		Int64("file size", fd.FileSize).
+		Msg("Async RSQ REQUEST")
+	return &Message{
+		SenderID: senderID,
+		Flag:     RSQ,
+		Offset:   offset,
+		Limit:    limit,
+		Streams:  streams,
+		FileDesc: fd,
+		FileLock: fLock,
+	}
+}
+
+func NewSyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
+	if streams == 0 {
+		panic("new rsq: zero data streams")
 	}
 	return &Message{
 		SenderID: senderID,

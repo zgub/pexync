@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -296,6 +297,8 @@ func (fd *FileDesc) SetBlockSize() {
 		// stolen from rsync doc :)
 		sqrt := math.Sqrt(float64(fd.FileSize))
 		fd.BlockSize = int64(math.Round(sqrt))
+		// way too late
+		fmt.Printf("================== file size: %d sqrt: %f block size: %d\n", fd.FileSize, sqrt, fd.BlockSize)
 		if fd.BlockSize > 131072 {
 			fd.BlockSize = 131072
 		}
@@ -303,6 +306,10 @@ func (fd *FileDesc) SetBlockSize() {
 
 	if fd.FileSize < 700 {
 		fd.BlockSize = int64(fd.FileSize)
+	}
+
+	if fd.BlockSize == 0 {
+		fd.BlockSize = 700
 	}
 }
 
@@ -376,7 +383,6 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 		if err != nil {
 			return errors.Wrap(err, "failed to determine relative file path")
 		}
-		//fmt.Printf("filepath.Rel(%s,%s) = %s\n", walkDir, path, relPath)
 		prefix := filepath.Dir(absPath)
 		log.Trace().
 			Int64("file index", idx).
@@ -420,7 +426,7 @@ func Scan(path string) (*FileDesc, error) {
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unabel to stat file: %s", path)
+		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
 	}
 
 	srcPath := viper.GetString("source")
@@ -439,8 +445,10 @@ func Scan(path string) (*FileDesc, error) {
 	log.Trace().
 		Str("path", path).
 		Str("prefix path", prefix).
+		Int64("filesize", info.Size()).
 		Bool("is dir", info.IsDir()).
-		Msg("file stat")
+		Time("mode", info.ModTime()).
+		Msg("SCAN - file stat")
 
 	fd := &FileDesc{
 		IsDir:    info.IsDir(),
@@ -453,5 +461,10 @@ func Scan(path string) (*FileDesc, error) {
 		//Uid: stat.Uid,
 		//Gid: stat.Gid.
 	}
+
+	if fd.IsDir == false {
+		fd.SetBlockSize()
+	}
+
 	return fd, nil
 }

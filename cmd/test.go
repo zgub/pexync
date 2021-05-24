@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/rs/zerolog/log"
@@ -65,6 +66,23 @@ func testTasks() {
 				Msg("failed to create files")
 		}
 		spew.Dump(hitList)
+	case "LS":
+		srcF, err := test.CreateTestFile("testfiles", "", 700, 5, test.AABBCC)
+		if err != nil {
+			log.Fatal().Msgf("failed to create a test file %s", err.Error())
+		}
+
+		dstF, err := test.CreateTestFile("Xync", "", 700, 3, test.AACCEE)
+		if err != nil {
+			log.Fatal().Msgf("failed to create a test file %s", err.Error())
+		}
+
+		srcF = filepath.Base(srcF)
+		dstF = filepath.Base(dstF)
+		log.Info().Msgf("old: Xync/%s new: Xync/%s", dstF, srcF)
+		if err = os.Rename(filepath.Join("Xync", dstF), filepath.Join("Xync", srcF)); err != nil {
+			log.Fatal().Msgf("failed to rename file %s", err.Error())
+		}
 	default:
 		log.Fatal().
 			Msg("unknown scenario")
