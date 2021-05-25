@@ -29,6 +29,8 @@
 - [x] don't mon send directories
 - [ ] add log destination switch
 - [x] check for return errors missing return
+- [ ] delete of monitored directories
+- [ ] check if truncate causes IN_CLOSE_WRITE
 
 ## NOTODO
 
