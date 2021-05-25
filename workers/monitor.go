@@ -3,7 +3,6 @@ package workers
 import (
 	"fmt"
 	"path/filepath"
-	"sync"
 
 	//"github.com/fsnotify/fsnotify"
 	"github.com/davecgh/go-spew/spew"
@@ -13,45 +12,6 @@ import (
 	"github.com/zgub/pexync/fsnotify"
 	"github.com/zgub/pexync/lfs"
 )
-
-func (hsw *HttpSender) FileLock(path string) *sync.Mutex {
-	var (
-		l  *sync.Mutex
-		ok bool
-	)
-	if l, ok = hsw.fileLocks[path]; ok {
-		log.Trace().
-			Str("filename", path).
-			Msg("XXXXXXXXXXXXXX EXISTING LOCK XXXXXXXXXXXXX")
-		l.Lock()
-		log.Trace().
-			Str("filename", path).
-			Msg("XXXXXXXXXXXXXX LOCKED XXXXXXXXXXXXX")
-	} else {
-		l = new(sync.Mutex)
-		hsw.fileLocks[path] = l
-		log.Trace().
-			Str("filename", path).
-			Msg("XXXXXXXXXXXXXX NEW LOCK XXXXXXXXXXXXX")
-		l.Lock()
-		log.Trace().
-			Str("filename", path).
-			Msg("XXXXXXXXXXXXXX LOCKED XXXXXXXXXXXXX")
-	}
-	return l
-}
-
-func (hsw *HttpSender) FileUnlock(path string) error {
-	log.Trace().
-		Str("filename", path).
-		Msg("XXXXXXXXXXXXXX UNLOCK XXXXXXXXXXXXX")
-	if l, ok := hsw.fileLocks[path]; ok {
-		l.Unlock()
-	} else {
-		return errors.New("invalid path lock")
-	}
-	return nil
-}
 
 func (hsw *HttpSender) StartMon() error {
 
@@ -69,7 +29,6 @@ func (hsw *HttpSender) StartMon() error {
 
 	// initialize the watchlist (a map)
 	hsw.fileWatchMap = make(map[string]*lfs.FileDesc)
-	hsw.fileLocks = make(map[string]*sync.Mutex)
 
 	// add whole source direcotory
 	p, err := filepath.Abs(hsw.srcDir)
@@ -100,8 +59,7 @@ func (hsw *HttpSender) StartMon() error {
 			}
 
 			fmt.Printf("N E W  *** E V E N T %s for %s\n", event.Op.String(), event.Name)
-			fLock := hsw.FileLock(event.Name)
-			err := hsw.evalEvent(event, fLock)
+			err := hsw.evalEvent(event)
 
 			if err != nil {
 				return errors.Wrap(err, "failed parsing fs event")
@@ -143,7 +101,7 @@ func (hsw *HttpSender) IsKnown(path string) (*lfs.FileDesc, bool) {
 	return fd, ok
 }
 
-func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error {
+func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
 	/****************
 	 * Create event *
@@ -158,7 +116,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 
 		efd, err := lfs.Scan(event.Name)
 		if err != nil {
-			hsw.FileUnlock(event.Name)
 			return errors.Wrap(err, "file state error")
 		}
 
@@ -171,7 +128,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 		// adding to know files
 		err = hsw.AddToMonList(event.Name, efd)
 		if err != nil {
-			hsw.FileUnlock(event.Name)
 			return errors.Wrap(err, "failed adding file to watchlist")
 		}
 
@@ -195,11 +151,9 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 				Str("filename", event.Name).
 				Msg("Monitor - CREATE new-file META sent")
 		} else {
-			hsw.FileUnlock(event.Name)
 			return errors.New("invalid response")
 		}
 
-		hsw.FileUnlock(event.Name)
 	}
 	/**********************
 	 * Close  Write event *
@@ -337,7 +291,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL WRITE - ignoring")
-		hsw.FileUnlock(event.Name)
 	}
 	/****************
 	 * Remove event *
@@ -346,7 +299,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL REMOVE - ignoring")
-		hsw.FileUnlock(event.Name)
 	}
 	/***************
 	 * Chmod event *
@@ -355,7 +307,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event, fLock *sync.Mutex) error 
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL CHMOD - ignoring")
-		hsw.FileUnlock(event.Name)
 	}
 	/****************
 	 * Rename event *

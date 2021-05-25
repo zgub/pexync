@@ -281,7 +281,6 @@ type HttpSender struct {
 	watcher         *fsnotify.Watcher
 	fileWatchMap    map[string]*lfs.FileDesc
 	fileWatchMapMux sync.Mutex
-	fileLocks       map[string]*sync.Mutex
 	sender
 }
 
