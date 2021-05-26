@@ -28,24 +28,6 @@ const (
 	Skip                     // file exists and matches
 )
 
-type MonitorState int16
-
-const (
-	Created MonitorState = iota
-	Changed
-	Reading
-	Sent
-)
-
-var fileMnStates = [...]string{
-	"CREATED",
-	"CHANGED",
-	"READING",
-	"SENT",
-}
-
-var ErrEOF = errors.New("end of file transmission")
-
 var fileSyncState = [...]string{
 	"MISS",
 	"DIFF",
@@ -55,6 +37,26 @@ var fileSyncState = [...]string{
 
 func (s SyncState) String() string {
 	return fileSyncState[s]
+}
+
+type MonitorState int16
+
+const (
+	Created MonitorState = iota
+	Changed
+	Reading
+	Sent
+)
+
+var fileMonStates = [...]string{
+	"CREATED",
+	"CHANGED",
+	"READING",
+	"SENT",
+}
+
+func (s MonitorState) String() string {
+	return fileMonStates[s]
 }
 
 type Flag int16
@@ -76,6 +78,8 @@ var headerFlags = [...]string{
 func (f Flag) String() string {
 	return headerFlags[f]
 }
+
+var ErrEOF = errors.New("end of file transmission")
 
 const (
 	HeaderSize = 42
