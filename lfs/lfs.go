@@ -44,9 +44,10 @@ func (s SyncState) String() string {
 type Flag int16
 
 const (
-	Data  Flag = iota // Data header
-	Index             // index header
-	End               // end header
+	Data      Flag = iota // Data header
+	Index                 // index header
+	Interrupt             // inerrupt header
+	End                   // end header
 )
 
 var headerFlags = [...]string{
