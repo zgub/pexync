@@ -70,21 +70,21 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
 	for _, fd := range msg.GetList() {
-		if fd.State == lfs.Missing && fd.IsDir == false {
+		if fd.SyncState == lfs.Missing && fd.IsDir == false {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
-				Msgf("sender %s", fd.State.String())
+				Msgf("sender %s", fd.SyncState.String())
 			miss = append(miss, fd)
-		} else if fd.State == lfs.Diff || fd.State == lfs.Meta {
+		} else if fd.SyncState == lfs.Diff || fd.SyncState == lfs.Meta {
 			// diff file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
-				Msgf("sender %s", fd.State.String())
-			if fd.State == lfs.Meta {
+				Msgf("sender %s", fd.SyncState.String())
+			if fd.SyncState == lfs.Meta {
 				rSha1 := fd.Sha1
 				lSha1, err := fd.GetSha1()
 				if err != nil {
@@ -102,7 +102,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// skipped file
 			log.Debug().
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("sender %s", fd.State.String())
+				Msgf("sender %s", fd.SyncState.String())
 		}
 	}
 	s.diffList = diff

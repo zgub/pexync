@@ -19,26 +19,26 @@ import (
 	"github.com/spf13/viper"
 )
 
-type State int16
+type SyncState int16
 
 const (
-	Missing State = iota // no file on the receiver side
-	Diff                 // file exists but has different file size
-	Meta                 // file exists, has the same filesize but different meta
-	Skip                 // file exists and matches
+	Missing SyncState = iota // no file on the receiver side
+	Diff                     // file exists but has different file size
+	Meta                     // file exists, has the same filesize but different meta
+	Skip                     // file exists and matches
 )
 
 var ErrEOF = errors.New("end of file transmission")
 
-var fileStatus = [...]string{
+var fileSyncState = [...]string{
 	"MISS",
 	"DIFF",
 	"META",
 	"SKIP",
 }
 
-func (s State) String() string {
-	return fileStatus[s]
+func (s SyncState) String() string {
+	return fileSyncState[s]
 }
 
 type Flag int16
@@ -275,7 +275,7 @@ func (dd *DataDesc) MarkAsLast() error {
 
 type FileDesc struct {
 	IsDir     bool
-	State     State
+	SyncState SyncState
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64

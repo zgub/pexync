@@ -132,7 +132,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
 		hsw.lastFileIdx++
 		efd.Idx = int64(hsw.lastFileIdx)
-		efd.State = lfs.Missing
+		efd.SyncState = lfs.Missing
 		// adding to know files
 		err = hsw.AddToMonList(event.Name, efd)
 		if err != nil {
