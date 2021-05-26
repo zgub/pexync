@@ -53,6 +53,7 @@ const (
 var headerFlags = [...]string{
 	"DATA",
 	"INDEX",
+	"INTERRUPT",
 	"END",
 }
 
