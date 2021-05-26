@@ -124,6 +124,23 @@ func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
 	}
 }
 
+func Deserialize(p []byte) (*DataDesc, error) {
+	header := new(Header)
+	r := bytes.NewReader(p)
+	err := binary.Read(r, binary.BigEndian, header)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to deserialize data")
+	}
+	dd := &DataDesc{
+		fileIndex: header.FileIndex,
+		streams:   header.Streams,
+		offset:    header.Offset,
+		seq:       header.Seq,
+		data:      bytes.NewBuffer(p[HeaderSize:]),
+	}
+	return dd, nil
+}
+
 func (dd *DataDesc) Seq() int64 {
 	return dd.seq
 }
@@ -266,23 +283,6 @@ func (dd *DataDesc) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Deserialize(p []byte) (*DataDesc, error) {
-	header := new(Header)
-	r := bytes.NewReader(p)
-	err := binary.Read(r, binary.BigEndian, header)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to deserialize data")
-	}
-	dd := &DataDesc{
-		fileIndex: header.FileIndex,
-		streams:   header.Streams,
-		offset:    header.Offset,
-		seq:       header.Seq,
-		data:      bytes.NewBuffer(p[HeaderSize:]),
-	}
-	return dd, nil
-}
-
 func (dd *DataDesc) MarkAsLast() error {
 	dd.flush()
 	header := &Header{
@@ -310,6 +310,55 @@ type FileDesc struct {
 	FileName  string
 	Modified  time.Time
 	Mode      os.FileMode
+}
+
+// Scan returns a file descritor struct
+func Scan(path string) (*FileDesc, error) {
+	// fsnotify provides absolute paths
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
+	}
+
+	srcPath := viper.GetString("source")
+	basePath, err := filepath.Abs(srcPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
+	}
+
+	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
+	relPath, err := filepath.Rel(basePath, path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to determine relative path: %s", path)
+	}
+
+	prefix := filepath.Dir(path)
+	log.Trace().
+		Str("path", path).
+		Str("prefix path", prefix).
+		Int64("filesize", info.Size()).
+		Bool("is dir", info.IsDir()).
+		Time("mode", info.ModTime()).
+		Msg("SCAN - file stat")
+
+	fd := &FileDesc{
+		IsDir:    info.IsDir(),
+		RelPath:  relPath,
+		Prefix:   prefix,
+		FileName: info.Name(),
+		FileSize: info.Size(),
+		Modified: info.ModTime(),
+		Mode:     info.Mode(),
+		//Uid: stat.Uid,
+		//Gid: stat.Gid.
+	}
+
+	if fd.IsDir == false {
+		fd.SetBlockSize()
+	}
+
+	return fd, nil
 }
 
 func (fd *FileDesc) SetBlockSize() {
@@ -441,53 +490,4 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	}
 
 	return list, nil
-}
-
-// Scan returns a file descritor struct
-func Scan(path string) (*FileDesc, error) {
-	// fsnotify provides absolute paths
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
-	}
-
-	srcPath := viper.GetString("source")
-	basePath, err := filepath.Abs(srcPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
-	}
-
-	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
-	relPath, err := filepath.Rel(basePath, path)
-	if err != nil {
-		return nil, errors.Wrapf(err, "unable to determine relative path: %s", path)
-	}
-
-	prefix := filepath.Dir(path)
-	log.Trace().
-		Str("path", path).
-		Str("prefix path", prefix).
-		Int64("filesize", info.Size()).
-		Bool("is dir", info.IsDir()).
-		Time("mode", info.ModTime()).
-		Msg("SCAN - file stat")
-
-	fd := &FileDesc{
-		IsDir:    info.IsDir(),
-		RelPath:  relPath,
-		Prefix:   prefix,
-		FileName: info.Name(),
-		FileSize: info.Size(),
-		Modified: info.ModTime(),
-		Mode:     info.Mode(),
-		//Uid: stat.Uid,
-		//Gid: stat.Gid.
-	}
-
-	if fd.IsDir == false {
-		fd.SetBlockSize()
-	}
-
-	return fd, nil
 }
