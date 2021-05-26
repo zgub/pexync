@@ -139,7 +139,15 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL CREATE")
-
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		}
+		fd.MonState = lfs.Created
+		err = hsw.Store(event.Name, fd)
+		if err != nil {
+			return errors.Wrapf(err, "unable to watch file %s", event.Name)
+		}
 	}
 	/**********************
 	 * Close  Write event *
