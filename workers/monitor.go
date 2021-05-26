@@ -35,6 +35,7 @@ func (hsw *HttpSender) StartMon() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to determine absolute path")
 	}
+	// add this one directly, as we don't have a descriptor
 	hsw.watcher.Add(p)
 
 	// add remaining directories
@@ -70,6 +71,7 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 			return err
+			case 
 		}
 	}
 }

@@ -13,7 +13,8 @@ import (
 
 var (
 	//dstHost    string - exists already in client file
-	monitorCmd = &cobra.Command{
+	pollInterval int
+	monitorCmd   = &cobra.Command{
 		Use:   "monitor",
 		Short: "synchronize given directory with remote PeXync server and monitor fs changes",
 		Long:  `The client command attempts to connect to a PeXync server and synchronize the directory content in an optimized way and monitor fs changes.`,
@@ -26,6 +27,14 @@ var (
 func init() {
 	monitorCmd.Flags().StringVarP(&dstHost, "remote-host", "H", "127.0.0.1", "remote sync destination host")
 	err := viper.BindPFlag("remote_host", monitorCmd.Flags().Lookup("remote-host"))
+	if err != nil {
+		log.Fatal().
+			Err(err).
+			Send()
+	}
+
+	viper.SetDefault("poll_interval", 5)
+	err = viper.BindPFlag("poll_interval", monitorCmd.Flags().Lookup("poll-interval"))
 	if err != nil {
 		log.Fatal().
 			Err(err).
