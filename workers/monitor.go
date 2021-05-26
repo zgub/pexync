@@ -39,6 +39,8 @@ func (hsw *HttpSender) StartMon() error {
 
 	// add remaining directories
 	for _, fd := range hsw.srcList {
+		// let's assume nobody ... nah, seems like starting Mon sooner, already when starting the sender
+		fd.MonState = lfs.Sent
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
 			hsw.Store(p, fd)
@@ -85,16 +87,16 @@ func (hsw *HttpSender) StartMon() error {
 	}
 }
 
+// Store stores the file descriptor in a shared map of monitored files
 func (hsw *HttpSender) Store(path string, fd *lfs.FileDesc) error {
+	// watch map is shared, Lock for write
+	hsw.mux.Lock()
+	defer hsw.mux.Unlock()
+
 	log.Debug().
 		Str("path", path).
 		Msg("Monitor - adding file to list of known files")
-	// watch map is shared, Lock for write
-	hsw.mux.Lock()
 	if fd.IsDir {
-		log.Debug().
-			Str("file path", path).
-			Msg("Monitor - adding directory to watchlist")
 		err := hsw.directoryWatcher.Add(path)
 		if err != nil {
 			return err
@@ -105,7 +107,6 @@ func (hsw *HttpSender) Store(path string, fd *lfs.FileDesc) error {
 	}
 	hsw.watchedFiles[path] = fd
 	// watch map is shared, Unlock
-	hsw.mux.Unlock()
 	return nil
 }
 
@@ -114,9 +115,18 @@ func (hsw *HttpSender) Store(path string, fd *lfs.FileDesc) error {
 func (hsw *HttpSender) Load(path string) (fd *lfs.FileDesc, ok bool) {
 	// watch map is shared, Lock for read, map is not thread safe
 	hsw.mux.RLock()
+	defer hsw.mux.RUnlock()
 	fd, ok = hsw.watchedFiles[path]
-	// watch map is shared, unlock
-	hsw.mux.RUnlock()
+	return
+}
+
+// SetState sets a state of the file descriptor or returns false if the key does not exist
+func (hsw *HttpSender) SetState(path string, state lfs.MonitorState) (ok bool) {
+	hsw.mux.Lock()
+	defer hsw.mux.Unlock()
+	if fd, ok := hsw.watchedFiles[path]; ok {
+		fd.MonState = state
+	}
 	return
 }
 

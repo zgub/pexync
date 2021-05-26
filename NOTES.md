@@ -32,6 +32,7 @@
 - [ ] delete of monitored directories
 - [ ] check if truncate causes IN_CLOSE_WRITE
 - [ ] get rid of fd.Prefix
+- [ ] monitor.go 42
 
 ## NOTODO
 
