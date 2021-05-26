@@ -3,11 +3,13 @@ package workers
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	//"github.com/fsnotify/fsnotify"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/fsnotify"
 	"github.com/zgub/pexync/lfs"
@@ -52,6 +54,8 @@ func (hsw *HttpSender) StartMon() error {
 
 	//spew.Dump(hsw.fileWatchMap)
 
+	pollInterval := viper.GetInt("poll_interval")
+
 	for {
 		select {
 		case event, ok := <-hsw.watcher.Events:
@@ -71,7 +75,9 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 			return err
-			case 
+		case <-time.After(time.Duration(pollInterval) * time.Second):
+			log.Trace().
+				Msg("Monitor polling changes")
 		}
 	}
 }
