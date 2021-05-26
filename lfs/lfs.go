@@ -28,6 +28,22 @@ const (
 	Skip                     // file exists and matches
 )
 
+type MonitorState int16
+
+const (
+	Created MonitorState = iota
+	Changed
+	Reading
+	Sent
+)
+
+var fileMnStates = [...]string{
+	"CREATED",
+	"CHANGED",
+	"READING",
+	"SENT",
+}
+
 var ErrEOF = errors.New("end of file transmission")
 
 var fileSyncState = [...]string{
@@ -278,6 +294,7 @@ func (dd *DataDesc) MarkAsLast() error {
 type FileDesc struct {
 	IsDir     bool
 	SyncState SyncState
+	MonState  MonitorState
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64
