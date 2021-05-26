@@ -31,6 +31,7 @@
 - [x] check for return errors missing return
 - [ ] delete of monitored directories
 - [ ] check if truncate causes IN_CLOSE_WRITE
+- [ ] get rid of fd.Prefix
 
 ## NOTODO
 

@@ -276,11 +276,11 @@ func (lsw *LocalSender) Start() error {
 }
 
 type HttpSender struct {
-	url             *url.URL
-	client          *http.Client
-	watcher         *fsnotify.Watcher
-	fileWatchMap    map[string]*lfs.FileDesc
-	fileWatchMapMux sync.Mutex
+	url              *url.URL
+	client           *http.Client
+	directoryWatcher *fsnotify.Watcher
+	watchedFiles     map[string]*lfs.FileDesc
+	mux              sync.RWMutex
 	sender
 }
 
