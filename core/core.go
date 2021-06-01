@@ -25,6 +25,8 @@ const (
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
+	FEV             // file event
+	WAI             // worker waiting
 )
 
 var messageTypes = [...]string{
@@ -39,6 +41,8 @@ var messageTypes = [...]string{
 	"ERR",
 	"FIN",
 	"ACK",
+	"FEV",
+	"WAI",
 }
 
 func (f Flag) String() string {
