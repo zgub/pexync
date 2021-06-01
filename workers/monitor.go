@@ -105,6 +105,7 @@ func (hsw *HttpSender) Store(path string, fd *lfs.FileDesc) error {
 			Str("filename", fd.FileName).
 			Msg("Monitor - adding dir to watcher")
 	}
+	// rewrite or add, does not matter
 	hsw.watchedFiles[path] = fd
 	// watch map is shared, Unlock
 	return nil
@@ -146,7 +147,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		fd.MonState = lfs.Created
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
-			return errors.Wrapf(err, "unable to watch file %s", event.Name)
+			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}
 	}
 	/**********************
@@ -157,6 +158,15 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL CLOSE WRITE")
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		}
+		fd.MonState = lfs.Changed
+		err = hsw.Store(event.Name, fd)
+		if err != nil {
+			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
+		}
 
 	}
 	/********************
@@ -166,6 +176,15 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL WRITE - ignoring")
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		}
+		fd.MonState = lfs.Created
+		err = hsw.Store(event.Name, fd)
+		if err != nil {
+			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
+		}
 	}
 	/****************
 	 * Remove event *
@@ -174,6 +193,15 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL REMOVE - ignoring")
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		}
+		fd.MonState = lfs.Deleted
+		err = hsw.Store(event.Name, fd)
+		if err != nil {
+			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
+		}
 	}
 	/***************
 	 * Chmod event *
@@ -182,6 +210,15 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL CHMOD - ignoring")
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		}
+		fd.MonState = lfs.Metadata
+		err = hsw.Store(event.Name, fd)
+		if err != nil {
+			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
+		}
 	}
 	/****************
 	 * Rename event *
@@ -190,6 +227,16 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL RENAME - TODO")
+		fd, err := lfs.Scan(event.Name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		}
+		fd.MonState = lfs.Renamed
+		err = hsw.Store(event.Name, fd)
+		if err != nil {
+			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
+		}
+
 	}
 	return nil
 }

@@ -44,14 +44,20 @@ type MonitorState int16
 const (
 	Created MonitorState = iota
 	Changed
+	Metadata
 	Reading
+	Renamed
+	Deleted
 	Sent
 )
 
 var fileMonStates = [...]string{
 	"CREATED",
 	"CHANGED",
+	"METADATA",
 	"READING",
+	"RENAMED",
+	"DELETED",
 	"SENT",
 }
 
