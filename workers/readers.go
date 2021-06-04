@@ -147,6 +147,9 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 	dd := lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
 
 	for {
+		if rrw.getSyncState(srcFilePath) != fileSyncing {
+
+		}
 		rSum := rh.Sum32()
 
 		// send the data if we have enough

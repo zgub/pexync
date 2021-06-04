@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"syscall"
 	"time"
@@ -25,28 +26,18 @@ const (
 	Missing SyncState = iota // no file on the receiver side
 	Diff                     // file exists but has different file size
 	Meta                     // file exists, has the same filesize but different meta
-	Skip                     // file exists and matches
+	Synced                   // file exists and matches
 )
 
 var fileSyncState = [...]string{
 	"MISS",
 	"DIFF",
 	"META",
-	"SKIP",
+	"Synced",
 }
 
 func (s SyncState) String() string {
 	return fileSyncState[s]
-}
-
-var fileMonStates = [...]string{
-	"CREATED",
-	"CHANGED",
-	"METADATA",
-	"READING",
-	"RENAMED",
-	"DELETED",
-	"SENT",
 }
 
 type Flag int16
@@ -287,7 +278,7 @@ func (dd *DataDesc) MarkAsLast() error {
 
 type FileDesc struct {
 	IsDir     bool
-	SyncState SyncState
+	State     SyncState
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64
@@ -299,6 +290,7 @@ type FileDesc struct {
 	FileName  string
 	Modified  time.Time
 	Mode      os.FileMode
+	mux       sync.RWMutex
 }
 
 // Scan returns a file descritor struct
@@ -350,6 +342,7 @@ func Scan(path string) (*FileDesc, error) {
 	return fd, nil
 }
 
+// SetBlockSize calculates and sets a block size
 func (fd *FileDesc) SetBlockSize() {
 	// fetch the config value, which has priority if changed and remains 700 if filesize is sma;;
 	fd.BlockSize = viper.GetInt64("block_size")
@@ -392,6 +385,23 @@ func (fd *FileDesc) GetSha1() ([]byte, error) {
 	return sum, nil
 }
 
+// SetState sets a file descriptor state in a safe manner
+func (fd *FileDesc) SetState(s SyncState) {
+	// use write lock
+	fd.mux.Lock()
+	fd.State = s
+	fd.mux.Unlock()
+}
+
+// GetState gets a file descriptor state in a safe manner
+func (fd *FileDesc) GetState() SyncState {
+	// use read lock
+	fd.mux.RLock()
+	defer fd.mux.RUnlock()
+	return fd.State
+}
+
+// ParseDir reads a direcotry recursively and returns a list of filedescriptors
 func ParseDir(walkDir string) ([]*FileDesc, error) {
 	//walkPath = prefix + walkPath
 	var list []*FileDesc
