@@ -100,7 +100,7 @@ func NewAsyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams in
 }
 */
 
-func NewSyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
+func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	if streams == 0 {
 		panic("new rsq: zero data streams")
 	}
