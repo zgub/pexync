@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	rrID, brID int
+	rrID, brID, frID int
 )
 
 // RollReader reads a file, compares the data witha hash table and send either data or indexes
@@ -322,7 +322,9 @@ func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver ch
 }
 
 func (brw *BytesReader) Start() error {
-	log.Debug().Msgf("bytes reader - %d starting", brw.myID)
+	log.Debug().
+		Msgf("bytes reader - %d starting", brw.myID)
+
 	for {
 		select {
 		case <-brw.ctx.Done():
@@ -470,7 +472,20 @@ type FileReader struct {
 	hMap                      map[uint32]int
 }
 
-// Read reads a file either block by block (if new) or by using a rollReader
-func (frw *FileReader) Read() error {
+// NewFileReader returns a new genreal file reader
+func NeFileReader(ctx context.Context, inbox <chan *core.Message, recevier chan<- *core.Message) *FileReader {
+	frID++
+	return &FileReader{
+		ctx: ctx,
+		receiver: recevier,
+		inbox: inbox,
+		myID: frID,
+	}
+}
+
+// Start reads a file either block by block (if new) or by using a rollReader
+func (frw *FileReader) Start() error {
+	log.Debug().
+		Msgf("file reader - %d starting")
 	return nil
 }
