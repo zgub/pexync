@@ -157,12 +157,12 @@ func (s *sender) sendDataToReaders() {
 					limit = fd.FileSize
 				}
 				// data stream count = s.ccIo
-				s.rrCh <- core.NewSyncRSQ(s.id, fd, chunk*chunkSize, limit, s.ccIo)
+				s.rrCh <- core.NewRSQ(s.id, fd, chunk*chunkSize, limit, s.ccIo)
 			}
 
 		} else {
 			// data streams count = 1
-			s.rrCh <- core.NewSyncRSQ(s.id, fd, 0, fd.FileSize, 1)
+			s.rrCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
 		}
 	}
 
@@ -170,7 +170,7 @@ func (s *sender) sendDataToReaders() {
 	for _, fd := range s.missList {
 
 		// data streams count = 1
-		s.brCh <- core.NewSyncRSQ(s.id, fd, 0, fd.FileSize, 1)
+		s.brCh <- core.NewRSQ(s.id, fd, 0, fd.FileSize, 1)
 	}
 }
 
