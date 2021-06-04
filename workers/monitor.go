@@ -12,31 +12,6 @@ import (
 	"github.com/zgub/pexync/lfs"
 )
 
-type syncState int
-
-const (
-	fileSynced syncState = iota
-	fileSyncing
-	fileWrite
-	fileMeta
-	fileRemoved
-	fileRenamed
-)
-
-// fileSync holds the sync state of a file, including the number of running readrs
-type fileSync struct {
-	status  syncState
-	fd      *lfs.FileDesc
-	readers int
-}
-
-func newFileSync(fd *lfs.FileDesc) *fileSync {
-	return &fileSync{
-		status: fileWrite,
-		fd:     fd,
-	}
-}
-
 func (hsw *HttpSender) StartMon() error {
 
 	log.Info().
@@ -52,7 +27,7 @@ func (hsw *HttpSender) StartMon() error {
 	}
 
 	// initialize the watchlist (a map)
-	hsw.syncStatus = make(map[string]*fileSync)
+	hsw.syncStatus = make(map[string]*lfs.FileDesc)
 
 	// add whole source direcotory
 	p, err := filepath.Abs(hsw.srcDir)
@@ -67,7 +42,9 @@ func (hsw *HttpSender) StartMon() error {
 		// let's assume nobody ... nah, seems like starting Mon sooner, already when starting the sender
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
-			hsw.updateSyncStatus(p, fd, fileSynced)
+			// sure?
+			fd.SetState(lfs.Synced)
+			hsw.syncStatus[p] = fd
 			log.Trace().
 				Str("filename", fd.FileName).
 				Int64("filesize", fd.FileSize).
@@ -88,13 +65,10 @@ func (hsw *HttpSender) StartMon() error {
 
 	checkSyncStatus := func() error {
 
-		// acquire a read lock
-		hsw.syncStatusMux.RLock()
-		defer hsw.syncStatusMux.Unlock()
 		syncCount := 0
 		// determine the count of working reader goroutines
-		for _, s := range hsw.syncStatus {
-			if s.status == fileSyncing {
+		for _, fd := range hsw.syncStatus {
+			if fd.GetState() == lfs.InSync {
 				syncCount++
 			}
 		}
@@ -149,47 +123,6 @@ func (hsw *HttpSender) StartMon() error {
 			}
 		}
 	}
-}
-
-// updateSyncStatus updates the status in a shared map making sure that no race condition occurs
-func (hsw *HttpSender) updateSyncStatus(path string, fd *lfs.FileDesc, status syncState) error {
-	// watch map is shared, Lock for write
-	hsw.syncStatusMux.Lock()
-	defer hsw.syncStatusMux.Unlock()
-
-	log.Debug().
-		Str("path", path).
-		Msg("Monitor - adding file to list of known files")
-	if fd.IsDir {
-		err := hsw.directoryWatcher.Add(path)
-		if err != nil {
-			return err
-		}
-		log.Debug().
-			Str("filename", fd.FileName).
-			Msg("Monitor - adding dir to watcher")
-	}
-
-	if s, ok := hsw.syncStatus[path]; ok {
-		// file was already monitored
-		s.status = status
-	} else {
-		s := newFileSync(fd)
-		s.status = status
-		hsw.syncStatus[path] = s
-	}
-
-	return nil
-}
-
-// getSyncState returns a status of monitored file, to check whether it has been changed while syncing
-func (hsw *HttpSender) getSyncState(path string) syncState {
-	hsw.syncStatusMux.RLock()
-	defer hsw.syncStatusMux.Unlock()
-	if s, ok := hsw.syncStatus[path]; ok {
-		return s.status
-	}
-	panic("unmonitored path")
 }
 
 func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {

@@ -26,13 +26,19 @@ const (
 	Missing SyncState = iota // no file on the receiver side
 	Diff                     // file exists but has different file size
 	Meta                     // file exists, has the same filesize but different meta
-	Synced                   // file exists and matches
+	InSync                   // file being synced
+	Renamed                  // file was renamed
+	Deleted
+	Synced // file exists and matches
 )
 
 var fileSyncState = [...]string{
-	"MISS",
-	"DIFF",
-	"META",
+	"Missing",
+	"Diff",
+	"Meta",
+	"InSync",
+	"Renamed",
+	"Deleted",
 	"Synced",
 }
 

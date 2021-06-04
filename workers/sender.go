@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"sync"
 
 	//"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
@@ -69,22 +68,24 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 	// prepare a slice with the delta
 	diff := make([]*lfs.FileDesc, 0)
 	miss := make([]*lfs.FileDesc, 0)
+
 	for _, fd := range msg.GetList() {
-		if fd.SyncState == lfs.Missing && fd.IsDir == false {
+		syncState := fd.GetState()
+		if syncState == lfs.Missing && fd.IsDir == false {
 			// new file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
-				Msgf("sender %s", fd.SyncState.String())
+				Msgf("sender %s", syncState.String())
 			miss = append(miss, fd)
-		} else if fd.SyncState == lfs.Diff || fd.SyncState == lfs.Meta {
+		} else if syncState == lfs.Diff || syncState == lfs.Meta {
 			// diff file
 			log.Debug().
 				Int64("block size", fd.BlockSize).
 				Int("hashes count", len(fd.Weak)).
 				Str("file", filepath.Join(fd.Prefix, fd.FileName)).
-				Msgf("sender %s", fd.SyncState.String())
-			if fd.SyncState == lfs.Meta {
+				Msgf("sender %s", syncState.String())
+			if syncState == lfs.Meta {
 				rSha1 := fd.Sha1
 				lSha1, err := fd.GetSha1()
 				if err != nil {
@@ -102,7 +103,7 @@ func (s *sender) parseRemoteList(msg *core.Message) error {
 			// skipped file
 			log.Debug().
 				Str("file", filepath.FromSlash(fd.Prefix+"/"+fd.FileName)).
-				Msgf("sender %s", fd.SyncState.String())
+				Msgf("sender %s", syncState.String())
 		}
 	}
 	s.diffList = diff
@@ -279,8 +280,7 @@ type HttpSender struct {
 	url              *url.URL
 	client           *http.Client
 	directoryWatcher *fsnotify.Watcher
-	syncStatus       map[string]*fileSync
-	syncStatusMux    sync.RWMutex
+	syncStatus       map[string]*lfs.FileDesc
 	sender
 }
 
