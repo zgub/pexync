@@ -60,7 +60,7 @@ func (hsw *HttpSender) StartMon() error {
 
 	//spew.Dump(hsw.fileWatchMap)
 
-	pollInterval := viper.GetInt("poll_interval")
+	pollInterval := viper.GetDuration("poll_interval")
 	ccIo := viper.GetInt("io_concurrency")
 
 	checkSyncStatus := func() error {
@@ -114,7 +114,7 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 			return err
-		case <-time.After(time.Duration(pollInterval) * time.Second):
+		case <-time.After(pollInterval * time.Second):
 			log.Trace().
 				Msg("Monitor - sync state check")
 			err = checkSyncStatus()
