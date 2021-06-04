@@ -461,5 +461,7 @@ func (hrw *HashReader) Start() error {
 }
 
 type FileReader struct {
-	myID int
+	myID                      int
+	indexCnt, dataCnt, msgCnt int64
+	ctx                       context.Context
 }

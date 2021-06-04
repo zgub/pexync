@@ -46,10 +46,9 @@ func init() {
 
 func startMonitor() error {
 
-	ctx := context.Background()
 	log.Info().
 		Msg("starting remote sync")
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	senderID := uuid.New()
