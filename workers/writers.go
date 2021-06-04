@@ -65,7 +65,7 @@ func (fw *FileWriter) Start() error {
 	dstPath := filepath.Join(dstDir, fw.srcFd.FileName)
 
 	// open a reader as well if we have to reference alredy present blocks
-	if fw.srcFd.SyncState == lfs.Diff {
+	if fw.srcFd.GetState() == lfs.Diff {
 		// first rename the old file
 		refName := dstPath + ".ref"
 		err = os.Rename(dstPath, refName)
@@ -263,7 +263,7 @@ Loop:
 	}
 
 	// remove ref file if exists
-	if fw.srcFd.SyncState == lfs.Diff {
+	if fw.srcFd.GetState() == lfs.Diff {
 		// first rename the old file
 		refName := dstPath + ".ref"
 		err = os.Remove(refName)

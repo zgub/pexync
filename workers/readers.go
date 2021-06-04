@@ -100,8 +100,9 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 		return errors.New("zero data streams count")
 	}
 
+	fd := msg.GetFileDesc()
 	// open the file
-	srcFilePath := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
+	srcFilePath := filepath.Join(fd.Prefix, fd.FileName)
 	log.Trace().
 		Msgf("roll reader %d - start reading: %s", rrw.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
@@ -120,35 +121,37 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 
 	// create a hash map for faster sum lookup
 	rrw.hMap = make(map[uint32]int)
-	for i, h := range msg.GetFileDesc().Weak {
+	for i, h := range fd.Weak {
 		rrw.hMap[h] = i
 	}
 
 	// initialize the rolling hash by copying first block of data
-	rh := core.Pour(msg.GetFileDesc().BlockSize)
-	n, err := io.CopyN(rh, br, msg.GetFileDesc().BlockSize)
-	if err != nil || n < msg.GetFileDesc().BlockSize {
+	rh := core.Pour(fd.BlockSize)
+	n, err := io.CopyN(rh, br, fd.BlockSize)
+	if err != nil || n < fd.BlockSize {
 		// this should not happen, we should check for file size in advance
-		return errors.Wrapf(err, "roll reader - failed to read file: %s", msg.GetFileDesc().FileName)
+		return errors.Wrapf(err, "roll reader - failed to read file: %s", fd.FileName)
 	}
 
 	// fill the buffer with new block of data
 	buf := new(bytes.Buffer)
-	n, err = io.CopyN(buf, br, msg.GetFileDesc().BlockSize)
+	n, err = io.CopyN(buf, br, fd.BlockSize)
 	if n == 0 {
 		// io.EOF shoudl be fine, but 0 bytes is definitelly not
-		return errors.Wrapf(err, "roll reader - failed to read file: %s", msg.GetFileDesc().FileName)
+		return errors.Wrapf(err, "roll reader - failed to read file: %s", fd.FileName)
 	}
 
 	// sequence counter for file recreation
 	var seq int64
 
 	// fresh data descriptor
-	dd := lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
+	dd := lfs.NewDataDesc(fd.Idx, msg.GetOffset(), seq, streams)
 
 	for {
-		if rrw.getSyncState(srcFilePath) != fileSyncing {
-
+		if fd.GetState() != lfs.InSync {
+			/*******************************************
+			 * stop reading and send interrupt message *
+			 *******************************************/
 		}
 		rSum := rh.Sum32()
 

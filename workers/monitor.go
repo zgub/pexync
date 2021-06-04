@@ -138,10 +138,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.updateSyncStatus(event.Name, fd, fileWrite)
-		if err != nil {
-			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
-		}
+		fd.SetState(lfs.Missing)
 	}
 	/**********************
 	 * Close  Write event *
@@ -155,11 +152,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.updateSyncStatus(event.Name, fd, fileWrite)
-		if err != nil {
-			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
-		}
-
+		fd.SetState(lfs.Diff)
 	}
 	/********************
 	 * Write event *
@@ -188,10 +181,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.updateSyncStatus(event.Name, fd, fileRemoved)
-		if err != nil {
-			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
-		}
+		fd.SetState(lfs.Deleted)
 	}
 	/***************
 	 * Chmod event *
@@ -204,10 +194,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.updateSyncStatus(event.Name, fd, fileMeta)
-		if err != nil {
-			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
-		}
+		fd.SetState(lfs.Meta)
 	}
 	/****************
 	 * Rename event *
@@ -220,10 +207,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.updateSyncStatus(event.Name, fd, fileRenamed)
-		if err != nil {
-			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
-		}
+		fd.SetState(lfs.Renamed)
 
 	}
 	return nil

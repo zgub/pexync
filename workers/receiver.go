@@ -74,7 +74,7 @@ func (rcw *receiver) parseSenderList(msg *core.Message) error {
 	// send data to checksum workers
 	for dstFd := range diffMap {
 		log.Trace().
-			Str("state", dstFd.SyncState.String()).
+			Str("state", dstFd.GetState().String()).
 			Str("file name", dstFd.Prefix+"/"+dstFd.FileName).
 			Msg("receiver list parser - sending to hash reader")
 		hashChan <- core.NewHashRequest(dstFd)
@@ -141,7 +141,7 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				if err != nil {
 					return nil, errors.Wrap(err, "unable to fix metadata")
 				}
-				srcFd.SyncState = lfs.Skip
+				srcFd.SetState(lfs.Synced)
 				log.Debug().
 					Str("path", p).
 					Msg("receiver comparing -  updating metadata if necessary")
@@ -155,8 +155,8 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					Msg("receiver DIFF")
 
 				// sync the states in both structs
-				srcFd.SyncState = lfs.Diff
-				dstFd.SyncState = lfs.Diff
+				srcFd.SetState(lfs.Diff)
+				dstFd.SetState(lfs.Diff)
 				// important for block checksum calculation
 				dstFd.BlockSize = srcFd.BlockSize
 				// remote index is not important, this is required for file writer
@@ -171,7 +171,7 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
 					// treat "remote" files smaller than block sizes as missing
 					if srcFd.BlockSize >= dstFd.FileSize {
-						srcFd.SyncState = lfs.Missing
+						srcFd.SetState(lfs.Missing)
 						continue
 					}
 					// check for zero sized files
@@ -185,13 +185,13 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 						if err != nil {
 							return nil, errors.Wrap(err, "error changing metadata")
 						}
-						srcFd.SyncState = lfs.Skip
+						srcFd.SetState(lfs.Synced)
 					}
 					// determine what has changed, if permission and/or modtime only, do not set it to diff
 					if srcFd.FileSize == dstFd.FileSize {
 						// possibly the same file by contents
-						srcFd.SyncState = lfs.Meta
-						dstFd.SyncState = lfs.Meta
+						srcFd.SetState(lfs.Meta)
+						dstFd.SetState(lfs.Meta)
 						err = fixMeta(dstDir, srcFd, dstFd)
 						if err != nil {
 							return nil, errors.Wrap(err, "error changing metadata")
@@ -206,7 +206,7 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					if err != nil {
 						return nil, errors.Wrap(err, "error changing metadata")
 					}
-					srcFd.SyncState = lfs.Skip
+					srcFd.SetState(lfs.Synced)
 				}
 			}
 			continue
@@ -244,10 +244,10 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 					}
 
 					// TODO fix metadata on new empty file
-					srcFd.SyncState = lfs.Skip
+					srcFd.SetState(lfs.Synced)
 					continue
 				}
-				srcFd.SyncState = lfs.Missing
+				srcFd.SetState(lfs.Missing)
 				// store!
 				rcw.srcList[srcFd.Idx] = srcFd
 				log.Debug().
@@ -330,7 +330,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				Int64("file index", fd.Idx).
 				Msg("adding to source list")
 			rcw.srcList[fd.Idx] = fd
-			fd.SyncState = lfs.Missing
+			fd.SetState(lfs.Missing)
 			// take care of empty files and directories
 			if fd.IsDir == true {
 				dstDir := viper.GetString("destination")
@@ -379,7 +379,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		srcFd := rcw.srcList[fd.Idx]
 		srcFd.BlockSize = fd.BlockSize
 		srcFd.FileSize = fd.FileSize
-		srcFd.SyncState = lfs.Diff
+		srcFd.SetState(lfs.Diff)
 		fmt.Println("old hash list")
 		//spew.Dump(srcFd.Weak)
 		core.AddChecksums(srcFd)
