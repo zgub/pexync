@@ -67,13 +67,15 @@ func (rrw *RollReader) Start() error {
 					Int64("data", rrw.dataCnt).
 					Int64("messages", rrw.msgCnt).
 					Msgf("roll reader %d - stats", rrw.myID)
-					// sigh
-				if msg.FileLock != nil {
-					log.Trace().
-						Str("filename", msg.GetFileDesc().FileName).
-						Msgf("XXXXXXXXXXXXXX ROLL READER %d UNLOCK XXXXXXXXXXXXX", rrw.myID)
-					msg.FileLock.Unlock()
-				}
+				// sigh
+				/*
+					if msg.FileLock != nil {
+						log.Trace().
+							Str("filename", msg.GetFileDesc().FileName).
+							Msgf("XXXXXXXXXXXXXX ROLL READER %d UNLOCK XXXXXXXXXXXXX", rrw.myID)
+						msg.FileLock.Unlock()
+					}
+				*/
 			case core.FIN:
 				log.Trace().
 					Msgf("roll reader %d - received FIN", rrw.myID)
@@ -400,12 +402,14 @@ func (brw *BytesReader) Start() error {
 					*/
 
 				}
-				if msg.FileLock != nil {
-					log.Trace().
-						Str("filename", msg.GetFileDesc().FileName).
-						Msg("XXXXXXXXXXXXXX BYTES READER UNLOCK XXXXXXXXXXXXX")
-					msg.FileLock.Unlock()
-				}
+				/*
+					if msg.FileLock != nil {
+						log.Trace().
+							Str("filename", msg.GetFileDesc().FileName).
+							Msg("XXXXXXXXXXXXXX BYTES READER UNLOCK XXXXXXXXXXXXX")
+						msg.FileLock.Unlock()
+					}
+				*/
 			default:
 				return errors.New("BytesReader unknown message")
 			}
@@ -454,4 +458,8 @@ func (hrw *HashReader) Start() error {
 			}
 		}
 	}
+}
+
+type FileReader struct {
+	myID int
 }

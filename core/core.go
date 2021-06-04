@@ -1,10 +1,7 @@
 package core
 
 import (
-	"sync"
-
 	"github.com/google/uuid"
-	"github.com/rs/zerolog/log"
 	"github.com/zgub/pexync/lfs"
 )
 
@@ -54,7 +51,7 @@ type Message struct {
 	FileList               []*lfs.FileDesc // meta data
 	FileDesc               *lfs.FileDesc   // meta data
 	DataDesc               *lfs.DataDesc   // binary (actual) data
-	FileLock               *sync.Mutex
+	//FileLock               *sync.Mutex
 }
 
 func NewINI(senderID uuid.UUID, list []*lfs.FileDesc) *Message {
@@ -82,6 +79,7 @@ func NewUPD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
 
 }
 
+/*
 func NewAsyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64, fLock *sync.Mutex) *Message {
 	if streams == 0 {
 		panic("new rsq: zero data streams")
@@ -100,6 +98,7 @@ func NewAsyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams in
 		FileLock: fLock,
 	}
 }
+*/
 
 func NewSyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	if streams == 0 {
