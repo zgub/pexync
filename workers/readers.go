@@ -464,4 +464,13 @@ type FileReader struct {
 	myID                      int
 	indexCnt, dataCnt, msgCnt int64
 	ctx                       context.Context
+	receiver                  chan<- *core.Message
+	inbox                     <-chan *core.Message
+	senderID                  uuid.UUID
+	hMap                      map[uint32]int
+}
+
+// Read reads a file either block by block (if new) or by using a rollReader
+func (frw *FileReader) Read() error {
+	return nil
 }

@@ -225,14 +225,14 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Msg("EVAL WRITE - ignoring")
-		fd, err := lfs.Scan(event.Name)
-		if err != nil {
-			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
-		}
-		err = hsw.updateSyncStatus(event.Name, fd, fileWrite)
-		if err != nil {
-			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
-		}
+		//fd, err := lfs.Scan(event.Name)
+		//if err != nil {
+		//	return errors.Wrapf(err, "failed to stat new file %s", event.Name)
+		//}
+		//err = hsw.updateSyncStatus(event.Name, fd, fileWrite)
+		//if err != nil {
+		//	return errors.Wrapf(err, "unable to monitor file %s", event.Name)
+		//}
 	}
 	/****************
 	 * Remove event *
