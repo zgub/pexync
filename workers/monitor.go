@@ -101,9 +101,12 @@ func (hsw *HttpSender) StartMon() error {
 
 		// if there are free goroutines, send data
 		if syncCount < ccIo {
-			/**********************
-			 ** TODO
-			 **********************/
+			/**************************
+			 ** TODO                  *
+			 ** determine change type *
+			 ** start the readers     *
+			 ** send data             *
+			 **************************/
 		}
 
 		if syncCount > ccIo {
