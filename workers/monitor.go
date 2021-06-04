@@ -1,48 +1,31 @@
 package workers
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/fsnotify"
 	"github.com/zgub/pexync/lfs"
 )
 
-type Dispatcher struct {
-	ctx   context.Context
-	inbox chan *core.Message
-}
+type syncState int
 
-func NewDispatcher() *Dispatcher {
-	return &Dispatcher{}
-}
+const (
+	fileSynced syncState = iota
+	fileSyncing
+	fileWait
+)
 
-func (disp *Dispatcher) Start() error {
-	pollInterval := viper.GetDuration("poll_interval")
-Loop:
-	for {
-		select {
-		case <-disp.ctx.Done():
-			log.Debug().
-				Msg("dispatcher - closing, context done")
-			break Loop
-		case msg := <-disp.inbox:
-			switch msg.Flag {
-
-			}
-		case <-time.After(pollInterval * time.Second):
-			log.Debug().
-				Msg("dispatcher audit")
-		}
-
-	}
-	return nil
+type fileSync struct {
+	status  syncState
+	fd      *lfs.FileDesc
+	readers int
+	mux     sync.Mutex
 }
 
 func (hsw *HttpSender) StartMon() error {
