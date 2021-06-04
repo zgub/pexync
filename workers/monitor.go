@@ -182,6 +182,16 @@ func (hsw *HttpSender) updateSyncStatus(path string, fd *lfs.FileDesc, status sy
 	return nil
 }
 
+// getSyncStatus returns a status of monitored file, to check whether it has been changed while syncing
+func (hsw *HttpSender) getSyncStatus(path string) syncState {
+	hsw.syncStatusMux.RLock()
+	defer hsw.syncStatusMux.Unlock()
+	if s, ok := hsw.syncStatus[path]; ok {
+		return s.status
+	}
+	panic("unmonitored path")
+}
+
 func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
 	/****************
