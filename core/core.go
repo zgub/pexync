@@ -25,8 +25,6 @@ const (
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
-	FEV             // file event
-	WAI             // worker waiting
 )
 
 var messageTypes = [...]string{
