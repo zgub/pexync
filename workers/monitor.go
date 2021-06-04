@@ -56,7 +56,6 @@ func (hsw *HttpSender) StartMon() error {
 	// add remaining directories
 	for _, fd := range hsw.srcList {
 		// let's assume nobody ... nah, seems like starting Mon sooner, already when starting the sender
-		fd.MonState = lfs.Sent
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
 			hsw.Store(p, fd)
@@ -137,16 +136,6 @@ func (hsw *HttpSender) Load(path string) (fd *lfs.FileDesc, ok bool) {
 	return
 }
 
-// SetState sets a state of the file descriptor or returns false if the key does not exist
-func (hsw *HttpSender) SetState(path string, state lfs.MonitorState) (ok bool) {
-	hsw.mux.Lock()
-	defer hsw.mux.Unlock()
-	if fd, ok := hsw.watchedFiles[path]; ok {
-		fd.MonState = state
-	}
-	return
-}
-
 func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
 	/****************
@@ -160,7 +149,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.MonState = lfs.Created
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
@@ -178,7 +166,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.MonState = lfs.Changed
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
@@ -196,7 +183,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.MonState = lfs.Created
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
@@ -213,7 +199,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.MonState = lfs.Deleted
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
@@ -230,7 +215,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.MonState = lfs.Metadata
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
@@ -247,7 +231,6 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.MonState = lfs.Renamed
 		err = hsw.Store(event.Name, fd)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
