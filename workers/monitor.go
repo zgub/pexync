@@ -3,7 +3,6 @@ package workers
 import (
 	"fmt"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -18,14 +17,24 @@ type syncState int
 const (
 	fileSynced syncState = iota
 	fileSyncing
-	fileWait
+	fileWrite
+	fileMeta
+	fileRemoved
+	fileRenamed
 )
 
+// fileSync holds the sync state of a file, including the number of running readrs
 type fileSync struct {
 	status  syncState
 	fd      *lfs.FileDesc
 	readers int
-	mux     sync.Mutex
+}
+
+func newFileSync(fd *lfs.FileDesc) *fileSync {
+	return &fileSync{
+		status: fileWrite,
+		fd:     fd,
+	}
 }
 
 func (hsw *HttpSender) StartMon() error {
@@ -43,7 +52,7 @@ func (hsw *HttpSender) StartMon() error {
 	}
 
 	// initialize the watchlist (a map)
-	hsw.watchedFiles = make(map[string]*lfs.FileDesc)
+	hsw.syncStatus = make(map[string]*fileSync)
 
 	// add whole source direcotory
 	p, err := filepath.Abs(hsw.srcDir)
@@ -58,7 +67,7 @@ func (hsw *HttpSender) StartMon() error {
 		// let's assume nobody ... nah, seems like starting Mon sooner, already when starting the sender
 		if fd.IsDir == false {
 			p := filepath.Join(fd.Prefix, fd.FileName)
-			hsw.Store(p, fd)
+			hsw.UpdateSyncStatus(p, fd, fileSynced)
 			log.Trace().
 				Str("filename", fd.FileName).
 				Int64("filesize", fd.FileSize).
@@ -103,10 +112,10 @@ func (hsw *HttpSender) StartMon() error {
 }
 
 // Store stores the file descriptor in a shared map of monitored files
-func (hsw *HttpSender) Store(path string, fd *lfs.FileDesc) error {
+func (hsw *HttpSender) UpdateSyncStatus(path string, fd *lfs.FileDesc, status syncState) error {
 	// watch map is shared, Lock for write
-	hsw.mux.Lock()
-	defer hsw.mux.Unlock()
+	hsw.syncStatusMux.Lock()
+	defer hsw.syncStatusMux.Unlock()
 
 	log.Debug().
 		Str("path", path).
@@ -120,11 +129,20 @@ func (hsw *HttpSender) Store(path string, fd *lfs.FileDesc) error {
 			Str("filename", fd.FileName).
 			Msg("Monitor - adding dir to watcher")
 	}
-	// rewrite or add, does not matter
-	hsw.watchedFiles[path] = fd
-	// watch map is shared, Unlock
+
+	if s, ok := hsw.syncStatus[path]; ok {
+		// file was already monitored
+		s.status = status
+	} else {
+		s := newFileSync(fd)
+		s.status = status
+		hsw.syncStatus[path] = s
+	}
+
 	return nil
 }
+
+/*
 
 // IsKnown is similar to sync.Map Load, that is returns map value for a given key if it exists
 // false as the second result otherwise
@@ -135,6 +153,7 @@ func (hsw *HttpSender) Load(path string) (fd *lfs.FileDesc, ok bool) {
 	fd, ok = hsw.watchedFiles[path]
 	return
 }
+*/
 
 func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 
@@ -149,7 +168,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.Store(event.Name, fd)
+		err = hsw.UpdateSyncStatus(event.Name, fd, fileWrite)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}
@@ -166,7 +185,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.Store(event.Name, fd)
+		err = hsw.UpdateSyncStatus(event.Name, fd, fileWrite)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}
@@ -183,7 +202,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.Store(event.Name, fd)
+		err = hsw.UpdateSyncStatus(event.Name, fd, fileWrite)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}
@@ -199,7 +218,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.Store(event.Name, fd)
+		err = hsw.UpdateSyncStatus(event.Name, fd, fileRemoved)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}
@@ -215,7 +234,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.Store(event.Name, fd)
+		err = hsw.UpdateSyncStatus(event.Name, fd, fileMeta)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}
@@ -231,7 +250,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		err = hsw.Store(event.Name, fd)
+		err = hsw.UpdateSyncStatus(event.Name, fd, fileRenamed)
 		if err != nil {
 			return errors.Wrapf(err, "unable to monitor file %s", event.Name)
 		}

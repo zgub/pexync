@@ -279,8 +279,8 @@ type HttpSender struct {
 	url              *url.URL
 	client           *http.Client
 	directoryWatcher *fsnotify.Watcher
-	watchedFiles     map[string]*lfs.FileDesc
-	mux              sync.RWMutex
+	syncStatus       map[string]*fileSync
+	syncStatusMux    sync.RWMutex
 	sender
 }
 
