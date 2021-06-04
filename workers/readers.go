@@ -473,13 +473,13 @@ type FileReader struct {
 }
 
 // NewFileReader returns a new genreal file reader
-func NeFileReader(ctx context.Context, inbox <chan *core.Message, recevier chan<- *core.Message) *FileReader {
+func NeFileReader(ctx context.Context, inbox <-chan *core.Message, recevier chan<- *core.Message) *FileReader {
 	frID++
 	return &FileReader{
-		ctx: ctx,
+		ctx:      ctx,
 		receiver: recevier,
-		inbox: inbox,
-		myID: frID,
+		inbox:    inbox,
+		myID:     frID,
 	}
 }
 
@@ -487,5 +487,25 @@ func NeFileReader(ctx context.Context, inbox <chan *core.Message, recevier chan<
 func (frw *FileReader) Start() error {
 	log.Debug().
 		Msgf("file reader - %d starting")
-	return nil
+
+	for {
+		select {
+		case <-frw.ctx.Done():
+			log.Debug().
+				Msgf("file reader %d - closing, context done", frw.myID)
+			return nil
+		case msg := <-frw.inbox:
+			switch msg.GetFlag() {
+			case core.RSQ:
+				// check if diff or miss
+			case core.FIN:
+				log.Trace().
+					Msgf("file reader %d - received FIN", frw.myID)
+			}
+		default:
+			s := fmt.Sprintf("file reader %d - invalid message", frw.myID)
+			return errors.New(s)
+		}
+	}
+
 }
