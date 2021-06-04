@@ -84,6 +84,34 @@ func (hsw *HttpSender) StartMon() error {
 	//spew.Dump(hsw.fileWatchMap)
 
 	pollInterval := viper.GetInt("poll_interval")
+	ccIo := viper.GetInt("io_concurrency")
+
+	checkSyncStatus := func() error {
+
+		// acquire a read lock
+		hsw.syncStatusMux.RLock()
+		defer hsw.syncStatusMux.Unlock()
+		syncCount := 0
+		// determine the count of working reader goroutines
+		for _, s := range hsw.syncStatus {
+			if s.status == fileSyncing {
+				syncCount++
+			}
+		}
+
+		// if there are free goroutines, send data
+		if syncCount < ccIo {
+			/**********************
+			 ** TODO
+			 **********************/
+		}
+
+		if syncCount > ccIo {
+			return errors.New("too many sync processes running")
+		}
+
+		return nil
+	}
 
 	for {
 		select {
@@ -99,6 +127,11 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.Wrap(err, "failed parsing fs event")
 			}
 
+			err = checkSyncStatus()
+			if err != nil {
+				return errors.Wrap(err, "monitor - sync check failed")
+			}
+
 		case err, ok := <-hsw.directoryWatcher.Errors:
 			if !ok {
 				return errors.New("an error occurred while watching directory")
@@ -106,7 +139,11 @@ func (hsw *HttpSender) StartMon() error {
 			return err
 		case <-time.After(time.Duration(pollInterval) * time.Second):
 			log.Trace().
-				Msg("Monitor polling changes")
+				Msg("Monitor - sync state check")
+			err = checkSyncStatus()
+			if err != nil {
+				return errors.Wrap(err, "monitor - sync check failed")
+			}
 		}
 	}
 }
