@@ -39,18 +39,6 @@ func (s SyncState) String() string {
 	return fileSyncState[s]
 }
 
-type MonitorState int16
-
-const (
-	Created MonitorState = iota
-	Changed
-	Metadata
-	Reading
-	Renamed
-	Deleted
-	Sent
-)
-
 var fileMonStates = [...]string{
 	"CREATED",
 	"CHANGED",
@@ -59,10 +47,6 @@ var fileMonStates = [...]string{
 	"RENAMED",
 	"DELETED",
 	"SENT",
-}
-
-func (s MonitorState) String() string {
-	return fileMonStates[s]
 }
 
 type Flag int16
@@ -304,7 +288,6 @@ func (dd *DataDesc) MarkAsLast() error {
 type FileDesc struct {
 	IsDir     bool
 	SyncState SyncState
-	MonState  MonitorState
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64
