@@ -282,6 +282,7 @@ func (dd *DataDesc) MarkAsLast() error {
 	return nil
 }
 
+// FileDesc is the file descriptr hodling all the information about a file sync state
 type FileDesc struct {
 	IsDir     bool
 	State     SyncState

@@ -121,8 +121,8 @@ func (s *sender) spawnReaders() {
 			Msg("sender - spawning roll readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
-			rrw := NewRollReader(dCtx, s.rrCh, s.receiver)
-			s.g.Go(rrw.Start)
+			rrw := NewFileReader(dCtx, s.rrCh, s.receiver)
+			s.g.Go(rrw.RollReadFile)
 		}
 	}
 
@@ -133,8 +133,8 @@ func (s *sender) spawnReaders() {
 			Msg("sender - spawning bytes readers")
 
 		for i := int64(0); i < s.ccIo; i++ {
-			brw := NewBytesReader(dCtx, s.brCh, s.receiver)
-			s.g.Go(brw.Start)
+			brw := NewFileReader(dCtx, s.brCh, s.receiver)
+			s.g.Go(brw.ReadFile)
 		}
 	}
 }

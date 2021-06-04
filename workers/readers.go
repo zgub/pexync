@@ -21,67 +21,51 @@ var (
 	rrID, brID, frID int
 )
 
-// RollReader reads a file, compares the data witha hash table and send either data or indexes
-type RollReader struct {
-	myID                      int
-	indexCnt, dataCnt, msgCnt int64 // counters
-	ctx                       context.Context
-	receiver                  chan<- *core.Message
-	inbox                     <-chan *core.Message
-	senderID                  uuid.UUID
-	hMap                      map[uint32]int
+// FileReader is the generic file reader structure
+type FileReader struct {
+	myID     int
+	ctx      context.Context
+	receiver chan<- *core.Message
+	inbox    <-chan *core.Message
+	senderID uuid.UUID
 }
 
-func NewRollReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *RollReader {
-	rrID++
-	return &RollReader{
+// NewFileReader returns a new file reader
+func NewFileReader(ctx context.Context, inbox <-chan *core.Message, recevier chan<- *core.Message) *FileReader {
+	frID++
+	return &FileReader{
 		ctx:      ctx,
+		receiver: recevier,
 		inbox:    inbox,
-		receiver: receiver,
-		myID:     rrID,
+		myID:     frID,
 	}
 }
 
-func (rrw *RollReader) Start() error {
+func (rw *FileReader) RollReadFile() error {
 
 	for {
 		// wait for file (or a section)
 		select {
-		case <-rrw.ctx.Done():
+		case <-rw.ctx.Done():
 			log.Debug().
-				Msgf("roll reader %d - closing, context done", rrw.myID)
+				Msgf("roll reader %d - closing, context done", rw.myID)
 			return nil
-		case msg := <-rrw.inbox:
+		case msg := <-rw.inbox:
 			switch msg.GetFlag() {
 			case core.RSQ: // read sequence
 				log.Debug().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("roll reader %d - file received", rrw.myID)
-				err := rrw.rollV3(msg)
+					Msgf("roll reader %d - file received", rw.myID)
+				err := rw.rollV3(msg)
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
 				}
-				log.Debug().
-					Str("file name", msg.GetFileDesc().FileName).
-					Int64("indexes", rrw.indexCnt).
-					Int64("data", rrw.dataCnt).
-					Int64("messages", rrw.msgCnt).
-					Msgf("roll reader %d - stats", rrw.myID)
-				// sigh
-				/*
-					if msg.FileLock != nil {
-						log.Trace().
-							Str("filename", msg.GetFileDesc().FileName).
-							Msgf("XXXXXXXXXXXXXX ROLL READER %d UNLOCK XXXXXXXXXXXXX", rrw.myID)
-						msg.FileLock.Unlock()
-					}
-				*/
 			case core.FIN:
 				log.Trace().
-					Msgf("roll reader %d - received FIN", rrw.myID)
+					Msgf("roll reader %d - received FIN", rw.myID)
 				return nil
 			default:
-				s := fmt.Sprintf("roll reader %d - unknown message received", rrw.myID)
+				s := fmt.Sprintf("roll reader %d - unknown message received", rw.myID)
 				return errors.New(s)
 			}
 		}
@@ -92,7 +76,7 @@ func (rrw *RollReader) Start() error {
 // compares it with the hashMap and sends instruction to build the file
 // on the receiver side
 // 3rd implementation of the rolling hash reader
-func (rrw *RollReader) rollV3(msg *core.Message) error {
+func (rw *FileReader) rollV3(msg *core.Message) error {
 
 	// sanity check
 	streams := msg.GetStreamCount()
@@ -104,10 +88,10 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 	// open the file
 	srcFilePath := filepath.Join(fd.Prefix, fd.FileName)
 	log.Trace().
-		Msgf("roll reader %d - start reading: %s", rrw.myID, srcFilePath)
+		Msgf("roll reader %d - start reading: %s", rw.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
 	if err != nil {
-		return errors.Wrapf(err, "roll reader %d - unable to open file for reading: %s", rrw.myID, srcFilePath)
+		return errors.Wrapf(err, "roll reader %d - unable to open file for reading: %s", rw.myID, srcFilePath)
 	}
 	defer f.Close()
 
@@ -120,9 +104,9 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 	br := bufio.NewReader(sr)
 
 	// create a hash map for faster sum lookup
-	rrw.hMap = make(map[uint32]int)
+	hMap := make(map[uint32]int)
 	for i, h := range fd.Weak {
-		rrw.hMap[h] = i
+		hMap[h] = i
 	}
 
 	// initialize the rolling hash by copying first block of data
@@ -170,8 +154,7 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			*/
 
 			// send
-			err = sendWithTimeout(dMsg, rrw.receiver)
-			rrw.msgCnt++
+			err = sendWithTimeout(dMsg, rw.receiver)
 			if err != nil {
 				return errors.Wrap(err, "error sending data")
 			}
@@ -180,7 +163,7 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			dd = lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
 		}
 
-		if hIndex, ok := rrw.hMap[rSum]; ok {
+		if hIndex, ok := hMap[rSum]; ok {
 
 			/*********
 			 * MATCH *
@@ -191,8 +174,6 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write index data description")
 			}
-			rrw.indexCnt++
-			//log.Trace().Msgf("roll reader - BLOCK MATCH seq: %d", seq)
 
 			// we need to load a new block of data, so reset the hash first
 			rh.Reset()
@@ -265,7 +246,6 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 			}
-			rrw.dataCnt++
 		}
 
 	}
@@ -278,7 +258,6 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 			}
-			rrw.dataCnt++
 		}
 	}
 	// if there is trailing data in the buffer, append it
@@ -288,7 +267,6 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 			if err != nil {
 				return errors.Wrap(err, "roll reader - failed to write byte into file descriptor")
 			}
-			rrw.dataCnt++
 		}
 	}
 
@@ -299,49 +277,29 @@ func (rrw *RollReader) rollV3(msg *core.Message) error {
 	}
 	dMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
 
-	err = sendWithTimeout(dMsg, rrw.receiver)
+	err = sendWithTimeout(dMsg, rw.receiver)
 	if err != nil {
 		return errors.Wrap(err, "error sending data")
 	}
-	rrw.msgCnt++
 
 	return nil
 }
 
-// BytesReader reads a file by blocks with given block size and sends them
-type BytesReader struct {
-	myID     int
-	ctx      context.Context
-	receiver chan<- *core.Message
-	inbox    <-chan *core.Message
-	senderID uuid.UUID
-}
-
-func NewBytesReader(ctx context.Context, inbox <-chan *core.Message, receiver chan<- *core.Message) *BytesReader {
-	brID++
-	return &BytesReader{
-		ctx:      ctx,
-		receiver: receiver,
-		inbox:    inbox,
-		myID:     brID,
-	}
-}
-
-func (brw *BytesReader) Start() error {
+func (rw *FileReader) ReadFile() error {
 	log.Debug().
-		Msgf("bytes reader - %d starting", brw.myID)
+		Msgf("bytes reader - %d starting", rw.myID)
 
 	for {
 		select {
-		case <-brw.ctx.Done():
+		case <-rw.ctx.Done():
 			log.Debug().
-				Msgf("bytes reader %d - closing, context done", brw.myID)
+				Msgf("bytes reader %d - closing, context done", rw.myID)
 			return nil
-		case msg := <-brw.inbox:
+		case msg := <-rw.inbox:
 			switch msg.GetFlag() {
 			case core.FIN:
 				log.Debug().
-					Msgf("bytes reader %d - received FIN", brw.myID)
+					Msgf("bytes reader %d - received FIN", rw.myID)
 				return nil
 			case core.RSQ:
 
@@ -353,7 +311,7 @@ func (brw *BytesReader) Start() error {
 
 				log.Trace().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("bytes reader %d - message received", brw.myID)
+					Msgf("bytes reader %d - message received", rw.myID)
 				p := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
 				f, err := os.Open(p)
 				if err != nil {
@@ -378,7 +336,7 @@ func (brw *BytesReader) Start() error {
 							// end of transmission
 							dd.MarkAsLast()
 							nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
-							err = sendWithTimeout(nMsg, brw.receiver)
+							err = sendWithTimeout(nMsg, rw.receiver)
 							if err != nil {
 								return errors.Wrap(err, "error sending data")
 							}
@@ -400,7 +358,7 @@ func (brw *BytesReader) Start() error {
 							Int64("seq", seq).
 							Msgf("bytes reader %d - sending pure data", brw.myID)
 					*/
-					err = sendWithTimeout(nMsg, brw.receiver)
+					err = sendWithTimeout(nMsg, rw.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
 					}
@@ -422,7 +380,7 @@ func (brw *BytesReader) Start() error {
 				return errors.New("BytesReader unknown message")
 			}
 		case <-time.After(3 * time.Second):
-			fmt.Printf("bytes reader %d - timeout\n", brw.myID)
+			fmt.Printf("bytes reader %d - timeout\n", rw.myID)
 		}
 	}
 }
@@ -468,29 +426,8 @@ func (hrw *HashReader) Start() error {
 	}
 }
 
-type FileReader struct {
-	myID                      int
-	indexCnt, dataCnt, msgCnt int64
-	ctx                       context.Context
-	receiver                  chan<- *core.Message
-	inbox                     <-chan *core.Message
-	senderID                  uuid.UUID
-	hMap                      map[uint32]int
-}
-
-// NewFileReader returns a new genreal file reader
-func NeFileReader(ctx context.Context, inbox <-chan *core.Message, recevier chan<- *core.Message) *FileReader {
-	frID++
-	return &FileReader{
-		ctx:      ctx,
-		receiver: recevier,
-		inbox:    inbox,
-		myID:     frID,
-	}
-}
-
 // Start reads a file either block by block (if new) or by using a rollReader
-func (frw *FileReader) Start() error {
+func (frw *FileReader) NewStart() error {
 	log.Debug().
 		Msgf("file reader - %d starting")
 
@@ -503,7 +440,23 @@ func (frw *FileReader) Start() error {
 		case msg := <-frw.inbox:
 			switch msg.GetFlag() {
 			case core.RSQ:
-				// check if diff or miss
+				fd := msg.GetFileDesc()
+				switch fd.GetState() {
+				case lfs.Missing:
+				case lfs.Diff:
+					log.Trace().
+						Str("filename", fd.FileName).
+						Msgf("fle reader %d - received modified file", frw.myID)
+					err := frw.rollV3(msg)
+					if err != nil {
+						return errors.Wrap(err, "roll hash reader failed")
+					}
+				case lfs.Renamed:
+				case lfs.Deleted:
+				case lfs.Meta:
+				default:
+					return errors.New("file reader - invalid file descriptor state")
+				}
 			case core.FIN:
 				log.Trace().
 					Msgf("file reader %d - received FIN", frw.myID)
