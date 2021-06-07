@@ -297,6 +297,7 @@ type FileDesc struct {
 	FileName  string
 	Modified  time.Time
 	Mode      os.FileMode
+	readers   int
 	mux       sync.RWMutex
 }
 
@@ -406,6 +407,24 @@ func (fd *FileDesc) GetState() SyncState {
 	fd.mux.RLock()
 	defer fd.mux.RUnlock()
 	return fd.State
+}
+
+// AddReader registers a parallel reader for the file descriptor
+func (fd *FileDesc) AddReader() {
+	fd.mux.Lock()
+	fd.readers++
+	fd.mux.Unlock()
+}
+
+// RemReader removes a registered reader for the file descriptor
+func (fd *FileDesc) RemReader() error {
+	fd.mux.Lock()
+	defer fd.mux.Unlock()
+	fd.readers--
+	if fd.readers < 0 {
+		return errors.New("unregistere reader")
+	}
+	return nil
 }
 
 // ParseDir reads a direcotry recursively and returns a list of filedescriptors
