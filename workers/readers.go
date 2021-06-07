@@ -80,9 +80,6 @@ func (frw *FileReader) Run() error {
 					if err != nil {
 						return errors.Wrap(err, "roll hash reader failed")
 					}
-				case lfs.Renamed:
-				case lfs.Deleted:
-				case lfs.Meta:
 				default:
 					return errors.New("file reader - invalid file descriptor state")
 				}
