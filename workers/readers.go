@@ -64,6 +64,12 @@ func (frw *FileReader) Run() error {
 					log.Trace().
 						Str("filename", fd.FileName).
 						Msgf("file reader %d - new file recived", frw.myID)
+
+					// readBytes function was created as a separate function for bettere readibility, as performance is not a goal here
+					err := frw.readBytes(msg)
+					if err != nil {
+						return errors.Wrap(err, "bytes reader failed")
+					}
 				case lfs.Diff:
 					log.Trace().
 						Str("filename", fd.FileName).
