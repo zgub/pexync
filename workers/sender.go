@@ -375,7 +375,7 @@ func (hsw *HttpSender) Start() error {
 	for i := int64(0); i < 2*hsw.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		eg.Go(hsw.dataSender)
+		eg.Go(hsw.startDataSender)
 	}
 
 	hsw.spawnReaders()

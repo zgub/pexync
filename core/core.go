@@ -19,6 +19,9 @@ const (
 	WSQ             // write sequence
 	ADD             // new file in monitor mode
 	UPD             // update existing file
+	REN             // file has been renamed
+	DEL             // remove file
+	MOD             // metadata update
 	ERR             // error
 	FIN             // tels the worker to stop
 	ACK             // just ACK
@@ -33,11 +36,12 @@ var messageTypes = [...]string{
 	"WSQ",
 	"ADD",
 	"UPD",
+	"REN",
+	"DEL",
+	"MOD",
 	"ERR",
 	"FIN",
 	"ACK",
-	"FEV",
-	"WAI",
 }
 
 func (f Flag) String() string {
@@ -76,29 +80,31 @@ func NewUPD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
 		SenderID: senderID,
 		FileDesc: fd,
 	}
-
 }
 
-/*
-func NewAsyncRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64, fLock *sync.Mutex) *Message {
-	if streams == 0 {
-		panic("new rsq: zero data streams")
-	}
-	log.Trace().
-		Str("filename", fd.FileName).
-		Int64("file size", fd.FileSize).
-		Msg("Async RSQ REQUEST")
+func NewDEL(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
 	return &Message{
+		Flag:     DEL,
 		SenderID: senderID,
-		Flag:     RSQ,
-		Offset:   offset,
-		Limit:    limit,
-		Streams:  streams,
 		FileDesc: fd,
-		FileLock: fLock,
 	}
 }
-*/
+
+func NewREN(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
+	return &Message{
+		Flag:     REN,
+		SenderID: senderID,
+		FileDesc: fd,
+	}
+}
+
+func NewMOD(senderID uuid.UUID, fd *lfs.FileDesc) *Message {
+	return &Message{
+		Flag:     MOD,
+		SenderID: senderID,
+		FileDesc: fd,
+	}
+}
 
 func NewRSQ(senderID uuid.UUID, fd *lfs.FileDesc, offset, limit, streams int64) *Message {
 	if streams == 0 {

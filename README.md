@@ -23,3 +23,7 @@
 
 - transfer encryption. My opinion regarding tools / utilities is "UX like", that a tool / utility should do **ONE** thing very well and leave the other specialized tools do their stuff the best way they can. My experience is that if a for example a data engineer writes encryption code, it's usually badly implemented standard. There are plenty of already existing https proxies I would use, instead of writing my own as I am not a (security / encryption ) developer, but more a devops guy that utilizes every existing handy tool around. Anyway it shouldn't be that difficult to implement though, with some already existing libraries, but it would be the same as using a proxy. Envoy / Nginx / Traefik and many more.
 - server side data encryption - same reason. Anyway if I was implementing a secure backup, I'd rather create an encrypted FS or use encrypted storage, rather than using software encryption. Much safer.
+
+## Notes to me
+
+- context switching and return to project

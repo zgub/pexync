@@ -135,11 +135,9 @@ func (hsw *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, e
 	}
 	defer resp.Body.Close()
 
-	/*
-		log.Trace().
-			Str("status:", resp.Status).
-			Msg("http response")
-	*/
+	log.Trace().
+		Str("status:", resp.Status).
+		Msg("metadata sender - http response")
 
 	if resp.StatusCode != http.StatusOK {
 		err = errors.New(resp.Status)
@@ -183,12 +181,6 @@ func (hsw *HttpSender) sendData(url string, data []byte) (*core.Message, error) 
 	}
 	defer resp.Body.Close()
 
-	/*
-		log.Trace().
-			Str("status:", resp.Status).
-			Msg("http response")
-	*/
-
 	buf, err = decompress(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "error reading server response")
@@ -204,7 +196,7 @@ func (hsw *HttpSender) sendData(url string, data []byte) (*core.Message, error) 
 }
 
 // this is not optimal, well... I would refactor the whole worker / sender / receiver design for possible next release
-func (hsw *HttpSender) dataSender() error {
+func (hsw *HttpSender) startDataSender() error {
 	log.Debug().
 		Msg("http sender - dataSender starting")
 	for {

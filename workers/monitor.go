@@ -8,10 +8,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"github.com/zgub/pexync/core"
 	"github.com/zgub/pexync/fsnotify"
 	"github.com/zgub/pexync/lfs"
+	"golang.org/x/sync/errgroup"
 )
 
+// StartMon start the sender in monitoring mode
 func (hsw *HttpSender) StartMon() error {
 
 	log.Info().
@@ -48,50 +51,38 @@ func (hsw *HttpSender) StartMon() error {
 			log.Trace().
 				Str("filename", fd.FileName).
 				Int64("filesize", fd.FileSize).
-				Msg("adding to watchlist")
+				Msg("monitor - file added to watchlist")
 		} else {
+			// watch this directory as well
+			hsw.directoryWatcher.Add(p)
+			// add to watch list
+			hsw.syncStatus[p] = fd
 			log.Trace().
 				Str("filename", fd.FileName).
 				Int64("filesize", fd.FileSize).
-				Msg("adding to watchlist")
-			hsw.directoryWatcher.Add(p)
+				Msg("directory added to watchlist")
+
 		}
 	}
 
-	//spew.Dump(hsw.fileWatchMap)
+	ccIo := viper.GetInt("io_concurrency")
+	readersErrGroup := new(errgroup.Group)
+	// start te readers
+	for i := 0; i < ccIo; i++ {
+		fr := NewFileReader(hsw.ctx, hsw.rrCh, hsw.receiver)
+		log.Trace().
+			Msgf("monitor - starting file reader: %d", i)
+		readersErrGroup.Go(fr.Run)
+	}
 
 	pollInterval := viper.GetDuration("poll_interval")
-	ccIo := viper.GetInt("io_concurrency")
-
-	checkSyncStatus := func() error {
-
-		syncCount := 0
-		// determine the count of working reader goroutines
-		for _, fd := range hsw.syncStatus {
-			if fd.GetState() == lfs.InSync {
-				syncCount++
-			}
-		}
-
-		// if there are free goroutines, send data
-		if syncCount < ccIo {
-			/**************************
-			 ** TODO                  *
-			 ** determine change type *
-			 ** start the readers     *
-			 ** send data             *
-			 **************************/
-		}
-
-		if syncCount > ccIo {
-			return errors.New("too many sync processes running")
-		}
-
-		return nil
-	}
 
 	for {
 		select {
+		case <-hsw.ctx.Done():
+			log.Debug().
+				Msg("Monitor - recived cancel, exiting")
+			return nil
 		case event, ok := <-hsw.directoryWatcher.Events:
 			if !ok {
 				return errors.New("an error occurred while watching directory")
@@ -104,7 +95,7 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.Wrap(err, "failed parsing fs event")
 			}
 
-			err = checkSyncStatus()
+			err = hsw.checkpoint()
 			if err != nil {
 				return errors.Wrap(err, "monitor - sync check failed")
 			}
@@ -117,12 +108,98 @@ func (hsw *HttpSender) StartMon() error {
 		case <-time.After(pollInterval * time.Second):
 			log.Trace().
 				Msg("Monitor - sync state check")
-			err = checkSyncStatus()
+			err = hsw.checkpoint()
 			if err != nil {
 				return errors.Wrap(err, "monitor - sync check failed")
 			}
 		}
 	}
+}
+
+// checkpoint sends the data if free readrs are available and files were change
+func (hsw *HttpSender) checkpoint() error {
+
+	// ccIo = max nibmber of readers possible
+	ccIo := viper.GetInt("io_concurrency")
+	freeReaders := 0
+	toBeSynced := make([]*lfs.FileDesc, 0)
+	// first ceck whether there are free readers
+	// and colled files that need to be synced in the same run
+	for _, fd := range hsw.syncStatus {
+		if fd.GetState() == lfs.InSync {
+			freeReaders++
+		}
+		// if it reaches ccIo return, no free readeers
+		if freeReaders == ccIo {
+			return nil
+		}
+
+		if fd.GetState() != lfs.InSync && fd.GetState() != lfs.Synced {
+			toBeSynced = append(toBeSynced, fd)
+		}
+	}
+
+	// here we should have at least one free readers
+	// check if there any files to be sent, quit otherwise
+	if len(toBeSynced) == 0 {
+		// no files to sync
+		return nil
+	}
+
+	// we have free readers and files to sync, let's go file by file
+
+	url := hsw.url.String() + "/meta"
+	for _, fd := range toBeSynced {
+		switch fd.GetState() {
+		case lfs.Created:
+			// sending new file, this will pnly update the src list on the remote
+			msg := core.NewADD(hsw.id, fd)
+			log.Trace().
+				Msg("sending new file message")
+			_, err := hsw.sendJson(url, msg)
+			if err != nil {
+				return errors.Wrap(err, "failed to send medadata to htp server")
+			}
+			// chane the creatd state to missing state, recever was notified
+			fd.SetState(lfs.Missing)
+		case lfs.Missing:
+			// sending whole file
+		case lfs.Diff:
+			// sending delta, or new file, the bussiness
+		case lfs.Meta:
+			// sending only meta
+			msg := core.NewMOD(hsw.id, fd)
+			log.Trace().
+				Msg("sending chmod message")
+			_, err := hsw.sendJson(url, msg)
+			if err != nil {
+				return errors.Wrap(err, "failed to send medadata to htp server")
+			}
+			// this was only meta, let's continue
+		case lfs.Renamed:
+			// sending only meta
+			msg := core.NewREN(hsw.id, fd)
+			log.Trace().
+				Msg("sending rename message")
+			_, err := hsw.sendJson(url, msg)
+			if err != nil {
+				return errors.Wrap(err, "failed to send medadata to htp server")
+			}
+			// this was only meta, let's continue
+		case lfs.Deleted:
+			// seding only meta
+			msg := core.NewDEL(hsw.id, fd)
+			log.Trace().
+				Msg("sending delete message")
+			_, err := hsw.sendJson(url, msg)
+			if err != nil {
+				return errors.Wrap(err, "failed to send medadata to htp server")
+			}
+			// this was only meta, let's continue
+		}
+	}
+
+	return nil
 }
 
 func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
@@ -138,7 +215,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.SetState(lfs.Missing)
+		fd.SetState(lfs.Created)
 	}
 	/**********************
 	 * Close  Write event *
@@ -152,6 +229,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
+		// lfs.New???
 		fd.SetState(lfs.Diff)
 	}
 	/********************

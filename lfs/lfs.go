@@ -23,7 +23,8 @@ import (
 type SyncState int16
 
 const (
-	Missing SyncState = iota // no file on the receiver side
+	Created SyncState = iota // file just created and might be still written to
+	Missing                  // no file on the receiver side
 	Diff                     // file exists but has different file size
 	Meta                     // file exists, has the same filesize but different meta
 	InSync                   // file being synced
@@ -33,6 +34,7 @@ const (
 )
 
 var fileSyncState = [...]string{
+	"Created",
 	"Missing",
 	"Diff",
 	"Meta",

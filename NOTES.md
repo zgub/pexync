@@ -33,6 +33,7 @@
 - [ ] check if truncate causes IN_CLOSE_WRITE
 - [ ] get rid of fd.Prefix
 - [ ] monitor.go 42
+- [ ] do not store context, forward context when starting goroutine
 
 ## NOTODO
 
