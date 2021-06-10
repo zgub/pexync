@@ -138,6 +138,8 @@ func (hsw *HttpSender) checkpoint() error {
 		// if it reaches ccIo return, no free readeers
 		if busyReaders == ccIo {
 			// this is not optimal, we could at least send the meta
+			log.Debug().
+				Msg("monitor checkpoint - no free readers")
 			return nil
 		}
 
@@ -149,12 +151,18 @@ func (hsw *HttpSender) checkpoint() error {
 
 	freeReaders := ccIo - busyReaders
 
+	log.Debug().
+		Msgf("monitor checkpoint - %d free readers", freeReaders)
+
 	// here we should have at least one free readers
 	// check if there any files to be sent, quit otherwise
 	if len(toBeSynced) == 0 {
 		// no files to sync
 		return nil
 	}
+
+	log.Debug().
+		Msgf("monitor checkpoint - %d files to sync", len(toBeSynced))
 
 	// we need to proceed in order because directories have to be created first
 	// maps are not sorted

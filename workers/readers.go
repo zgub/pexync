@@ -45,7 +45,7 @@ func NewFileReader(ctx context.Context, inbox <-chan *core.Message, recevier cha
 // Run reads a file either block by block (if new) or by using a rollReader
 func (frw *FileReader) Run() error {
 	log.Debug().
-		Msgf("file reader - %d starting")
+		Msgf("file reader - %d starting", frw.myID)
 
 	pollInterval := viper.GetDuration("poll_interval")
 
