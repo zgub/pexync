@@ -254,25 +254,24 @@ func (lsw *LocalSender) Start() error {
 
 	lsw.stopReaders()
 
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>>> sent stop to readers")
-
-	// validate ???
-
 	// end
 	err = lsw.g.Wait()
 	if err != nil {
 		return errors.Wrap(err, "local sender worker failed")
 	}
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>> want to send FIN")
+
 	log.Trace().
 		Msg("local sender - finished, sending FIN to receciver")
+
 	msg = core.NewFIN(lsw.id)
 	err = sendWithTimeout(msg, lsw.receiver)
 	if err != nil {
 		return errors.Wrap(err, "sender failure")
 	}
+
 	log.Debug().
 		Msgf("local sender - done")
+
 	return nil
 }
 
