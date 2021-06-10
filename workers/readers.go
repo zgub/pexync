@@ -156,7 +156,7 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 }
 
 // rollV3 takes a filedesc from a message and parses the sender file,
-// compares it with the hashMap and sends instruction to build the file
+// compares it with the hashMap and sends data and indexes as instructions to build the file
 // on the receiver side
 // 3rd implementation of the rolling hash reader
 func (frw *FileReader) rollV3(msg *core.Message) error {
@@ -499,33 +499,11 @@ func (rw *FileReader) ReadFile() error {
 						return errors.Wrap(err, "error reading file")
 					}
 					nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
-					/*
-						log.Trace().
-							Str("filename", msg.GetFileDesc().FileName).
-							Int64("dd len", int64(dd.Len())).
-							Int64("block size", int64(msg.GetFileDesc().BlockSize)).
-							Int64("offset", msg.GetOffset()).
-							Int64("seq", seq).
-							Msgf("bytes reader %d - sending pure data", brw.myID)
-					*/
 					err = sendWithTimeout(nMsg, rw.receiver)
 					if err != nil {
 						return errors.Wrap(err, "error sending data")
 					}
-					/*
-						log.Trace().
-							Msgf("bytes reader - %d data sent", brw.myID)
-					*/
-
 				}
-				/*
-					if msg.FileLock != nil {
-						log.Trace().
-							Str("filename", msg.GetFileDesc().FileName).
-							Msg("XXXXXXXXXXXXXX BYTES READER UNLOCK XXXXXXXXXXXXX")
-						msg.FileLock.Unlock()
-					}
-				*/
 			default:
 				return errors.New("BytesReader unknown message")
 			}
