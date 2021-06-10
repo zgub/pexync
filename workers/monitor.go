@@ -1,7 +1,6 @@
 package workers
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
 	"time"
@@ -89,7 +88,12 @@ func (hsw *HttpSender) StartMon() error {
 				return errors.New("an error occurred while watching directory")
 			}
 
-			fmt.Printf("N E W  *** E V E N T %s for %s\n", event.Op.String(), event.Name)
+			log.Trace().
+				Str("filename", event.Name).
+				Str("operation", event.String()).
+				Str("operation", event.Op.String()).
+				Msg("new fs event")
+
 			err := hsw.evalEvent(event)
 
 			if err != nil {
@@ -108,7 +112,7 @@ func (hsw *HttpSender) StartMon() error {
 			return err
 		case <-time.After(pollInterval * time.Second):
 			log.Trace().
-				Msg("Monitor - sync state check")
+				Msg("monitor - checkpoint")
 			err = hsw.checkpoint()
 			if err != nil {
 				return errors.Wrap(err, "monitor - sync check failed")
@@ -122,17 +126,17 @@ func (hsw *HttpSender) checkpoint() error {
 
 	// ccIo = max nibmber of readers possible
 	ccIo := viper.GetInt("io_concurrency")
-	freeReaders := 0
+	busyReaders := 0
 	toBeSynced := make([]*lfs.FileDesc, 0)
 
 	// first ceck whether there are free readers
 	// and colled files that need to be synced in the same run
 	for _, fd := range hsw.syncStatus {
 		if fd.GetState() == lfs.InSync {
-			freeReaders++
+			busyReaders++
 		}
 		// if it reaches ccIo return, no free readeers
-		if freeReaders == ccIo {
+		if busyReaders == ccIo {
 			// this is not optimal, we could at least send the meta
 			return nil
 		}
@@ -142,6 +146,8 @@ func (hsw *HttpSender) checkpoint() error {
 			toBeSynced = append(toBeSynced, fd)
 		}
 	}
+
+	freeReaders := ccIo - busyReaders
 
 	// here we should have at least one free readers
 	// check if there any files to be sent, quit otherwise
@@ -253,8 +259,11 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		// lfs.New???
-		fd.SetState(lfs.Diff)
+		if fd.GetState() == lfs.Created {
+			fd.SetState(lfs.Missing)
+		} else {
+			fd.SetState(lfs.Diff)
+		}
 	}
 	/********************
 	 * Write event *
@@ -296,7 +305,9 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		fd.SetState(lfs.Meta)
+		if fd.GetState() != lfs.Created {
+			fd.SetState(lfs.Meta)
+		}
 	}
 	/****************
 	 * Rename event *
