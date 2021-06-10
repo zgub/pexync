@@ -34,12 +34,6 @@ func init() {
 	}
 
 	viper.SetDefault("poll_interval", 5)
-	err = viper.BindPFlag("poll_interval", monitorCmd.Flags().Lookup("poll-interval"))
-	if err != nil {
-		log.Fatal().
-			Err(err).
-			Send()
-	}
 
 	rootCmd.AddCommand(monitorCmd)
 }
