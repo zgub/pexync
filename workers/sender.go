@@ -381,14 +381,11 @@ func (hsw *HttpSender) Start() error {
 
 	hsw.sendDataToReaders()
 
-	// stop the readers if in sync once mode
-	if hsw.syncOnce {
-		hsw.stopReaders()
+	// old readers
+	hsw.stopReaders()
 
-		err = hsw.g.Wait()
-		if err != nil {
-			return errors.Wrap(err, "http sender worker failed")
-		}
+	// stop the http senders only in not in monitor mode
+	if hsw.syncOnce {
 
 		// don't forget to stop http senders in sync_once mode
 		for i := int64(0); i < 2*hsw.ccIo; i++ {
@@ -404,5 +401,11 @@ func (hsw *HttpSender) Start() error {
 			Msg("http sender - initial sync finished")
 
 	}
+
+	err = hsw.g.Wait()
+	if err != nil {
+		return errors.Wrap(err, "http sender worker failed")
+	}
+
 	return nil
 }
