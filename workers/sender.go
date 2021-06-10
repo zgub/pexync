@@ -116,26 +116,22 @@ func (s *sender) spawnReaders() {
 	dCtx := context.Context(s.ctx)
 
 	// spawn readers if we have diff files
-	if len(s.diffList) > 0 || s.syncOnce == false {
-		log.Debug().
-			Msg("sender - spawning roll readers")
+	log.Debug().
+		Msg("sender - spawning roll readers")
 
-		for i := int64(0); i < s.ccIo; i++ {
-			rrw := NewFileReader(dCtx, s.rrCh, s.receiver)
-			s.g.Go(rrw.RollReadFile)
-		}
+	for i := int64(0); i < s.ccIo; i++ {
+		rrw := NewFileReader(dCtx, s.rrCh, s.receiver)
+		s.g.Go(rrw.RollReadFile)
 	}
 
 	// spawn missing file senders if we have missing files
-	if len(s.missList) > 0 || !s.syncOnce == false {
-		log.Debug().
-			Int64("io concurrency", s.ccIo).
-			Msg("sender - spawning bytes readers")
+	log.Debug().
+		Int64("io concurrency", s.ccIo).
+		Msg("sender - spawning bytes readers")
 
-		for i := int64(0); i < s.ccIo; i++ {
-			brw := NewFileReader(dCtx, s.brCh, s.receiver)
-			s.g.Go(brw.ReadFile)
-		}
+	for i := int64(0); i < s.ccIo; i++ {
+		brw := NewFileReader(dCtx, s.brCh, s.receiver)
+		s.g.Go(brw.ReadFile)
 	}
 }
 
@@ -176,20 +172,19 @@ func (s *sender) sendDataToReaders() {
 }
 
 func (s *sender) stopReaders() {
-	fmt.Println("stopping readers")
-	// all data sent, stop zee workerz
-	if len(s.diffList) > 0 {
-		for i := int64(0); i < s.ccIo; i++ {
-			fmt.Println("----------------------- sending FIN to roll readers")
-			s.rrCh <- core.NewFIN(s.id)
-		}
+	log.Trace().
+		Msg("sender - stopping readers")
+		// all data sent, stop zee workerz
+	for i := int64(0); i < s.ccIo; i++ {
+		fmt.Println("----------------------- sending FIN to roll readers")
+		s.rrCh <- core.NewFIN(s.id)
 	}
-	if len(s.missList) > 0 {
-		for i := int64(0); i < s.ccIo; i++ {
-			fmt.Println("----------------------- sending FIN to bytes readers")
-			s.brCh <- core.NewFIN(s.id)
-		}
+	for i := int64(0); i < s.ccIo; i++ {
+		fmt.Println("----------------------- sending FIN to bytes readers")
+		s.brCh <- core.NewFIN(s.id)
 	}
+	log.Trace().
+		Msg("sender - FIN sent to reades")
 }
 
 // LocalSender represents blah balh
@@ -386,6 +381,8 @@ func (hsw *HttpSender) Start() error {
 
 	// stop the http senders only in not in monitor mode
 	if hsw.syncOnce {
+		log.Trace().
+			Msg("http sender - run once mode - stopping http senders")
 
 		// don't forget to stop http senders in sync_once mode
 		for i := int64(0); i < 2*hsw.ccIo; i++ {

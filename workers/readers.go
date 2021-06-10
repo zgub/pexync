@@ -405,6 +405,8 @@ func (hrw *HashReader) Start() error {
  **************/
 
 func (rw *FileReader) RollReadFile() error {
+	log.Debug().
+		Msgf("roll reader %d - staring", rw.myID)
 
 	for {
 		// wait for file (or a section)
