@@ -368,13 +368,13 @@ func (hsw *HttpSender) Start() error {
 	hsw.g = new(errgroup.Group)
 
 	// another, independent one, just for http senders
-	eg := new(errgroup.Group)
+	httpSendersGroup := new(errgroup.Group)
 
 	// starting http senders
 	for i := int64(0); i < 2*hsw.ccIo; i++ {
 		log.Trace().
 			Msgf("http sender - starting http client worker %d", i)
-		eg.Go(hsw.startDataSender)
+		httpSendersGroup.Go(hsw.startDataSender)
 	}
 
 	hsw.spawnReaders()
@@ -395,7 +395,7 @@ func (hsw *HttpSender) Start() error {
 			hsw.receiver <- core.NewFIN(hsw.id)
 		}
 
-		err = eg.Wait()
+		err = httpSendersGroup.Wait()
 		if err != nil {
 			return errors.Wrap(err, "http reader failed")
 		}
