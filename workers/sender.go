@@ -20,7 +20,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const splitSize = int64(536870912)
+const splitAtSize = int64(536870912)
 
 type sender struct {
 	ctx                  context.Context
@@ -144,7 +144,7 @@ func (s *sender) sendDataToReaders() {
 	// send data - diff first
 	for _, fd := range s.diffList {
 
-		if fd.FileSize > splitSize && s.ccIo > 1 {
+		if fd.FileSize > splitAtSize && s.ccIo > 1 {
 			chunkSize := fd.FileSize / s.ccIo
 			log.Debug().
 				Int64("file size", fd.FileSize).

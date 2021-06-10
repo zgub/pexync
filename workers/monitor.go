@@ -3,6 +3,7 @@ package workers
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/pkg/errors"
@@ -123,6 +124,7 @@ func (hsw *HttpSender) checkpoint() error {
 	ccIo := viper.GetInt("io_concurrency")
 	freeReaders := 0
 	toBeSynced := make([]*lfs.FileDesc, 0)
+
 	// first ceck whether there are free readers
 	// and colled files that need to be synced in the same run
 	for _, fd := range hsw.syncStatus {
@@ -131,9 +133,11 @@ func (hsw *HttpSender) checkpoint() error {
 		}
 		// if it reaches ccIo return, no free readeers
 		if freeReaders == ccIo {
+			// this is not optimal, we could at least send the meta
 			return nil
 		}
 
+		// collect modified items
 		if fd.GetState() != lfs.InSync && fd.GetState() != lfs.Synced {
 			toBeSynced = append(toBeSynced, fd)
 		}
@@ -146,8 +150,14 @@ func (hsw *HttpSender) checkpoint() error {
 		return nil
 	}
 
-	// we have free readers and files to sync, let's go file by file
+	// we need to proceed in order because directories have to be created first
+	// maps are not sorted
+	// sorting things out
+	sort.Slice(toBeSynced, func(i, j int) bool {
+		return toBeSynced[i].Modified.Before(toBeSynced[j].Modified)
+	})
 
+	// we have free readers and files to sync, let's go file by file
 	url := hsw.url.String() + "/meta"
 	for _, fd := range toBeSynced {
 		switch fd.GetState() {
@@ -160,12 +170,26 @@ func (hsw *HttpSender) checkpoint() error {
 			if err != nil {
 				return errors.Wrap(err, "failed to send medadata to htp server")
 			}
-			// chane the creatd state to missing state, recever was notified
+			// change the creatd state to missing state, recever was notified
 			fd.SetState(lfs.Missing)
 		case lfs.Missing:
 			// sending whole file
+			if freeReaders > 0 {
+				hsw.rrCh <- core.NewRSQ(hsw.id, fd, 0, fd.FileSize, 1)
+				freeReaders--
+			} else {
+				// no more readers
+				return nil
+			}
 		case lfs.Diff:
 			// sending delta, or new file, the bussiness
+			if freeReaders > 0 {
+				hsw.rrCh <- core.NewRSQ(hsw.id, fd, 0, fd.FileSize, 1)
+				freeReaders--
+			} else {
+				// no more readers
+				return nil
+			}
 		case lfs.Meta:
 			// sending only meta
 			msg := core.NewMOD(hsw.id, fd)
