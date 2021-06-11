@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
@@ -37,7 +38,8 @@ type receiver struct {
 	ctx             context.Context
 	state           senderState // not sure if needed, or if I ever implement this
 	senderUUID      uuid.UUID   // same here
-	srcList         map[int64]*lfs.FileDesc
+	srcListCache    map[int64]*lfs.FileDesc
+	listCacheMux    sync.RWMutex
 	fileWritersLMap map[int64]*FileWriter
 	fileWriters     *errgroup.Group // writters error group
 	fileWritersMux  sync.Mutex
@@ -52,7 +54,7 @@ func (rcw *receiver) parseSenderList(msg *core.Message) error {
 
 	// store source filelist ina a map for future!!!
 	for _, fd := range msg.GetList() {
-		rcw.srcList[fd.Idx] = fd
+		rcw.addToCache(fd.Idx, fd)
 	}
 
 	// now compare sender and remote directories
@@ -124,7 +126,7 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
 	// prepare the result = a map of differences
 	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
-	for _, srcFd := range rcw.srcList {
+	for _, srcFd := range rcw.srcListCache {
 
 		p := filepath.Join(dstDir, srcFd.RelPath)
 		log.Trace().
@@ -164,7 +166,7 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// map both here for block checksum calculation later
 				diffMap[dstFd] = srcFd
 				// store!
-				rcw.srcList[srcFd.Idx] = srcFd
+				rcw.addToCache(srcFd.Idx, srcFd)
 
 				if srcFd.IsDir == false {
 					// a file that exists and is not dir
@@ -249,7 +251,7 @@ func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				}
 				srcFd.SetState(lfs.Missing)
 				// store!
-				rcw.srcList[srcFd.Idx] = srcFd
+				rcw.addToCache(srcFd.Idx, srcFd)
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
 					Int64("source file size", srcFd.FileSize).
@@ -317,7 +319,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		if fd == nil {
 			panic("invalid message")
 		}
-		if _, exists := rcw.srcList[fd.Idx]; exists {
+		if _, exists := rcw.loadFromCache(fd.Idx); exists {
 			err := errors.New("file id collision")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			log.Error().
@@ -329,7 +331,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				Str("filename", fd.FileName).
 				Int64("file index", fd.Idx).
 				Msg("adding to source list")
-			rcw.srcList[fd.Idx] = fd
+			rcw.addToCache(fd.Idx, fd)
 			fd.SetState(lfs.Missing)
 			// take care of empty files and directories
 			if fd.IsDir == true {
@@ -374,9 +376,19 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		log.Trace().
 			Str("filename", fd.FileName).
 			Int64("file index", fd.Idx).
-			Msg("receicer - updatind remote meta")
+			Msg("receiver - updating remote state")
 
-		srcFd := rcw.srcList[fd.Idx]
+		srcFd, exists := rcw.loadFromCache(fd.Idx)
+		if exists == false {
+			err := errors.New("unknown file")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+
 		srcFd.BlockSize = fd.BlockSize
 		srcFd.FileSize = fd.FileSize
 		srcFd.SetState(lfs.Diff)
@@ -399,8 +411,38 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
+	case core.MOD:
+		log.Trace().
+			Str("sender UUID", msg.GetID().String()).
+			Msg("receiver - MOD message")
 
+			// store the announced file descriptor
+		srcFd := msg.GetFileDesc()
+		if srcFd == nil {
+			panic("invalid message")
+		}
+		log.Trace().
+			Str("filename", srcFd.FileName).
+			Int64("file index", srcFd.Idx).
+			Msg("receiver - updating remote state")
+
+		dstFd, exists := rcw.loadFromCache(srcFd.Idx)
+		if exists == false {
+			err := errors.New("unknown file")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+
+		// pull from config
+		dstDir := viper.GetString("destination")
+		fixMeta(dstDir, srcFd, dstFd)
 	default:
+		spew.Dump(msg)
+		err := errors.New("meta processor - invalid message, unknown flag")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
 			Err(err).
@@ -432,8 +474,18 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	} else {
 		//spew.Dump(dd)
 		// new file, new writer
+		fd, exists := rcw.loadFromCache(dd.FileIndex())
+		if exists == false {
+			err := errors.New("unknown file")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
 		log.Debug().
-			Str("filename", rcw.srcList[dd.FileIndex()].FileName).
+			Str("filename", fd.FileName).
 			Int64("file index", fi).
 			Msg("receiver - starting new writter")
 
@@ -447,7 +499,7 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 		inbox := make(chan *core.Message, streams*2)
 		// create new file writer worker
 
-		frw := NewFileWriter(rcw.ctx, rcw.senderUUID, streams, rcw.srcList[dd.FileIndex()], inbox, rcw.RemWritter)
+		frw := NewFileWriter(rcw.ctx, rcw.senderUUID, streams, fd, inbox, rcw.RemWritter)
 		// add it to the lookup map
 		rcw.AddWritter(fi, frw)
 		// send a new message
@@ -499,6 +551,21 @@ func (rcw *receiver) GetWritter(fileIndex int64) (*FileWriter, bool) {
 	return fw, ok
 }
 
+// addToCache makes sure, that in http mode, there are to race conditions
+func (rcw *receiver) addToCache(idx int64, fd *lfs.FileDesc) {
+	rcw.listCacheMux.Lock()
+	defer rcw.listCacheMux.Unlock()
+	rcw.srcListCache[idx] = fd
+}
+
+// loadFromCache return a file descriptor or nil and false
+func (rcw *receiver) loadFromCache(idx int64) (fd *lfs.FileDesc, ok bool) {
+	rcw.listCacheMux.RLock()
+	defer rcw.listCacheMux.RUnlock()
+	fd, ok = rcw.srcListCache[idx]
+	return
+}
+
 // LocalSender represents blah balh
 type LocalReceiver struct {
 	inbox  <-chan *core.Message
@@ -511,7 +578,7 @@ func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<
 		receiver: receiver{
 			ctx:             ctx,
 			state:           RST,
-			srcList:         make(map[int64]*lfs.FileDesc),
+			srcListCache:    make(map[int64]*lfs.FileDesc),
 			fileWritersLMap: make(map[int64]*FileWriter),
 			fileWriters:     new(errgroup.Group),
 		},
@@ -583,8 +650,16 @@ Loop:
 				/***********************
 				 * end of detour       *
 				 ***********************/
+				var (
+					fd *lfs.FileDesc
+					ok bool
+				)
+				if fd, ok = lrw.srcListCache[dd.FileIndex()]; !ok {
+					return errors.New("unknown file")
+				}
+
 				log.Trace().
-					Str("filename", lrw.srcList[dd.FileIndex()].FileName).
+					Str("filename", fd.FileName).
 					Int64("data sequence", dd.Seq()).
 					Msg("receiver - data received")
 				fi := dd.FileIndex()
@@ -594,7 +669,7 @@ Loop:
 				} else {
 					// new file, new writer
 					log.Debug().
-						Str("filename", lrw.srcList[dd.FileIndex()].FileName).
+						Str("filename", fd.FileName).
 						Msg("receiver - starting new writter")
 
 					streams := dd.GetStreamCount()
@@ -606,7 +681,7 @@ Loop:
 
 					inbox := make(chan *core.Message, streams)
 					// create new file writer worker
-					frw := NewFileWriter(lrw.ctx, lrw.senderUUID, streams, lrw.srcList[dd.FileIndex()], inbox, lrw.RemWritter)
+					frw := NewFileWriter(lrw.ctx, lrw.senderUUID, streams, fd, inbox, lrw.RemWritter)
 					// add it to the lookup map
 					lrw.AddWritter(fi, frw)
 					// send a new message
@@ -645,7 +720,7 @@ func NewHttpReceiver(ctx context.Context) *HttpReceiver {
 		receiver: receiver{
 			ctx:             ctx,
 			state:           RST,
-			srcList:         make(map[int64]*lfs.FileDesc),
+			srcListCache:    make(map[int64]*lfs.FileDesc),
 			fileWritersLMap: make(map[int64]*FileWriter),
 			fileWriters:     new(errgroup.Group),
 		},

@@ -152,20 +152,11 @@ func (hsw *HttpSender) checkpoint() error {
 	})
 
 	// we have free readers and files to sync, let's go file by file
-	url := hsw.url.String() + "/meta"
 	for _, fd := range toBeSynced {
 		switch fd.GetState() {
 		case lfs.Created:
 			// sending new file, this will pnly update the src list on the remote
-			msg := core.NewADD(hsw.id, fd)
-			log.Trace().
-				Msg("monitor - sending new file message")
-			_, err := hsw.sendJson(url, msg)
-			if err != nil {
-				return errors.Wrap(err, "failed to send medadata to htp server")
-			}
-			// change the creatd state to missing state, recever was notified
-			fd.SetState(lfs.Missing)
+			//************************
 		case lfs.Missing:
 			// sending whole file
 			if freeReaders > 0 {
@@ -186,33 +177,15 @@ func (hsw *HttpSender) checkpoint() error {
 			}
 		case lfs.Meta:
 			// sending only meta
-			msg := core.NewMOD(hsw.id, fd)
-			log.Trace().
-				Msg("monitor - sending chmod message")
-			_, err := hsw.sendJson(url, msg)
-			if err != nil {
-				return errors.Wrap(err, "failed to send medadata to htp server")
-			}
+			// *************************
 			// this was only meta, let's continue
 		case lfs.Renamed:
 			// sending only meta
-			msg := core.NewREN(hsw.id, fd)
-			log.Trace().
-				Msg("monitor - sending rename message")
-			_, err := hsw.sendJson(url, msg)
-			if err != nil {
-				return errors.Wrap(err, "failed to send medadata to htp server")
-			}
+			// ***************************
 			// this was only meta, let's continue
 		case lfs.Deleted:
 			// seding only meta
-			msg := core.NewDEL(hsw.id, fd)
-			log.Trace().
-				Msg("monitor - sending delete message")
-			_, err := hsw.sendJson(url, msg)
-			if err != nil {
-				return errors.Wrap(err, "failed to send medadata to htp server")
-			}
+			// *****************************
 			// this was only meta, let's continue
 		}
 	}
@@ -225,6 +198,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 	/****************
 	 * Create event *
 	 ****************/
+	url := hsw.url.String() + "/meta"
 	if event.Op&fsnotify.Create == fsnotify.Create {
 		fd, err := lfs.Scan(event.Name)
 		if err != nil {
@@ -237,6 +211,14 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			Str("path", event.Name).
 			Str("file state change", fd.GetState().String()).
 			Msg("monitor - CREATE")
+		msg := core.NewADD(hsw.id, fd)
+		log.Trace().
+			Msg("monitor - sending new file message")
+		_, err = hsw.sendJson(url, msg)
+		if err != nil {
+			return errors.Wrap(err, "failed to send medadata to htp server")
+		}
+
 	}
 	/**********************
 	 * Close Write event *
@@ -250,15 +232,18 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrap(err, "unknown event - unmonitored file")
 		}
+
+		log.Info().
+			Str("path", event.Name).
+			Str("file state change", fd.GetState().String()).
+			Msg("monitor -  CLOSE WRITE")
+
 		if oldFd.GetState() == lfs.Created {
 			hsw.updateWatchlist(fd, lfs.Missing)
 		} else {
 			hsw.updateWatchlist(fd, lfs.Diff)
 		}
-		log.Info().
-			Str("path", event.Name).
-			Str("file state change", fd.GetState().String()).
-			Msg("monitor -  CLOSE WRITE")
+
 	}
 	/********************
 	 * Write event *
@@ -283,6 +268,16 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			Str("path", event.Name).
 			Str("state change", fd.GetState().String()).
 			Msg("monitor - REMOVE")
+
+		msg := core.NewDEL(hsw.id, fd)
+		log.Trace().
+			Msg("monitor - sending delete message")
+		_, err = hsw.sendJson(url, msg)
+		if err != nil {
+			return errors.Wrap(err, "failed to send medadata to htp server")
+		}
+		// remove from monitoring
+		hsw.remWatchListItem(fd)
 	}
 	/***************
 	 * Chmod event *
@@ -296,15 +291,26 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrap(err, "unknown event - unmonitored file")
 		}
+
+		log.Info().
+			Str("path", event.Name).
+			Str("state change", fd.GetState().String()).
+			Msg("monitor - CHMOD")
+
+		msg := core.NewMOD(hsw.id, fd)
+		log.Trace().
+			Msg("monitor - sending chmod message")
+		_, err = hsw.sendJson(url, msg)
+		if err != nil {
+			return errors.Wrap(err, "failed to send medadata to htp server")
+		}
+		// if previous state was Created, set state to missing, because the file has to be synced
+
 		if oldFd.GetState() == lfs.Created {
 			hsw.updateWatchlist(fd, lfs.Missing)
 		} else {
 			hsw.updateWatchlist(fd, lfs.Meta)
 		}
-		log.Info().
-			Str("path", event.Name).
-			Str("state change", fd.GetState().String()).
-			Msg("monitor - CHMOD")
 	}
 	/****************
 	 * Rename event *
@@ -314,11 +320,19 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
-		hsw.updateWatchlist(fd, lfs.Renamed)
 		log.Info().
 			Str("path", event.Name).
 			Str("state change", fd.GetState().String()).
 			Msg("monitor - RENAME")
+
+		msg := core.NewREN(hsw.id, fd)
+		log.Trace().
+			Msg("monitor - sending rename message")
+		_, err = hsw.sendJson(url, msg)
+		if err != nil {
+			return errors.Wrap(err, "failed to send medadata to htp server")
+		}
+		hsw.updateWatchlist(fd, lfs.Synced)
 	}
 	return nil
 }
@@ -362,4 +376,15 @@ func (hsw *HttpSender) getWatchlistItem(p string) (*lfs.FileDesc, error) {
 		return fd, nil
 	}
 	return nil, errors.New("path not in watchlist")
+}
+
+// remWatchListItem removes an item from watchlist
+func (hsw *HttpSender) remWatchListItem(fd *lfs.FileDesc) {
+	p := filepath.Join(fd.Prefix, fd.FileName)
+	if fd.IsDir {
+		// remove file from watchlist
+		hsw.directoryWatcher.Remove(p)
+	}
+	// BUG: dir children will remain
+	delete(hsw.syncStatus, p)
 }
