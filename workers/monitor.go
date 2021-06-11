@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 	"time"
@@ -239,8 +240,10 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			Msg("monitor -  CLOSE WRITE")
 
 		if oldFd.GetState() == lfs.Created {
+			fmt.Println("*** new -> Missing")
 			hsw.updateWatchlist(fd, lfs.Missing)
 		} else {
+			fmt.Println("*** old -> diff")
 			hsw.updateWatchlist(fd, lfs.Diff)
 		}
 
@@ -307,7 +310,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		// if previous state was Created, set state to missing, because the file has to be synced
 
 		if oldFd.GetState() == lfs.Created {
-			hsw.updateWatchlist(fd, lfs.Missing)
+			hsw.updateWatchlist(fd, lfs.Created)
 		} else {
 			hsw.updateWatchlist(fd, lfs.Meta)
 		}

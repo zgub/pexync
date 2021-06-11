@@ -284,6 +284,19 @@ func (dd *DataDesc) MarkAsLast() error {
 	return nil
 }
 
+// Interrupt is a special message that tell the writer to stop a rollback
+func (dd *DataDesc) Interrupt() error {
+	dd.flush()
+	header := &Header{
+		Flag: int16(Interrupt),
+	}
+	err := binary.Write(dd.data, binary.BigEndian, header)
+	if err != nil {
+		return errors.Wrap(err, "unable to encode data")
+	}
+	return nil
+}
+
 // FileDesc is the file descriptr hodling all the information about a file sync state
 type FileDesc struct {
 	IsDir     bool

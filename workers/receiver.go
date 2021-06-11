@@ -417,16 +417,16 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 			Msg("receiver - MOD message")
 
 			// store the announced file descriptor
-		srcFd := msg.GetFileDesc()
-		if srcFd == nil {
+		fd := msg.GetFileDesc()
+		if fd == nil {
 			panic("invalid message")
 		}
 		log.Trace().
-			Str("filename", srcFd.FileName).
-			Int64("file index", srcFd.Idx).
+			Str("filename", fd.FileName).
+			Int64("file index", fd.Idx).
 			Msg("receiver - updating remote state")
 
-		dstFd, exists := rcw.loadFromCache(srcFd.Idx)
+		srcFd, exists := rcw.loadFromCache(fd.Idx)
 		if exists == false {
 			err := errors.New("unknown file")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -436,10 +436,23 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
+		srcFd.Modified = fd.Modified
+		srcFd.Gid = fd.Gid
+		srcFd.Uid = fd.Uid
+		srcFd.Mode = fd.Mode
 
-		// pull from config
-		dstDir := viper.GetString("destination")
-		fixMeta(dstDir, srcFd, dstFd)
+		// send updated fd, with hashMap
+		msg.SetFlag(core.ACK)
+
+		err = respondWithJSON(w, http.StatusOK, msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
 	default:
 		spew.Dump(msg)
 		err := errors.New("meta processor - invalid message, unknown flag")

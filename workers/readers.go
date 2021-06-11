@@ -99,6 +99,7 @@ func (frw *FileReader) Run() error {
 
 // readBytes reads a file block by block and sends it to receiver
 func (frw *FileReader) readBytes(msg *core.Message) error {
+
 	// sanity check
 	streams := msg.GetStreamCount()
 	if streams == 0 {
@@ -108,18 +109,29 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 	log.Trace().
 		Str("filename", msg.GetFileDesc().FileName).
 		Msgf("bytes reader %d - message received", frw.myID)
-	p := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
+
+	fd := msg.GetFileDesc()
+	p := filepath.Join(fd.Prefix, fd.FileName)
 	f, err := os.Open(p)
 	if err != nil {
-		return errors.Wrapf(err, "unable to read (missing) file %s", msg.GetFileDesc().FileName)
+		return errors.Wrapf(err, "unable to read (missing) file %s", fd.FileName)
 	}
 	r := io.ReaderAt(f)
 	sr := io.NewSectionReader(r, msg.GetOffset(), msg.GetLimit())
 	br := bufio.NewReader(sr)
-	buf := make([]byte, msg.GetFileDesc().BlockSize)
+	buf := make([]byte, fd.BlockSize)
+
+	fd.SetState(lfs.InSync)
+	defer fd.SetState(lfs.Synced)
 
 	for seq := int64(0); ; seq++ {
-		dd := lfs.NewDataDesc(msg.GetFileDesc().Idx, msg.GetOffset(), seq, streams)
+		dd := lfs.NewDataDesc(fd.Idx, msg.GetOffset(), seq, streams)
+
+		if fd.GetState() != lfs.InSync {
+			/****************************
+			 * Interrupt                *
+			 ****************************/
+		}
 
 		n, err := io.ReadFull(br, buf)
 		if n == 0 {
@@ -131,7 +143,7 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 			if err == io.EOF {
 				// end of transmission
 				dd.MarkAsLast()
-				nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
+				nMsg := core.NewDataWSQ(dd, fd)
 				err = sendWithTimeout(nMsg, frw.receiver)
 				if err != nil {
 					return errors.Wrap(err, "error sending data")
@@ -144,7 +156,7 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 		if err != nil {
 			return errors.Wrap(err, "error reading file")
 		}
-		nMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
+		nMsg := core.NewDataWSQ(dd, fd)
 
 		err = sendWithTimeout(nMsg, frw.receiver)
 		if err != nil {
@@ -171,7 +183,7 @@ func (frw *FileReader) rollV3(msg *core.Message) error {
 	// open the file
 	srcFilePath := filepath.Join(fd.Prefix, fd.FileName)
 	log.Trace().
-		Msgf("roll reader %d - start reading: %s", frw.myID, srcFilePath)
+		Msgf("rollV3 reader %d - start reading: %s", frw.myID, srcFilePath)
 	f, err := os.Open(srcFilePath)
 	if err != nil {
 		return errors.Wrapf(err, "roll reader %d - unable to open file for reading: %s", frw.myID, srcFilePath)
@@ -191,6 +203,9 @@ func (frw *FileReader) rollV3(msg *core.Message) error {
 	for i, h := range fd.Weak {
 		hMap[h] = i
 	}
+
+	fd.SetState(lfs.InSync)
+	fd.SetState(lfs.Synced)
 
 	// initialize the rolling hash by copying first block of data
 	rh := core.Pour(fd.BlockSize)
@@ -219,6 +234,7 @@ func (frw *FileReader) rollV3(msg *core.Message) error {
 			/*******************************************
 			 * stop reading and send interrupt message *
 			 *******************************************/
+
 		}
 		rSum := rh.Sum32()
 
@@ -356,6 +372,9 @@ func (frw *FileReader) rollV3(msg *core.Message) error {
 		return errors.Wrap(err, "error sending data")
 	}
 
+	log.Trace().
+		Msgf("rollV3 reader - file sent")
+
 	return nil
 }
 
@@ -406,31 +425,31 @@ func (hrw *HashReader) Start() error {
 
 func (rw *FileReader) RollReadFile() error {
 	log.Debug().
-		Msgf("roll reader %d - staring", rw.myID)
+		Msgf("old roll reader %d - staring", rw.myID)
 
 	for {
 		// wait for file (or a section)
 		select {
 		case <-rw.ctx.Done():
 			log.Debug().
-				Msgf("roll reader %d - closing, context done", rw.myID)
+				Msgf("old roll reader %d - closing, context done", rw.myID)
 			return nil
 		case msg := <-rw.inbox:
 			switch msg.GetFlag() {
 			case core.RSQ: // read sequence
 				log.Debug().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("roll reader %d - file received", rw.myID)
+					Msgf("old roll reader %d - file received", rw.myID)
 				err := rw.rollV3(msg)
 				if err != nil {
 					return errors.Wrap(err, "roll hash reader failed")
 				}
 			case core.FIN:
 				log.Trace().
-					Msgf("roll reader %d - received FIN", rw.myID)
+					Msgf("old roll reader %d - received FIN", rw.myID)
 				return nil
 			default:
-				s := fmt.Sprintf("roll reader %d - unknown message received", rw.myID)
+				s := fmt.Sprintf("old roll reader %d - unknown message received", rw.myID)
 				return errors.New(s)
 			}
 		}
@@ -445,25 +464,25 @@ func (rw *FileReader) ReadFile() error {
 		select {
 		case <-rw.ctx.Done():
 			log.Debug().
-				Msgf("bytes reader %d - closing, context done", rw.myID)
+				Msgf("old bytes reader %d - closing, context done", rw.myID)
 			return nil
 		case msg := <-rw.inbox:
 			switch msg.GetFlag() {
 			case core.FIN:
 				log.Debug().
-					Msgf("bytes reader %d - received FIN", rw.myID)
+					Msgf("old bytes reader %d - received FIN", rw.myID)
 				return nil
 			case core.RSQ:
 
 				// sanity check
 				streams := msg.GetStreamCount()
 				if streams == 0 {
-					panic("bytes reader: zero stream count")
+					panic("old bytes reader: zero stream count")
 				}
 
 				log.Trace().
 					Str("filename", msg.GetFileDesc().FileName).
-					Msgf("bytes reader %d - message received", rw.myID)
+					Msgf("old bytes reader %d - message received", rw.myID)
 				p := filepath.Join(msg.GetFileDesc().Prefix, msg.GetFileDesc().FileName)
 				f, err := os.Open(p)
 				if err != nil {
@@ -510,7 +529,7 @@ func (rw *FileReader) ReadFile() error {
 				return errors.New("BytesReader unknown message")
 			}
 		case <-time.After(3 * time.Second):
-			fmt.Printf("bytes reader %d - timeout\n", rw.myID)
+			fmt.Printf("old bytes reader %d - timeout\n", rw.myID)
 		}
 	}
 }
