@@ -43,6 +43,8 @@ func (s *sender) genSrcList() error {
 	}
 	s.lastFileIdx = len(list)
 
+	fmt.Printf("*************** last file index: %d\n", s.lastFileIdx)
+
 	// calculate blocksizes for each file
 	for _, fd := range list {
 		if fd.IsDir == false {

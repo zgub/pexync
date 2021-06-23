@@ -573,8 +573,8 @@ func (rcw *receiver) addToCache(idx int64, fd *lfs.FileDesc) {
 
 // loadFromCache return a file descriptor or nil and false
 func (rcw *receiver) loadFromCache(idx int64) (fd *lfs.FileDesc, ok bool) {
-	rcw.listCacheMux.RLock()
-	defer rcw.listCacheMux.RUnlock()
+	rcw.listCacheMux.Lock()
+	defer rcw.listCacheMux.Unlock()
 	fd, ok = rcw.srcListCache[idx]
 	return
 }

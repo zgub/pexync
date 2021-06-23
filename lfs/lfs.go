@@ -325,6 +325,8 @@ func Scan(path string) (*FileDesc, error) {
 		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
 	}
 
+	stat := info.Sys().(*syscall.Stat_t)
+
 	srcPath := viper.GetString("source")
 	basePath, err := filepath.Abs(srcPath)
 	if err != nil {
@@ -354,8 +356,8 @@ func Scan(path string) (*FileDesc, error) {
 		FileSize: info.Size(),
 		Modified: info.ModTime(),
 		Mode:     info.Mode(),
-		//Uid: stat.Uid,
-		//Gid: stat.Gid.
+		Uid:      stat.Uid,
+		Gid:      stat.Gid,
 	}
 
 	if fd.IsDir == false {

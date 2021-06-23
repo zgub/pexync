@@ -122,7 +122,6 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 	buf := make([]byte, fd.BlockSize)
 
 	fd.SetState(lfs.InSync)
-	defer fd.SetState(lfs.Synced)
 
 	for seq := int64(0); ; seq++ {
 		dd := lfs.NewDataDesc(fd.Idx, msg.GetOffset(), seq, streams)
@@ -131,6 +130,13 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 			/****************************
 			 * Interrupt                *
 			 ****************************/
+			dd.Interrupt()
+			nMsg := core.NewDataWSQ(dd, fd)
+			err = sendWithTimeout(nMsg, frw.receiver)
+			if err != nil {
+				return errors.Wrap(err, "error sending data")
+			}
+			break
 		}
 
 		n, err := io.ReadFull(br, buf)
@@ -162,6 +168,8 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 		if err != nil {
 			return errors.Wrap(err, "error sending data")
 		}
+
+		fd.SetState(lfs.Synced)
 
 	}
 	return nil
@@ -234,6 +242,13 @@ func (frw *FileReader) rollV3(msg *core.Message) error {
 			/*******************************************
 			 * stop reading and send interrupt message *
 			 *******************************************/
+			dd.Interrupt()
+			dMsg := core.NewDataWSQ(dd, msg.GetFileDesc())
+			err = sendWithTimeout(dMsg, frw.receiver)
+			if err != nil {
+				return errors.Wrap(err, "error sending data")
+			}
+			break
 
 		}
 		rSum := rh.Sum32()

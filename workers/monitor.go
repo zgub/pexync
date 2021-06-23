@@ -73,7 +73,7 @@ func (hsw *HttpSender) StartMon() error {
 				Str("filename", event.Name).
 				Str("operation", event.String()).
 				Str("operation", event.Op.String()).
-				Msg("new fs event")
+				Msg("monitor - NEW EVENT")
 
 			err := hsw.evalEvent(event)
 
@@ -202,6 +202,13 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 	url := hsw.url.String() + "/meta"
 	if event.Op&fsnotify.Create == fsnotify.Create {
 		fd, err := lfs.Scan(event.Name)
+
+		// this was a create event, we need to increase the file index counter
+		hsw.lastFileIdx++
+		fd.Idx = int64(hsw.lastFileIdx)
+		log.Trace().
+			Msgf("monitor - NEW file index: %d", hsw.lastFileIdx)
+
 		if err != nil {
 			return errors.Wrapf(err, "failed to stat new file %s", event.Name)
 		}
@@ -298,9 +305,15 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 		log.Info().
 			Str("path", event.Name).
 			Str("state change", fd.GetState().String()).
+			Int64("file index", oldFd.Idx).
 			Msg("monitor - CHMOD")
 
-		msg := core.NewMOD(hsw.id, fd)
+		oldFd.Modified = fd.Modified
+		oldFd.Gid = fd.Gid
+		oldFd.Uid = fd.Uid
+		oldFd.Mode = fd.Mode
+
+		msg := core.NewMOD(hsw.id, oldFd)
 		log.Trace().
 			Msg("monitor - sending chmod message")
 		_, err = hsw.sendJson(url, msg)
