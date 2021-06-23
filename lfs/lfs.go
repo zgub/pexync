@@ -103,6 +103,7 @@ func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
 	if streams == 0 {
 		panic("zero stream count")
 	}
+	fmt.Printf("generating data packet file index: %d\n", fileIndex)
 	return &DataDesc{
 		fileIndex: fileIndex,
 		readBuf:   new(bytes.Buffer),

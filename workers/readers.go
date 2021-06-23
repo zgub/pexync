@@ -63,7 +63,8 @@ func (frw *FileReader) Run() error {
 				case lfs.Missing:
 					log.Trace().
 						Str("filename", fd.FileName).
-						Msgf("file reader %d - new file recived", frw.myID)
+						Int64("file index", fd.Idx).
+						Msgf("file reader %d - new file received", frw.myID)
 
 					// readBytes function was created as a separate function for bettere readibility, as performance is not a goal here
 					err := frw.readBytes(msg)
@@ -106,11 +107,13 @@ func (frw *FileReader) readBytes(msg *core.Message) error {
 		panic("bytes reader: zero stream count")
 	}
 
+	fd := msg.GetFileDesc()
+
 	log.Trace().
-		Str("filename", msg.GetFileDesc().FileName).
+		Str("filename", fd.FileName).
+		Int64("file index", fd.Idx).
 		Msgf("bytes reader %d - message received", frw.myID)
 
-	fd := msg.GetFileDesc()
 	p := filepath.Join(fd.Prefix, fd.FileName)
 	f, err := os.Open(p)
 	if err != nil {

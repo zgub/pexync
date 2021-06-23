@@ -31,7 +31,7 @@ func (hsw *HttpSender) StartMon() error {
 	}
 
 	// initialize the watchlist (a map)
-	hsw.syncStatus = make(map[string]*lfs.FileDesc)
+	hsw.syncStatus = make(map[int64]*lfs.FileDesc)
 
 	// add whole source direcotory
 	p, err := filepath.Abs(hsw.srcDir)
@@ -227,12 +227,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			return errors.Wrap(err, "failed to send medadata to htp server")
 		}
 
-		for _, fd := range hsw.syncStatus {
-			log.Trace().
-				Int64("file index", fd.Idx).
-				Str("file name", fd.FileName).
-				Msg("item")
-		}
+		hsw.dumpSyncStatus()
 
 	}
 	/**********************
@@ -260,7 +255,7 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			fmt.Println("*** old -> diff")
 			hsw.updateWatchlist(fd, lfs.Diff)
 		}
-
+		hsw.dumpSyncStatus()
 	}
 	/********************
 	 * Write event *
@@ -369,7 +364,7 @@ func (hsw *HttpSender) addToWatchlist(fd *lfs.FileDesc, state lfs.SyncState) {
 		// watch this directory as well
 		hsw.directoryWatcher.Add(p)
 		// add to watch list
-		hsw.syncStatus[p] = fd
+		hsw.syncStatus[fd.Idx] = fd
 		log.Trace().
 			Str("filename", fd.FileName).
 			Int64("filesize", fd.FileSize).
@@ -377,7 +372,7 @@ func (hsw *HttpSender) addToWatchlist(fd *lfs.FileDesc, state lfs.SyncState) {
 
 	} else {
 		// no need for mux, only one goroutine is accessing this map
-		hsw.syncStatus[p] = fd
+		hsw.syncStatus[fd.Idx] = fd
 		log.Trace().
 			Str("filename", fd.FileName).
 			Int64("filesize", fd.FileSize).
@@ -385,12 +380,19 @@ func (hsw *HttpSender) addToWatchlist(fd *lfs.FileDesc, state lfs.SyncState) {
 	}
 }
 
-// updateWatchlist updates the internal file descriptor database after an event
-func (hsw *HttpSender) updateWatchlist(fd *lfs.FileDesc, state lfs.SyncState) {
-	p := filepath.Join(fd.Prefix, fd.FileName)
-	fd.SetState(state)
+// overwriteInWatchlist overwrites the internal file descriptor database after an event
+func (hsw *HttpSender) overwriteInWatchlist(ufd *lfs.FileDesc, state lfs.SyncState) error {
 
-	hsw.syncStatus[p] = fd
+	if fd, ok := hsw.syncStatus[ufd.Idx]; ok {
+		ufd.SetState(state)
+		// keep the file index!
+		ufd.Idx = fd.Idx
+		hsw.syncStatus[ufd.Idx] = ufd
+	} else {
+		return errors.New("file not watched")
+	}
+
+	return nil
 }
 
 // getWatchlistItem returns a file descriptor, error otherwise
@@ -410,4 +412,15 @@ func (hsw *HttpSender) remWatchListItem(fd *lfs.FileDesc) {
 	}
 	// BUG: dir children will remain
 	delete(hsw.syncStatus, p)
+}
+
+// dumpSyncStatus is helper dubug func
+func (hsw *HttpSender) dumpSyncStatus() {
+	for _, fd := range hsw.syncStatus {
+		log.Trace().
+			Int64("file index", fd.Idx).
+			Str("file name", fd.FileName).
+			Str("file status", fd.State.String()).
+			Msg("item")
+	}
 }
