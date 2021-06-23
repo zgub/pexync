@@ -310,15 +310,17 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case core.ADD:
-		log.Trace().
-			Str("sender UUID", msg.GetID().String()).
-			Msg("receiver - ADD message")
 
-			// store the announced file descriptor
 		fd := msg.GetFileDesc()
 		if fd == nil {
 			panic("invalid message")
 		}
+
+		log.Trace().
+			Str("sender UUID", msg.GetID().String()).
+			Int64("file index", fd.Idx).
+			Msg("receiver - ADD message")
+
 		if _, exists := rcw.loadFromCache(fd.Idx); exists {
 			err := errors.New("file id collision")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -376,7 +378,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		log.Trace().
 			Str("filename", fd.FileName).
 			Int64("file index", fd.Idx).
-			Msg("receiver - updating remote state")
+			Msg("receiver - UPD updating remote state")
 
 		srcFd, exists := rcw.loadFromCache(fd.Idx)
 		if exists == false {
@@ -424,7 +426,7 @@ func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 		log.Trace().
 			Str("filename", fd.FileName).
 			Int64("file index", fd.Idx).
-			Msg("receiver - updating remote state")
+			Msg("receiver - MOD updating remote state")
 
 		srcFd, exists := rcw.loadFromCache(fd.Idx)
 		if exists == false {
@@ -485,7 +487,7 @@ func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	if fileWriter, ok := rcw.GetWritter(fi); ok {
 		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
-		//spew.Dump(dd)
+		spew.Dump(dd)
 		// new file, new writer
 		fd, exists := rcw.loadFromCache(dd.FileIndex())
 		if exists == false {
@@ -566,6 +568,7 @@ func (rcw *receiver) GetWritter(fileIndex int64) (*FileWriter, bool) {
 
 // addToCache makes sure, that in http mode, there are to race conditions
 func (rcw *receiver) addToCache(idx int64, fd *lfs.FileDesc) {
+	fmt.Printf("adding index: %d\n", idx)
 	rcw.listCacheMux.Lock()
 	defer rcw.listCacheMux.Unlock()
 	rcw.srcListCache[idx] = fd
@@ -573,6 +576,7 @@ func (rcw *receiver) addToCache(idx int64, fd *lfs.FileDesc) {
 
 // loadFromCache return a file descriptor or nil and false
 func (rcw *receiver) loadFromCache(idx int64) (fd *lfs.FileDesc, ok bool) {
+	fmt.Printf("reading index: %d\n", idx)
 	rcw.listCacheMux.Lock()
 	defer rcw.listCacheMux.Unlock()
 	fd, ok = rcw.srcListCache[idx]

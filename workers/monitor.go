@@ -227,6 +227,13 @@ func (hsw *HttpSender) evalEvent(event fsnotify.Event) error {
 			return errors.Wrap(err, "failed to send medadata to htp server")
 		}
 
+		for _, fd := range hsw.syncStatus {
+			log.Trace().
+				Int64("file index", fd.Idx).
+				Str("file name", fd.FileName).
+				Msg("item")
+		}
+
 	}
 	/**********************
 	 * Close Write event *
