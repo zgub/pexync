@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/pkg/errors"
@@ -20,7 +21,6 @@ import (
 func sendWithTimeout(msg *core.Message, dst chan<- *core.Message) error {
 	timeoutValue := viper.GetDuration("timeout")
 	timeout := time.After(timeoutValue)
-	//spew.Dump(msg)
 	select {
 	case dst <- msg:
 		return nil
@@ -44,24 +44,24 @@ func recvWithTimeout(src <-chan *core.Message) (*core.Message, error) {
 }
 
 func fixMeta(dstDir string, srcFd, dstFd *lfs.FileDesc) error {
-	path := dstDir + "/" + srcFd.RelPath
+	p := filepath.Join(dstDir, srcFd.RelPath)
 	// check permissions and ownership
 	if srcFd.Modified != dstFd.Modified {
-		err := os.Chtimes(path, srcFd.Modified, srcFd.Modified)
+		err := os.Chtimes(p, srcFd.Modified, srcFd.Modified)
 		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify mtime", path)
+			return errors.Wrapf(err, "%s - unable to modify mtime", p)
 		}
 	}
 	if srcFd.Mode.Perm() != dstFd.Mode.Perm() {
-		err := os.Chmod(path, srcFd.Mode.Perm())
+		err := os.Chmod(p, srcFd.Mode.Perm())
 		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify permissions", path)
+			return errors.Wrapf(err, "%s - unable to modify permissions", p)
 		}
 	}
 	if srcFd.Gid != dstFd.Gid || srcFd.Uid != dstFd.Uid {
-		err := os.Chown(path, int(srcFd.Uid), int(srcFd.Gid))
+		err := os.Chown(p, int(srcFd.Uid), int(srcFd.Gid))
 		if err != nil {
-			return errors.Wrapf(err, "%s - unable to modify ownership", path)
+			return errors.Wrapf(err, "%s - unable to modify ownership", p)
 		}
 	}
 	return nil
@@ -97,6 +97,7 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	_, err = io.Copy(buf, gz)
 	if err != nil {
 		return nil, err
@@ -107,7 +108,7 @@ func decompress(r io.Reader) (*bytes.Buffer, error) {
 	return buf, nil
 }
 
-func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
+func (hsw *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, error) {
 	j, err := json.Marshal(msg)
 	if err != nil {
 		return nil, errors.Wrap(err, "json marshal failed")
@@ -118,7 +119,7 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 		return nil, errors.Wrap(err, "error compressing data")
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
+	req, err := http.NewRequestWithContext(hsw.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -128,19 +129,26 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 		return nil, errors.Wrap(err, "error creating http request")
 	}
 
-	resp, err := w.client.Do(req)
+	resp, err := hsw.client.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error connecting server")
 	}
 	defer resp.Body.Close()
 
-	log.Trace().
-		Str("status:", resp.Status).
-		Msg("http response")
+	/*
+		log.Trace().
+			Str("status:", resp.Status).
+			Msg("http response")
+	*/
+
+	if resp.StatusCode != http.StatusOK {
+		err = errors.New(resp.Status)
+		return nil, err
+	}
 
 	buf, err = decompress(resp.Body)
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading server response")
+		return nil, errors.Wrap(err, "unable to decompress server response")
 	}
 
 	msg = &core.Message{}
@@ -152,14 +160,14 @@ func (w *HttpSender) sendJson(url string, msg *core.Message) (*core.Message, err
 	return msg, nil
 }
 
-func (w *HttpSender) sendFileDesc(url string, data []byte) (*core.Message, error) {
+func (hsw *HttpSender) sendData(url string, data []byte) (*core.Message, error) {
 
 	buf, err := compress(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "error compressing data")
 	}
 
-	req, err := http.NewRequestWithContext(w.ctx, http.MethodPost, url, buf)
+	req, err := http.NewRequestWithContext(hsw.ctx, http.MethodPost, url, buf)
 	//req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("User-Agent", "PeXync-client-mode")
@@ -169,15 +177,17 @@ func (w *HttpSender) sendFileDesc(url string, data []byte) (*core.Message, error
 		return nil, errors.Wrap(err, "error creating http request")
 	}
 
-	resp, err := w.client.Do(req)
+	resp, err := hsw.client.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "error connecting server")
 	}
 	defer resp.Body.Close()
 
-	log.Trace().
-		Str("status:", resp.Status).
-		Msg("http response")
+	/*
+		log.Trace().
+			Str("status:", resp.Status).
+			Msg("http response")
+	*/
 
 	buf, err = decompress(resp.Body)
 	if err != nil {
@@ -194,38 +204,39 @@ func (w *HttpSender) sendFileDesc(url string, data []byte) (*core.Message, error
 }
 
 // this is not optimal, well... I would refactor the whole worker / sender / receiver design for possible next release
-func (w *HttpSender) dataSender() error {
+func (hsw *HttpSender) dataSender() error {
+	log.Debug().
+		Msg("http sender - dataSender starting")
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-hsw.ctx.Done():
 			log.Debug().
 				Msgf("http client worker - closing, context done")
-		case msg := <-w.receiver:
+		case msg := <-hsw.receiver:
 			// if FIN was send, don't send it to the standalone process
 			// but stop
-			if msg.Flag == core.FIN {
+			if msg.GetFlag() == core.FIN {
 				return nil
 			}
-			//spew.Dump(msg)
-			url := w.url.String() + "/data"
-			data, err := msg.DataDesc.Serialize()
+			url := hsw.url.String() + "/data"
+			data, err := msg.GetDataDesc().Serialize()
 			if err != nil {
 				return errors.Wrap(err, "failed to serialize data")
 			}
-			resp, err := w.sendFileDesc(url, data)
+			resp, err := hsw.sendData(url, data)
 			if err != nil {
 				return errors.Wrap(err, "failed to send data")
 			}
-			switch resp.Flag {
+			switch resp.GetFlag() {
 			case core.ACK:
-				log.Trace().
-					Msg("http client worker - received ack")
+				/*
+					log.Trace().
+						Msg("http client worker - received ack")
+				*/
 			default:
 				log.Error().
-					Msgf("http client worker - receives %s", resp.Flag.String())
+					Msgf("http client worker - receives %s", resp.GetFlag().String())
 			}
-			//spew.Dump(resp)
-
 		}
 	}
 }

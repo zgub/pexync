@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Launch test server",
+            "name": "Debug test server",
             "type": "go",
             "request": "launch",
             "mode": "debug",
@@ -15,10 +15,30 @@
             ]
         },
         {
-            "name": "Launch local sync",
+            "name": "Debug local sync",
             "type": "go",
             "request": "launch",
             "mode": "debug",
+            "program": "${workspaceFolder}",
+            "args": [
+                "local",
+            ]
+        },
+        {
+            "name": "Debug http client",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}",
+            "args": [
+                "client",
+            ]
+        },
+        {
+            "name": "Debug local sync test",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
             "program": "${workspaceFolder}",
             "args": [
                 "local",

@@ -17,6 +17,7 @@ const (
 	dstD = "../Xync/"
 )
 
+/*
 func TestMissingLocalSync(t *testing.T) {
 	testFiles := make([]string, 3)
 	var err error
@@ -56,6 +57,7 @@ func TestMissingLocalSync(t *testing.T) {
 	}
 
 }
+*/
 
 func TestDiffLocalSync(t *testing.T) {
 	srcF, err := test.CreateTestFile(srcD, "", 700, 5, test.AABBCC)

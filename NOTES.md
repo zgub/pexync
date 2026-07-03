@@ -7,27 +7,42 @@
 - [x] study the rolling adler32
 - [x] test the checksums
 - [x] test various readers with paralelism
-- [ ] decide when use single file send, single goroutine send, multiple goroutine send
-- [ ] receiver should stop all go routines at RST
-- [ ] do not create cfg file automaticaly, add a command **confgen**
-- [ ] permissions / ownership / sha1 receiver comparison
+- [x] decide when use single file send, single goroutine send, multiple goroutine send
+- [x] do not create cfg file automaticaly, add a command **confgen**
+- [x] permissions / ownership / sha1 receiver comparison
 - [x] missing file sender
 - [ ] multicore
-- [ ] remove unnecessary pointers
-- [ ] struct padding adjustment
-- [ ] context.Done should send FIN to all workers
-- [ ] proto checksums?
-- [ ] change only meta if only meta was changed add **META** flag!!!
+- [x] remove unnecessary pointers
+- [X] change only meta if only meta was changed add **META** flag!!!
 - [ ] UUID and AAA
-- [ ] contexts
 - [x] switch local / remote
 - [ ] fail when remote host is not specified
-- [ ] validate inputs
-- [ ] do I need fileindex????? (WHOA) seem not
 - [ ] tests!
-- [ ] validation at transfer end
 - [ ] sender state (reset after aaa)
-- [ ] make sure to not send the same file
+- [x] make sure to not send the same file
+- [x] don't use w for workers as w implies writer
+- [x] monitor
+- [x] core.Message constructor (ccio)
+- [x] delete ref file
+- [ ] add added dir to monitor watcher
+- [ ] renaming
+- [x] don't mon send directories
+- [ ] add log destination switch
+- [x] check for return errors missing return
+- [ ] delete of monitored directories
+- [ ] check if truncate causes IN_CLOSE_WRITE
+
+## NOTODO
+
+- [ ] receiver should stop all go routines at RST
+- [ ] proto checksums?
+- [ ] struct padding adjustment
+- [ ] validation at transfer end
+- [ ] do I need fileindex????? (WHOA) seem not
+- [ ] context.Done should send FIN to all workers
+- [ ] validate inputs
+- [ ] contexts
+- [ ] anonymous helper functions
 
 ## Ideas
 

@@ -4,10 +4,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -30,35 +34,29 @@ const (
 )
 
 type receiver struct {
-	ctx         context.Context
-	state       senderState // not sure if needed, or if I ever implement this
-	senderUUID  uuid.UUID   // same here
-	srcList     map[int64]*lfs.FileDesc
-	writersMap  map[int64]FileWriter
-	fileWriters *errgroup.Group // writters error group
+	ctx             context.Context
+	state           senderState // not sure if needed, or if I ever implement this
+	senderUUID      uuid.UUID   // same here
+	srcList         map[int64]*lfs.FileDesc
+	fileWritersLMap map[int64]*FileWriter
+	fileWriters     *errgroup.Group // writters error group
+	fileWritersMux  sync.Mutex
 }
 
-// parsinf list from sender and adding remote information
-func (rc receiver) parseSenderList(msg *core.Message) error {
-	rc.senderUUID = msg.UUID
-	log.Debug().
-		Str("sender uuid", rc.senderUUID.String()).
-		Msgf("receiver list parser - src file list, length: %d", len(msg.FileList))
+// parseSenderList parses a file list from sender and updates it with the information from destination
+func (rcw *receiver) parseSenderList(msg *core.Message) error {
+	rcw.senderUUID = msg.GetID()
+	log.Trace().
+		Str("sender uuid", rcw.senderUUID.String()).
+		Msgf("receiver list parser - src file list, length: %d", len(msg.GetList()))
 
 	// store source filelist ina a map for future!!!
-	for i, fd := range msg.FileList {
-		rc.srcList[fd.Idx] = fd
-		if int64(i) != fd.Idx {
-			// TODO: remove index, redundant information
-			log.Warn().
-				Int("slice index", i).
-				Int64("file index", fd.Idx).
-				Msg("WHOA!!!")
-		}
+	for _, fd := range msg.GetList() {
+		rcw.srcList[fd.Idx] = fd
 	}
 
 	// now compare sender and remote directories
-	diffMap, err := rc.compare()
+	diffMap, err := rcw.compare()
 	if err != nil {
 		return errors.Wrap(err, "file comparator failed")
 	}
@@ -68,9 +66,9 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	ccIo := viper.GetInt("io_concurrency")
 	hashChan := make(chan *core.Message)
 	for i := 0; i < ccIo; i++ {
-		dCtx := context.Context(rc.ctx)
-		w := NewHashreader(dCtx, hashChan)
-		hashReaders.Go(w.Start)
+		dCtx := context.Context(rcw.ctx)
+		hrw := NewHashreader(dCtx, hashChan)
+		hashReaders.Go(hrw.Start)
 	}
 
 	// send data to checksum workers
@@ -79,15 +77,10 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 			Str("state", dstFd.State.String()).
 			Str("file name", dstFd.Prefix+"/"+dstFd.FileName).
 			Msg("receiver list parser - sending to hash reader")
-		hashChan <- &core.Message{
-			Flag:     core.HSH,
-			FileDesc: dstFd,
-		}
+		hashChan <- core.NewHashRequest(dstFd)
 	}
 	for i := 0; i < ccIo; i++ {
-		hashChan <- &core.Message{
-			Flag: core.FIN,
-		}
+		hashChan <- core.NewFIN(msg.GetID())
 	}
 	err = hashReaders.Wait()
 	if err != nil {
@@ -97,14 +90,16 @@ func (rc receiver) parseSenderList(msg *core.Message) error {
 	// make sure that we copy the block hashes!!
 	for dstFd, srcFd := range diffMap {
 		srcFd.Weak = dstFd.Weak
+		srcFd.Sha1 = dstFd.Sha1
 	}
 
 	return nil
 }
 
-// main function comparing sender dir listing with remote directory listing
-func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
+// compare is the main function comparing sender dir listing with destination directory listing
+func (rcw *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 
+	// pull from config
 	dstDir := viper.GetString("destination")
 
 	// check if the destination dir exists
@@ -115,6 +110,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 		return nil, err
 	}
 
+	// well if it ODES exist, let's list it
 	dstList, err := lfs.ParseDir(dstDir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to list directory %s", dstDir)
@@ -125,30 +121,35 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 	for _, dstFd := range dstList {
 		dstMap[dstFd.RelPath] = dstFd
 	}
+
+	// prepare the result = a map of differences
 	diffMap := make(map[*lfs.FileDesc]*lfs.FileDesc)
-	for _, srcFd := range rc.srcList {
-		path := dstDir + srcFd.RelPath
+	for _, srcFd := range rcw.srcList {
+
+		p := filepath.Join(dstDir, srcFd.RelPath)
 		log.Trace().
-			Str("source filename relatinve path", srcFd.RelPath).
-			Str("constructed remote path", path).
-			Msg("receiver comparing - searching")
+			Str("source path", srcFd.RelPath).
+			Str("destination path", p).
+			Msg("receiver - lookup and compare")
+
 		if dstFd, ok := dstMap[srcFd.RelPath]; ok {
 			// it does exist on destination
 			if srcFd.FileSize == dstFd.FileSize && srcFd.Modified == dstFd.Modified {
-				// check permission, modtime and ownership and aupdate if needed
+				// same size, same modification date, we're adding SHA1 so if only mod time was changed, we can skip it anyway on source
+				// check permission, modtime and ownership and update if needed
 				err = fixMeta(dstDir, srcFd, dstFd)
 				if err != nil {
 					return nil, errors.Wrap(err, "unable to fix metadata")
 				}
 				srcFd.State = lfs.Skip
 				log.Debug().
-					Str("path", path).
-					Msg("receiver comparing -  updating metadata")
+					Str("path", p).
+					Msg("receiver comparing -  updating metadata if necessary")
 			} else {
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
-					Uint64("source file size", srcFd.FileSize).
-					Uint64("destination file size", dstFd.FileSize).
+					Int64("source file size", srcFd.FileSize).
+					Int64("destination file size", dstFd.FileSize).
 					Time("source file modified", srcFd.Modified.UTC()).
 					Time("receiver file modified", dstFd.Modified.UTC()).
 					Msg("receiver DIFF")
@@ -163,20 +164,20 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				// map both here for block checksum calculation later
 				diffMap[dstFd] = srcFd
 				// store!
-				rc.srcList[srcFd.Idx] = srcFd
+				rcw.srcList[srcFd.Idx] = srcFd
 
-				// determine what has changed, if permission and/or modtime only, do not set it to diff
+				if srcFd.IsDir == false {
+					// a file that exists and is not dir
 
-				if !srcFd.IsDir {
 					// treat "remote" files smaller than block sizes as missing
-					if uint64(srcFd.BlockSize) > dstFd.FileSize {
+					if srcFd.BlockSize >= dstFd.FileSize {
 						srcFd.State = lfs.Missing
 						continue
 					}
 					// check for zero sized files
 					if srcFd.FileSize == 0 {
 						log.Trace().
-							Str("path", path).
+							Str("path", p).
 							Msg("receiver comparing - empty file")
 
 						// file creted, modify meta if required and set as done
@@ -186,9 +187,19 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 						}
 						srcFd.State = lfs.Skip
 					}
+					// determine what has changed, if permission and/or modtime only, do not set it to diff
+					if srcFd.FileSize == dstFd.FileSize {
+						// possibly the same file by contents
+						srcFd.State = lfs.Meta
+						dstFd.State = lfs.Meta
+						err = fixMeta(dstDir, srcFd, dstFd)
+						if err != nil {
+							return nil, errors.Wrap(err, "error changing metadata")
+						}
+					}
 				} else {
 					log.Trace().
-						Str("path", path).
+						Str("path", p).
 						Msg("receiver comparing - fixing dir meta")
 					// directory that exists, check meta only
 					err = fixMeta(dstDir, srcFd, dstFd)
@@ -200,30 +211,37 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 			}
 			continue
 		} else {
-			// it does not exist on destination, check if it's a ditrectory
-			if srcFd.IsDir {
+			// it does not exist on destination, check if it's a directory
+			if srcFd.IsDir == true {
 				// create directory
 				log.Debug().
-					Str("path", path).
+					Str("path", p).
 					Msg("receiver comparing - creating directory")
-				if _, err := os.Stat(path); os.IsNotExist(err) {
+				if _, err := os.Stat(p); os.IsNotExist(err) {
 					// create one
-					os.Mkdir(path, os.ModeDir)
+					//spew.Dump(srcFd)
+					os.Mkdir(p, srcFd.Mode)
 				} else if err != nil {
-					return nil, errors.Wrapf(err, "%s - unable to create directory", path)
+					return nil, errors.Wrapf(err, "%s - unable to create directory", p)
 				}
 			} else {
 				// set it as missing
 				// check for zero sized files
 				if srcFd.FileSize == 0 {
 					log.Trace().
-						Str("path", path).
+						Str("path", p).
 						Msg("receiver comparing - empty file")
-					file, err := os.Create(path)
+					file, err := os.Create(p)
 					if err != nil {
-						return nil, errors.Wrapf(err, "%s - unable to create file", path)
+						return nil, errors.Wrapf(err, "%s - unable to create file", p)
 					}
 					file.Close()
+
+					// new file, fix permissions and ownership
+					err = os.Chmod(p, srcFd.Mode.Perm())
+					if err != nil {
+						return nil, errors.Wrapf(err, "%s - unable to modify permissions", p)
+					}
 
 					// TODO fix metadata on new empty file
 					srcFd.State = lfs.Skip
@@ -231,10 +249,10 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 				}
 				srcFd.State = lfs.Missing
 				// store!
-				rc.srcList[srcFd.Idx] = srcFd
+				rcw.srcList[srcFd.Idx] = srcFd
 				log.Debug().
 					Str("sender path", srcFd.RelPath).
-					Uint64("source file size", srcFd.FileSize).
+					Int64("source file size", srcFd.FileSize).
 					Time("source file modified", srcFd.Modified.UTC()).
 					Msg("receiver MISS")
 			}
@@ -243,7 +261,7 @@ func (rc *receiver) compare() (map[*lfs.FileDesc]*lfs.FileDesc, error) {
 	return diffMap, nil
 }
 
-func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
+func (rcw *receiver) processMeta(w http.ResponseWriter, r *http.Request) {
 
 	buf, err := decompress(r.Body)
 	if err != nil {
@@ -267,10 +285,10 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch msg.Flag {
+	switch msg.GetFlag() {
 	case core.INI:
 		// update msg with local state(s)
-		err := rc.parseSenderList(msg)
+		err := rcw.parseSenderList(msg)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			log.Error().
@@ -279,7 +297,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
-		msg.Flag = core.SUM
+		msg.SetFlag(core.SUM)
 		err = respondWithJSON(w, http.StatusOK, msg)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -289,6 +307,99 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 				Msg("internal server error")
 			return
 		}
+	case core.ADD:
+		log.Trace().
+			Str("sender UUID", msg.GetID().String()).
+			Msg("receiver - ADD message")
+
+			// store the announced file descriptor
+		fd := msg.GetFileDesc()
+		if fd == nil {
+			panic("invalid message")
+		}
+		if _, exists := rcw.srcList[fd.Idx]; exists {
+			err := errors.New("file id collision")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Msg("internal server error")
+			return
+		} else {
+			log.Trace().
+				Str("filename", fd.FileName).
+				Int64("file index", fd.Idx).
+				Msg("adding to source list")
+			rcw.srcList[fd.Idx] = fd
+			fd.State = lfs.Missing
+			// take care of empty files and directories
+			if fd.IsDir == true {
+				dstDir := viper.GetString("destination")
+				p := filepath.Join(dstDir, fd.RelPath)
+				log.Trace().
+					Str("path", p).
+					Msg("creating directory")
+				if _, err := os.Stat(p); os.IsNotExist(err) {
+					// create one
+					//spew.Dump(srcFd)
+					os.Mkdir(p, fd.Mode)
+				} else if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					log.Error().
+						Err(err).
+						Msg("internal server error")
+					return
+				}
+			}
+		}
+		msg.SetFlag(core.ACK)
+		err = respondWithJSON(w, http.StatusOK, msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+	case core.UPD:
+		log.Trace().
+			Str("sender UUID", msg.GetID().String()).
+			Msg("receiver - UPD message")
+
+			// store the announced file descriptor
+		fd := msg.GetFileDesc()
+		if fd == nil {
+			panic("invalid message")
+		}
+		log.Trace().
+			Str("filename", fd.FileName).
+			Int64("file index", fd.Idx).
+			Msg("receicer - updatind remote meta")
+
+		srcFd := rcw.srcList[fd.Idx]
+		srcFd.BlockSize = fd.BlockSize
+		srcFd.FileSize = fd.FileSize
+		srcFd.State = lfs.Diff
+		fmt.Println("old hash list")
+		//spew.Dump(srcFd.Weak)
+		core.AddChecksums(srcFd)
+		fmt.Println("new hash list")
+		//spew.Dump(srcFd.Weak)
+
+		// send updated fd, with hashMap
+		msg.SetFlag(core.ACK)
+		msg.SetFileDesc(srcFd)
+
+		err = respondWithJSON(w, http.StatusOK, msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Error().
+				Err(err).
+				Caller().
+				Msg("internal server error")
+			return
+		}
+
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		log.Error().
@@ -298,7 +409,7 @@ func (rc *receiver) processList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
+func (rcw *receiver) processData(w http.ResponseWriter, r *http.Request) {
 	buf, err := decompress(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -314,31 +425,34 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 
 	// write
 	dd, err := lfs.Deserialize(buf.Bytes())
-
 	fi := dd.FileIndex()
 
-	if fileWriter, ok := rc.writersMap[fi]; ok {
-		fileWriter.inbox <- &core.Message{
-			Flag:     core.WSQ,
-			DataDesc: dd,
-		}
+	if fileWriter, ok := rcw.GetWritter(fi); ok {
+		fileWriter.inbox <- core.NewWSQ(dd)
 	} else {
+		//spew.Dump(dd)
 		// new file, new writer
 		log.Debug().
-			Str("filename", rc.srcList[dd.FileIndex()].FileName).
+			Str("filename", rcw.srcList[dd.FileIndex()].FileName).
+			Int64("file index", fi).
 			Msg("receiver - starting new writter")
-		inbox := make(chan *core.Message)
-		// create new file writer worker
-		fr := NewFileWriter(rc.ctx, rc.senderUUID, rc.srcList[dd.FileIndex()], inbox)
-		// add it to the lookup map
-		rc.writersMap[fi] = fr
-		// send a new message
-		rc.fileWriters.Go(fr.Start)
-		fr.inbox <- &core.Message{
-			Flag: core.WSQ,
-			//FileDesc: w.srcList[fi],
-			DataDesc: dd,
+
+		streams := dd.GetStreamCount()
+
+		// sanity check
+		if streams == 0 {
+			panic("zero stream count")
 		}
+
+		inbox := make(chan *core.Message, streams*2)
+		// create new file writer worker
+
+		frw := NewFileWriter(rcw.ctx, rcw.senderUUID, streams, rcw.srcList[dd.FileIndex()], inbox, rcw.RemWritter)
+		// add it to the lookup map
+		rcw.AddWritter(fi, frw)
+		// send a new message
+		rcw.fileWriters.Go(frw.Start)
+		frw.inbox <- core.NewWSQ(dd)
 	}
 
 	if err != nil {
@@ -350,9 +464,7 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := &core.Message{
-		Flag: core.ACK,
-	}
+	resp := core.NewACK()
 
 	err = respondWithJSON(w, http.StatusOK, resp)
 	if err != nil {
@@ -365,6 +477,28 @@ func (rc receiver) processRemoteData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// AddWriter adds a new writter to receiver shared map - mutex safe
+func (rcw *receiver) AddWritter(fileIndex int64, w *FileWriter) {
+	rcw.fileWritersMux.Lock()
+	rcw.fileWritersLMap[fileIndex] = w
+	rcw.fileWritersMux.Unlock()
+}
+
+// RemWriter removes a writter when the writter finishes its job - mutex safe
+func (rcw *receiver) RemWritter(fileIndex int64) {
+	rcw.fileWritersMux.Lock()
+	delete(rcw.fileWritersLMap, fileIndex)
+	rcw.fileWritersMux.Unlock()
+}
+
+// GetFileWriter returns a writter if exists, false otherwise - mutex safe
+func (rcw *receiver) GetWritter(fileIndex int64) (*FileWriter, bool) {
+	rcw.fileWritersMux.Lock()
+	fw, ok := rcw.fileWritersLMap[fileIndex]
+	rcw.fileWritersMux.Unlock()
+	return fw, ok
+}
+
 // LocalSender represents blah balh
 type LocalReceiver struct {
 	inbox  <-chan *core.Message
@@ -375,42 +509,62 @@ type LocalReceiver struct {
 func NewLocalReceiver(ctx context.Context, in <-chan *core.Message, sender chan<- *core.Message) *LocalReceiver {
 	return &LocalReceiver{
 		receiver: receiver{
-			ctx:         ctx,
-			state:       RST,
-			srcList:     make(map[int64]*lfs.FileDesc),
-			writersMap:  make(map[int64]FileWriter),
-			fileWriters: new(errgroup.Group),
+			ctx:             ctx,
+			state:           RST,
+			srcList:         make(map[int64]*lfs.FileDesc),
+			fileWritersLMap: make(map[int64]*FileWriter),
+			fileWriters:     new(errgroup.Group),
 		},
 		inbox:  in,
 		sender: sender,
 	}
 }
 
-func (w *LocalReceiver) Start() error {
+func (lrw *LocalReceiver) Start() error {
 
-LabelsInGo:
-	for {
+	finSent := false
+
+	writtersDone := func() bool {
+		if !finSent {
+			return false
+		}
+		fmt.Println("checking writers")
+		lrw.fileWritersMux.Lock()
+		for _, fw := range lrw.fileWritersLMap {
+			if fw.IsAlive() {
+				fmt.Printf("writer alive, active streams: %d\n", fw.streams)
+				lrw.fileWritersMux.Unlock()
+				return false
+			}
+		}
+		lrw.fileWritersMux.Unlock()
+		return true
+	}
+
+Loop:
+	for !writtersDone() {
+		//for {
 		select {
-		case <-w.ctx.Done():
+		case <-lrw.ctx.Done():
 			log.Debug().
 				Msg("receiver - closing, context done")
 			// send fin to all readers
-			break LabelsInGo
-		case msg := <-w.inbox:
+			//return errors.New("context done")
+			break Loop
+		case msg := <-lrw.inbox:
 			// received a message that is not a FIN
-			switch msg.Flag {
+			switch msg.GetFlag() {
 			// initialization
 			case core.INI:
 				// update msg with local directory state(s)
-				//spew.Dump(msg)
-				err := w.parseSenderList(msg)
+				err := lrw.parseSenderList(msg)
+				lrw.senderUUID = msg.GetID()
 				if err != nil {
 					return errors.Wrap(err, "failed during sync init")
 				}
-				msg.Flag = core.SUM
-				//spew.Dump(msg)
+				msg.SetFlag(core.SUM)
 
-				err = sendWithTimeout(msg, w.sender)
+				err = sendWithTimeout(msg, lrw.sender)
 				if err != nil {
 					return errors.Wrap(err, "failed to respond to sender")
 				}
@@ -418,7 +572,7 @@ LabelsInGo:
 				/********************************************************************************************************
 				 * ignore this, local was developed to test the concept, that's why the serialize / deserialize detour  *
 				 ********************************************************************************************************/
-				data, err := msg.DataDesc.Serialize()
+				data, err := msg.GetDataDesc().Serialize()
 				if err != nil {
 					return errors.Wrap(err, "error serializing data")
 				}
@@ -430,54 +584,56 @@ LabelsInGo:
 				 * end of detour       *
 				 ***********************/
 				log.Trace().
-					Str("filename", w.srcList[dd.FileIndex()].FileName).
+					Str("filename", lrw.srcList[dd.FileIndex()].FileName).
 					Int64("data sequence", dd.Seq()).
 					Msg("receiver - data received")
 				fi := dd.FileIndex()
-				if fileWritter, ok := w.writersMap[fi]; ok {
+				if fileWritter, ok := lrw.GetWritter(fi); ok {
 					// new message, already existing writer
-					fileWritter.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: msg.List[fi],
-						DataDesc: dd,
-					}
+					fileWritter.inbox <- core.NewWSQ(dd)
 				} else {
 					// new file, new writer
 					log.Debug().
-						Str("filename", w.srcList[dd.FileIndex()].FileName).
+						Str("filename", lrw.srcList[dd.FileIndex()].FileName).
 						Msg("receiver - starting new writter")
-					inbox := make(chan *core.Message)
-					// create new file writer worker
-					fr := NewFileWriter(w.ctx, w.senderUUID, w.srcList[dd.FileIndex()], inbox)
-					// add it to the lookup map
-					w.writersMap[fi] = fr
-					// send a new message
-					w.fileWriters.Go(fr.Start)
-					fr.inbox <- &core.Message{
-						Flag: core.WSQ,
-						//FileDesc: w.srcList[fi],
-						DataDesc: dd,
+
+					streams := dd.GetStreamCount()
+
+					// sanity check
+					if streams == 0 {
+						panic("zero stream count")
 					}
+
+					inbox := make(chan *core.Message, streams)
+					// create new file writer worker
+					frw := NewFileWriter(lrw.ctx, lrw.senderUUID, streams, lrw.srcList[dd.FileIndex()], inbox, lrw.RemWritter)
+					// add it to the lookup map
+					lrw.AddWritter(fi, frw)
+					// send a new message
+					lrw.fileWriters.Go(frw.Start)
+					frw.inbox <- core.NewWSQ(dd)
 				}
 			case core.FIN:
 				log.Debug().
-					Msg("receiver received FIN")
-				break LabelsInGo
+					Msg("receiver received FIN, setting finSent == true")
+				finSent = true
+				//break Loop
 			default:
 				return errors.New("unknown message received")
 			}
+		case <-time.After(5 * time.Second):
+			fmt.Println("timeout at local receiver")
 		}
 	}
-	/*
-		for _, wr := range w.writersMap {
-			wr.inbox <- &core.Message{
-				Flag: core.FIN,
-			}
-		}
-	*/
-	err := w.fileWriters.Wait()
 
-	return err
+	err := lrw.fileWriters.Wait()
+	if err != nil {
+		return errors.Wrap(err, "error writing files")
+	}
+	log.Debug().
+		Msg("writers done")
+
+	return nil
 }
 
 type HttpReceiver struct {
@@ -487,16 +643,16 @@ type HttpReceiver struct {
 func NewHttpReceiver(ctx context.Context) *HttpReceiver {
 	return &HttpReceiver{
 		receiver: receiver{
-			ctx:         ctx,
-			state:       RST,
-			srcList:     make(map[int64]*lfs.FileDesc),
-			writersMap:  make(map[int64]FileWriter),
-			fileWriters: new(errgroup.Group),
+			ctx:             ctx,
+			state:           RST,
+			srcList:         make(map[int64]*lfs.FileDesc),
+			fileWritersLMap: make(map[int64]*FileWriter),
+			fileWriters:     new(errgroup.Group),
 		},
 	}
 }
 
-func (w *HttpReceiver) Start() error {
+func (hrw *HttpReceiver) Start() error {
 	r := chi.NewRouter()
 	timeoutValue := viper.GetDuration("timeout")
 
@@ -508,12 +664,12 @@ func (w *HttpReceiver) Start() error {
 	r.Use(middleware.Timeout(timeoutValue))
 
 	// routes
-	r.Route("/list", func(r chi.Router) {
-		r.Post("/", w.processList)
+	r.Route("/meta", func(r chi.Router) {
+		r.Post("/", hrw.processMeta)
 	})
 
 	r.Route("/data", func(r chi.Router) {
-		r.Post("/", w.processRemoteData)
+		r.Post("/", hrw.processData)
 	})
 
 	address := viper.GetString("bind_address")
@@ -532,6 +688,6 @@ func (w *HttpReceiver) Start() error {
 		return errors.Wrapf(err, "unable to listen on %s", address)
 	}
 
-	err = w.fileWriters.Wait()
+	err = hrw.fileWriters.Wait()
 	return err
 }

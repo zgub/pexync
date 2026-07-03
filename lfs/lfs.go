@@ -1,7 +1,9 @@
 package lfs
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -9,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"syscall"
+	//"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -21,7 +23,8 @@ type State int16
 
 const (
 	Missing State = iota // no file on the receiver side
-	Diff                 // file exists but do not match
+	Diff                 // file exists but has different file size
+	Meta                 // file exists, has the same filesize but different meta
 	Skip                 // file exists and matches
 )
 
@@ -30,6 +33,7 @@ var ErrEOF = errors.New("end of file transmission")
 var fileStatus = [...]string{
 	"MISS",
 	"DIFF",
+	"META",
 	"SKIP",
 }
 
@@ -56,7 +60,7 @@ func (f Flag) String() string {
 }
 
 const (
-	HeaderSize = 34
+	HeaderSize = 42
 )
 
 // common errors, lazy to type
@@ -71,6 +75,7 @@ type Header struct {
 	FileIndex int64 // global header only
 	Offset    int64 // global header only
 	Seq       int64 // for proper reconstruction
+	Streams   int64 // number of simultaneous data streams
 	Len       int64
 }
 
@@ -80,34 +85,29 @@ type DataDesc struct {
 	iBuff                  []int64       // intermediate index buffer
 	readBuf                *bytes.Buffer // intermediate data buffer
 	data                   *bytes.Buffer
-	//len                    int64         //is ths really neccessary?
+	streams                int64 // ccIo
 }
 
-func NewDataDesc(fileIndex, offset, sequence int64) *DataDesc {
+func NewDataDesc(fileIndex, offset, sequence, streams int64) *DataDesc {
+	if streams == 0 {
+		panic("zero stream count")
+	}
 	return &DataDesc{
 		fileIndex: fileIndex,
 		readBuf:   new(bytes.Buffer),
 		data:      new(bytes.Buffer),
 		offset:    offset,
 		seq:       sequence,
+		streams:   streams,
 	}
-}
-
-func (dd *DataDesc) Print(comment string) {
-	fmt.Printf("\nAnnotation: %s\n", comment)
-	fmt.Printf("Mode: %s\n", dd.mode.String())
-	fmt.Printf("Offset: %d\n", dd.offset)
-	fmt.Printf("Sequence: %d\n", dd.seq)
-	//fmt.Printf("Lenght: %d\n", dd.len)
-	fmt.Printf("Indexes: %+v\n", dd.iBuff)
-	fmt.Printf("Read buffer: %s\n", dd.readBuf.Bytes())
-	fmt.Printf("Read buffer Len: %d\n", dd.readBuf.Len())
-	fmt.Printf("Data: %s\n", dd.data.Bytes())
-	fmt.Printf("Data buf Len: %d\n\n", dd.data.Len())
 }
 
 func (dd *DataDesc) Seq() int64 {
 	return dd.seq
+}
+
+func (dd *DataDesc) Offset() int64 {
+	return dd.offset
 }
 
 func (dd *DataDesc) FileIndex() int64 {
@@ -209,15 +209,26 @@ func (dd *DataDesc) Len() int64 {
 	return int64(dd.readBuf.Len())
 }
 
+func (dd *DataDesc) GetStreamCount() int64 {
+	return dd.streams
+}
+
 func (dd *DataDesc) Serialize() ([]byte, error) {
 	// flush any remainung data
 	err := dd.flush()
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode data")
 	}
+
+	streams := dd.streams
+	if streams == 0 {
+		panic("Serialize: zero stream count")
+	}
+
 	// global header
 	header := &Header{
 		FileIndex: dd.fileIndex,
+		Streams:   dd.streams,
 		Offset:    dd.offset,
 		Seq:       dd.seq,
 		Len:       int64(dd.data.Len()),
@@ -242,10 +253,10 @@ func Deserialize(p []byte) (*DataDesc, error) {
 	}
 	dd := &DataDesc{
 		fileIndex: header.FileIndex,
+		streams:   header.Streams,
 		offset:    header.Offset,
 		seq:       header.Seq,
 		data:      bytes.NewBuffer(p[HeaderSize:]),
-		//len:       header.Len,
 	}
 	return dd, nil
 }
@@ -268,7 +279,7 @@ type FileDesc struct {
 	Uid, Gid  uint32
 	Idx       int64
 	BlockSize int64
-	FileSize  uint64
+	FileSize  int64
 	Sha1      []byte
 	Weak      []uint32
 	RelPath   string
@@ -286,6 +297,8 @@ func (fd *FileDesc) SetBlockSize() {
 		// stolen from rsync doc :)
 		sqrt := math.Sqrt(float64(fd.FileSize))
 		fd.BlockSize = int64(math.Round(sqrt))
+		// way too late
+		fmt.Printf("================== file size: %d sqrt: %f block size: %d\n", fd.FileSize, sqrt, fd.BlockSize)
 		if fd.BlockSize > 131072 {
 			fd.BlockSize = 131072
 		}
@@ -295,6 +308,27 @@ func (fd *FileDesc) SetBlockSize() {
 		fd.BlockSize = int64(fd.FileSize)
 	}
 
+	if fd.BlockSize == 0 {
+		fd.BlockSize = 700
+	}
+}
+
+// AddSha1 adds a SHA1 digest to the file descriptor struct
+func (fd *FileDesc) GetSha1() ([]byte, error) {
+	p := filepath.Join(fd.Prefix, fd.FileName)
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", p)
+	}
+	defer f.Close()
+	br := bufio.NewReader(io.Reader(f))
+	sha1sh := sha1.New()
+	_, err = io.Copy(sha1sh, br)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to calculate SHA1 digest from: %s", p)
+	}
+	sum := sha1sh.Sum(nil)[:20]
+	return sum, nil
 }
 
 func ParseDir(walkDir string) ([]*FileDesc, error) {
@@ -343,7 +377,7 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 			return errors.Wrap(err, "file stat info failed")
 		}
 
-		stat := info.Sys().(*syscall.Stat_t)
+		//stat := info.Sys().(*syscall.Stat_t)
 
 		relPath, err := filepath.Rel(walkDir, path)
 		if err != nil {
@@ -364,11 +398,11 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 				RelPath:  relPath,
 				Prefix:   prefix,
 				FileName: entry.Name(),
-				FileSize: uint64(info.Size()),
+				FileSize: info.Size(),
 				Modified: info.ModTime(),
 				Mode:     info.Mode(),
-				Uid:      stat.Uid,
-				Gid:      stat.Gid,
+				//Uid:      stat.Uid,
+				//Gid:      stat.Gid,
 			}
 
 			list = append(list, fileDesc)
@@ -386,76 +420,51 @@ func ParseDir(walkDir string) ([]*FileDesc, error) {
 	return list, nil
 }
 
-func DummyWriter(b []byte, name string) error {
-	var (
-		headerCnt, dataCnt, indexCnt int64
-	)
-	header := new(Header)
-	r := bytes.NewReader(b)
-	// read global
-	err := binary.Read(r, binary.BigEndian, header)
+// Scan returns a file descritor struct
+func Scan(path string) (*FileDesc, error) {
+	// fsnotify provides absolute paths
+
+	info, err := os.Stat(path)
 	if err != nil {
-		return errors.Wrap(err, "unable to dummy read ")
+		return nil, errors.Wrapf(err, "unable to stat file: %s", path)
 	}
-	headerCnt++
-	log.Trace().
-		Int64("file-index", header.FileIndex).
-		Int64("offset", header.Offset).
-		Int64("section data length", header.Len).
-		Int64("sequence #", header.Seq).
-		Str("filename", name).
-		Msg("DummyWriter - section global header")
-	for {
-		// read data header global header
-		err = binary.Read(r, binary.BigEndian, header)
-		if err != nil {
-			if err == io.EOF {
-				log.Trace().
-					Msg("DummyWriter - EOF - while reading global header")
-				break
-			} else {
-				return errors.Wrap(err, "DummyWritter - error reading header data")
-			}
-		}
-		headerCnt++
-		switch Flag(header.Flag) {
-		case Data:
-			dataBuf := make([]byte, header.Len)
-			err = binary.Read(r, binary.BigEndian, dataBuf)
-			if err != nil {
-				if err == io.EOF {
-					log.Trace().
-						Msg("DummyWriter - EOF - while reading data")
-					break
-				} else {
-					return errors.Wrap(err, "DummyWriter - error reading data")
-				}
-			}
-			dataCnt += header.Len
-		case Index:
-			indexes := make([]int64, header.Len)
-			err = binary.Read(r, binary.BigEndian, indexes)
-			if err != nil {
-				if err == io.EOF {
-					log.Trace().
-						Msg("DummyWritter - EOF - while reading indexes")
-					break
-				} else {
-					return errors.Wrap(err, "DummyWriter - error reading index data")
-				}
 
-			}
-			indexCnt += header.Len
-		}
-
+	srcPath := viper.GetString("source")
+	basePath, err := filepath.Abs(srcPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to determine base path: %s", srcPath)
 	}
-	log.Trace().
-		Int64("headers", headerCnt).
-		Int64("bytes", dataCnt).
-		Int64("indexes", indexCnt).
-		Int64("file-index", header.FileIndex).
-		Str("filename", name).
-		Msg("decoded")
 
-	return nil
+	//filepath.Rel(testfiles/,testfiles/testfile5) = testfile5
+	relPath, err := filepath.Rel(basePath, path)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to determine relative path: %s", path)
+	}
+
+	prefix := filepath.Dir(path)
+	log.Trace().
+		Str("path", path).
+		Str("prefix path", prefix).
+		Int64("filesize", info.Size()).
+		Bool("is dir", info.IsDir()).
+		Time("mode", info.ModTime()).
+		Msg("SCAN - file stat")
+
+	fd := &FileDesc{
+		IsDir:    info.IsDir(),
+		RelPath:  relPath,
+		Prefix:   prefix,
+		FileName: info.Name(),
+		FileSize: info.Size(),
+		Modified: info.ModTime(),
+		Mode:     info.Mode(),
+		//Uid: stat.Uid,
+		//Gid: stat.Gid.
+	}
+
+	if fd.IsDir == false {
+		fd.SetBlockSize()
+	}
+
+	return fd, nil
 }
